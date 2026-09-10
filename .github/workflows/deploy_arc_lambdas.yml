@@ -1,0 +1,156 @@
+# Existing dev/prod triggers are preserved, but no resource defaults are trusted.
+# Repository variable ARC_DEPLOYMENT_BINDINGS must name an explicitly prepared
+# checked-out non-secret binding JSON file. Missing configuration fails before
+# AWS credentials are configured. No beta branch/secret/role is invented here.
+# DEV_ENV_FILE/PROD_ENV_FILE remain secrets. They are never sourced or logged.
+# OIDC/key selection and pinned actions remain; preflight is syntax/composition
+# validation only, not live resource verification or runtime/deployment approval.
+name: Deploy ARC Lambdas
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "배포할 스테이지 (development: 어느 브랜치든 가능 / production: main 브랜치에서 실행할 때만 배포)"
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+          - production
+
+# 워크플로 전체의 GITHUB_TOKEN 권한을 최소로 제한한다.
+#   contents: read  — 소스 checkout 에 필요
+#   id-token: write — OIDC 로 AWS 역할을 맡을 때(방식 1) 필요. 방식 2(액세스 키)만 쓰더라도 무해하다.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-dev:
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'development')
+    runs-on: ubuntu-latest
+    env:
+      # 비어 있지 않으면 OIDC(방식 1), 비어 있으면 액세스 키(방식 2). step-level if 에서 참조.
+      AWS_ROLE_ARN: ${{ secrets.DEV_AWS_ROLE_ARN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Write env file
+        env:
+          ENV_FILE: ${{ secrets.DEV_ENV_FILE }}
+        run: |
+          if [ -z "$ENV_FILE" ]; then echo "::error::DEV_ENV_FILE secret이 비어 있습니다 (docs/DEPLOY_GUIDE.md)"; exit 1; fi
+          umask 077
+          printf '%s\n' "$ENV_FILE" > .env.dev
+
+      - name: Offline deployment preflight
+        id: preflight
+        env:
+          ARC_DEPLOYMENT_BINDINGS: ${{ vars.ARC_DEPLOYMENT_BINDINGS }}
+        run: |
+          python3 scripts/deployment_preflight.py --environment development --component calculator \
+            --bindings "$ARC_DEPLOYMENT_BINDINGS" --env-file .env.dev --github-output "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC 권장)
+        if: env.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: arc-deploy-development
+          aws-region: ${{ steps.preflight.outputs.aws_region }}
+
+      - name: Configure AWS credentials (액세스 키 — OIDC 미설정 시)
+        if: env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          aws-access-key-id: ${{ secrets.DEV_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEV_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ steps.preflight.outputs.aws_region }}
+
+      - name: Deploy calculator Lambda
+        env:
+          ARC_DEPLOYMENT_BINDINGS: ${{ vars.ARC_DEPLOYMENT_BINDINGS }}
+        run: bash scripts/deploy_arc_lambda.sh development
+
+      - name: Remove temporary env file
+        if: always()
+        run: rm -f -- .env.dev
+
+  deploy-prod:
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'production' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    env:
+      # 비어 있지 않으면 OIDC(방식 1), 비어 있으면 액세스 키(방식 2). step-level if 에서 참조.
+      AWS_ROLE_ARN: ${{ secrets.PROD_AWS_ROLE_ARN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Write env file
+        env:
+          ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+        run: |
+          if [ -z "$ENV_FILE" ]; then echo "::error::PROD_ENV_FILE secret이 비어 있습니다 (docs/DEPLOY_GUIDE.md)"; exit 1; fi
+          umask 077
+          printf '%s\n' "$ENV_FILE" > .env
+
+      - name: Offline deployment preflight
+        id: preflight
+        env:
+          ARC_DEPLOYMENT_BINDINGS: ${{ vars.ARC_DEPLOYMENT_BINDINGS }}
+        run: |
+          python3 scripts/deployment_preflight.py --environment production --component calculator \
+            --bindings "$ARC_DEPLOYMENT_BINDINGS" --env-file .env --github-output "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC 권장)
+        if: env.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: arc-deploy-production
+          aws-region: ${{ steps.preflight.outputs.aws_region }}
+
+      - name: Configure AWS credentials (액세스 키 — OIDC 미설정 시)
+        if: env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          aws-access-key-id: ${{ secrets.PROD_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PROD_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ steps.preflight.outputs.aws_region }}
+
+      - name: Deploy calculator Lambda
+        env:
+          ARC_DEPLOYMENT_BINDINGS: ${{ vars.ARC_DEPLOYMENT_BINDINGS }}
+        run: bash scripts/deploy_arc_lambda.sh production
+
+      - name: Remove temporary env file
+        if: always()
+        run: rm -f -- .env

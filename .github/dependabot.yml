@@ -1,0 +1,10 @@
+# Dependabot: GitHub Actions 액션 버전 자동 갱신 PR.
+# 검토 반영 2026-09-05: R1 워크플로의 액션을 커밋 SHA 로 고정했으므로, 새 릴리스가 나오면
+#   Dependabot 이 SHA(와 뒤의 # vX.Y.Z 주석)를 함께 올리는 PR 을 주간으로 생성한다.
+# pip 생태계는 추가하지 않음 — requirements 고정 정책은 사용자 결정(U11/P1) 대기.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

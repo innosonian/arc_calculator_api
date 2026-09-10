@@ -1,0 +1,2634 @@
+{
+  "validation": "All eight expected records matched current output before any golden was written; expected values were selected from reference/independent policy oracle, never generated from current output.",
+  "updates": [
+    {
+      "case_id": "recorded/cpr_1",
+      "file": "tests/dataset/result_1.json",
+      "old_sha256": "a2855386dd2df387394344057053a18d72e1112f55752a89936e022ff8131651",
+      "expected_sha256": "7612266bdca768281e10259d202c4a69deb6abd2a54f4300b4eece00f544542d",
+      "expected_source": "reference oracle plus independently calculated ARC exception",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 83
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 19
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 83
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 19
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 83
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 19
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/guide_prompts/0",
+          "kind": "missing_item",
+          "reference": {
+            "type": "str",
+            "value": "• Ventilation volume is very good"
+          }
+        },
+        {
+          "path": "/guide_prompts/1",
+          "kind": "missing_item",
+          "reference": {
+            "type": "str",
+            "value": "• Allow the chest to fully recoil between compressions"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recorded/cpr_2",
+      "file": "tests/dataset/result_2.json",
+      "old_sha256": "49514e8c5bd9c972c88afc81fd025221c12e4004b2bbedbf8f5f82e5580f3eb3",
+      "expected_sha256": "c82e14172cec0f9d17070d6f136cc9c86f324f9d2250131e5f86dee6a0c9edf3",
+      "expected_source": "reference oracle plus independently calculated ARC exception",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 85
+          },
+          "current": {
+            "type": "int",
+            "value": 92
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 44
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 20
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 87
+          },
+          "current": {
+            "type": "int",
+            "value": 99
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 86
+          },
+          "current": {
+            "type": "int",
+            "value": 96
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 75
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 22
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 10
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 97
+          },
+          "current": {
+            "type": "int",
+            "value": 100
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 97
+          },
+          "current": {
+            "type": "int",
+            "value": 100
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 90
+          },
+          "current": {
+            "type": "int",
+            "value": 97
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 67
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 15
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 40
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recorded/cpr_3",
+      "file": "tests/dataset/result_3.json",
+      "old_sha256": "2e1e0b1588785aa63ad77cffa2dc64430cd3fe2ebfe5fa86bc3f40900748aaae",
+      "expected_sha256": "241bd69f060b7870896b232473f0b5809181c8a1d2622e193c498352a462e851",
+      "expected_source": "reference oracle plus independently calculated ARC exception",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 87
+          },
+          "current": {
+            "type": "int",
+            "value": 99
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 83
+          },
+          "current": {
+            "type": "int",
+            "value": 97
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 85
+          },
+          "current": {
+            "type": "int",
+            "value": 98
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 98
+          },
+          "current": {
+            "type": "int",
+            "value": 99
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 90
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 85
+          },
+          "current": {
+            "type": "int",
+            "value": 100
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 92
+          },
+          "current": {
+            "type": "int",
+            "value": 100
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 90
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 88
+          },
+          "current": {
+            "type": "int",
+            "value": 99
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 75
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 45
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recorded/cpr_4",
+      "file": "tests/dataset/result_4.json",
+      "old_sha256": "46641834c4e52218c2167b47d3dcd9b1116f1de5ab174afa6e9d63bd8de8fc45",
+      "expected_sha256": "6b20d1631e214001470a59b226871ae7641cf619ef4ef4dcf637efa24ea86fb0",
+      "expected_source": "reference oracle plus independently calculated ARC exception",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 55
+          },
+          "current": {
+            "type": "int",
+            "value": 38
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 62
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 82
+          },
+          "current": {
+            "type": "int",
+            "value": 75
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 71
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 69
+          },
+          "current": {
+            "type": "int",
+            "value": 57
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 67
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 96
+          },
+          "current": {
+            "type": "int",
+            "value": 95
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 99
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 92
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 96
+          },
+          "current": {
+            "type": "int",
+            "value": 95
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 99
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 92
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 78
+          },
+          "current": {
+            "type": "int",
+            "value": 69
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 67
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 67
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 75
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/guide_prompts/1",
+          "kind": "value",
+          "reference": {
+            "type": "str",
+            "value": "• Provide a ventilation volume of between 400ml and 600ml for each ventilation"
+          },
+          "current": {
+            "type": "str",
+            "value": "• Compress the chest to a depth of 5 cm to 6 cm"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recorded/cpr_5",
+      "file": "tests/dataset/result_5.json",
+      "old_sha256": "31cf2daa6a9467317b7b63c931782832501a1be4d2addb25926abf4e1bf0f83b",
+      "expected_sha256": "827c76a2a21966ffec151e9c00eb504029ca3812283b055d4da2aeff3b9646e0",
+      "expected_source": "reference oracle plus independently calculated ARC exception",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 69
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 73
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 40
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 58
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/cycle_with_score_list/1/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 64
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 87
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 20
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 70
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 89
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 31
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/0/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 79
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 24
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/cycle_with_score_list/1/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 80
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 75
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 95
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 28
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/1/score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 40
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/overall",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 69
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 97
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 57
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 50
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_rate",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 0
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_vent_vol",
+          "kind": "type",
+          "reference": {
+            "type": "int",
+            "value": 30
+          },
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/guide_prompts/0",
+          "kind": "missing_item",
+          "reference": {
+            "type": "str",
+            "value": "• Compression rate score 100 "
+          }
+        },
+        {
+          "path": "/guide_prompts/1",
+          "kind": "missing_item",
+          "reference": {
+            "type": "str",
+            "value": "• Compress the chest 30 times each cycle"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "recorded/cco_1",
+      "file": "tests/dataset/result_cco_1.json",
+      "old_sha256": "2ba37a9e6ba0bd9d4016de5522e47514c70bdd32bf6ad4d62509d0398a971979",
+      "expected_sha256": "499812d9ac0d97426f20bb80e4b6db905bd6d41310b4a3cfc23d16da1956148e",
+      "expected_source": "unmodified reference oracle",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": []
+    },
+    {
+      "case_id": "recorded/vo_1",
+      "file": "tests/dataset/result_vo_1.json",
+      "old_sha256": "8dea419962bae9bf62bd2743517ccf215c99e7e66d7b371dbc8d6c0530094cfd",
+      "expected_sha256": "16dd5dead60b28b0b0faed7dccaf0b87f66436367a575e2f50bec87ceb409de7",
+      "expected_source": "unmodified reference oracle",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 96
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_ccf",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_count",
+          "kind": "missing_key",
+          "reference": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_rate",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_rate",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 98
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_speed",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 100
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 94
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": []
+    },
+    {
+      "case_id": "recorded/adult_vo_1",
+      "file": "tests/dataset/result_adult_vo_1.json",
+      "old_sha256": "700081487170c85900b4c94cbbe3e0d03841ac06f4fe305973d45e3bed92c406",
+      "expected_sha256": "4c06f6eaa8518a970315592564c2ab91bd0ed14b9ca25946541433053c096031",
+      "expected_source": "unmodified reference oracle",
+      "old_to_expected_differences": [
+        {
+          "path": "/cpr_score/part_scores/0/score/overall",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 56
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_ccf",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_count",
+          "kind": "missing_key",
+          "reference": {
+            "type": "null",
+            "value": null
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_depth",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_no",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_comp_rate",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_hand_position",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_recoil",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_count",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_speed",
+          "kind": "type",
+          "reference": {
+            "type": "null",
+            "value": null
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/part_scores/0/score/score_vent_vol",
+          "kind": "value",
+          "reference": {
+            "type": "int",
+            "value": 75
+          },
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        },
+        {
+          "path": "/cpr_score/total_score/score_rescue_vent",
+          "kind": "extra_key",
+          "current": {
+            "type": "int",
+            "value": 0
+          }
+        }
+      ],
+      "reference_to_expected_differences": []
+    }
+  ]
+}

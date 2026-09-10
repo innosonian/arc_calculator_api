@@ -1,0 +1,1803 @@
+{
+  "action_count": {
+    "comp": 69,
+    "vent": 6
+  },
+  "aed_score": {
+    "overall": 100,
+    "part_scores": [
+      {
+        "guide_sec": 55,
+        "intervals": {
+          "t1": 0.0,
+          "t2": 9.135,
+          "t3": 13.102
+        },
+        "overall": 100,
+        "part_cnt": 1,
+        "total_sec": 22.237
+      }
+    ]
+  },
+  "chart_dataset_url": null,
+  "cpr_score": {
+    "part_scores": [
+      {
+        "action_with_score_list": [
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "low",
+              "grade": 0,
+              "value": 0
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 0
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 0,
+              "value": 11
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 117
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 117
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 11,
+              "value": 13.767783386874713
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 700
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 25.806451612903224
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 800
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "low",
+              "grade": 0,
+              "value": 0
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 0
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 118
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "high",
+              "grade": 80,
+              "value": 122
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 118
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 2
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 109
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 53
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 2
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 51
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 117
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 114
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 52
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 120
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 10.95290251916758
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 700
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 25.70694087403599
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 560
+            }
+          }
+        ],
+        "cycle_with_score_list": [
+          {
+            "calc_case": "cpr",
+            "overall": 38,
+            "score_ccf": 3,
+            "score_comp_count": null,
+            "score_comp_depth": null,
+            "score_comp_no": null,
+            "score_comp_rate": 100,
+            "score_hand_position": null,
+            "score_recoil": null,
+            "score_vent_count": 100,
+            "score_vent_rate": 11,
+            "score_vent_speed": null,
+            "score_vent_vol": 0,
+            "total_action_ms": 11343
+          },
+          {
+            "calc_case": "cpr",
+            "overall": 75,
+            "score_ccf": 66,
+            "score_comp_count": null,
+            "score_comp_depth": null,
+            "score_comp_no": null,
+            "score_comp_rate": 99,
+            "score_hand_position": null,
+            "score_recoil": null,
+            "score_vent_count": 100,
+            "score_vent_rate": 100,
+            "score_vent_speed": null,
+            "score_vent_vol": 50,
+            "total_action_ms": 24426
+          }
+        ],
+        "part_num": 1,
+        "score": {
+          "overall": 57,
+          "score_ccf": 35,
+          "score_comp_count": null,
+          "score_comp_depth": null,
+          "score_comp_no": null,
+          "score_comp_rate": 100,
+          "score_hand_position": null,
+          "score_recoil": null,
+          "score_rescue_vent": null,
+          "score_vent_count": 100,
+          "score_vent_rate": 56,
+          "score_vent_speed": null,
+          "score_vent_vol": 25
+        }
+      },
+      {
+        "action_with_score_list": [
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 109
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "bad",
+              "grade": 20,
+              "value": 9
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 118
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 114
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 117
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 111
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 114
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 111
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 111
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 108
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 114
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 54
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 113
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 115
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 4
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 55
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 116
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "comp_depth": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 56
+            },
+            "comp_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 112
+            },
+            "hand_position": {
+              "criterion": "good",
+              "grade": 100,
+              "value": "center"
+            },
+            "recoil": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 5
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 84,
+              "value": 12.310217480508822
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 40,
+              "value": 660
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 24.242424242424242
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 600
+            }
+          }
+        ],
+        "cycle_with_score_list": [
+          {
+            "calc_case": "cpr",
+            "overall": 95,
+            "score_ccf": 100,
+            "score_comp_count": null,
+            "score_comp_depth": null,
+            "score_comp_no": null,
+            "score_comp_rate": 100,
+            "score_hand_position": null,
+            "score_recoil": null,
+            "score_vent_count": 100,
+            "score_vent_rate": 84,
+            "score_vent_speed": null,
+            "score_vent_vol": 70,
+            "total_action_ms": 21430
+          }
+        ],
+        "part_num": 2,
+        "score": {
+          "overall": 95,
+          "score_ccf": 100,
+          "score_comp_count": null,
+          "score_comp_depth": null,
+          "score_comp_no": null,
+          "score_comp_rate": 100,
+          "score_hand_position": null,
+          "score_recoil": null,
+          "score_rescue_vent": null,
+          "score_vent_count": 100,
+          "score_vent_rate": 84,
+          "score_vent_speed": null,
+          "score_vent_vol": 70
+        }
+      }
+    ],
+    "total_score": {
+      "judg_result": "N/A",
+      "overall": 69,
+      "score_ccf": 56,
+      "score_comp_count": null,
+      "score_comp_depth": null,
+      "score_comp_no": null,
+      "score_comp_rate": 100,
+      "score_hand_position": null,
+      "score_recoil": null,
+      "score_rescue_vent": 0,
+      "score_vent_count": 100,
+      "score_vent_rate": 65,
+      "score_vent_speed": null,
+      "score_vent_vol": 40
+    }
+  },
+  "guide_prompts": [
+    "• Compression rate score 100 ",
+    "• Compress the chest to a depth of 5 cm to 6 cm"
+  ],
+  "metrics": {
+    "AvgCompressionDepth": 54,
+    "AvgCompressionRate": 115,
+    "AvgVentilationSpeed": 0,
+    "AvgVentilationVolume": 670,
+    "CCF": {
+      "%_CCF": 63,
+      "ccf_count": 3,
+      "score": 56,
+      "sum_ccf": 190,
+      "sum_score": 169
+    },
+    "CompressionActionNumber": 68,
+    "CompressionCount": {
+      "%_Good": 67,
+      "%_TooFew": 33,
+      "%_TooMany": 0,
+      "n_Good": 2,
+      "n_TooFew": 1,
+      "n_TooMany": 0
+    },
+    "CompressionCycleNumber": 3,
+    "CompressionDepth": {
+      "%_Good": 99,
+      "%_TooDeep": 0,
+      "%_TooShallow": 1,
+      "n_Good": 68,
+      "n_TooDeep": 0,
+      "n_TooShallow": 1
+    },
+    "CompressionNo": {
+      "%_Good": 67,
+      "%_TooFew": 33,
+      "%_TooMany": 0,
+      "n_Good": 2,
+      "n_TooFew": 1,
+      "n_TooMany": 0
+    },
+    "CompressionRate": {
+      "%_Good": 98,
+      "%_TooFast": 2,
+      "%_TooSlow": 0,
+      "n_Good": 64,
+      "n_TooFast": 1,
+      "n_TooSlow": 0
+    },
+    "HandPosition": {
+      "%_Good": 100,
+      "%_IncorrectLR": 0,
+      "%_IncorrectStomach": 0,
+      "n_Good": 68,
+      "n_IncorrectLR": 0,
+      "n_IncorrectStomach": 0
+    },
+    "HandsOffTimeSec": 6,
+    "Recoil": {
+      "%_Good": 74,
+      "%_Incomplete": 26,
+      "n_Good": 51,
+      "n_Incomplete": 18
+    },
+    "ScoreOfCCF": 56,
+    "TotalEventTime": 57199,
+    "TotalHandsOffTime": 23619,
+    "VentilationActionNumber": 6,
+    "VentilationCount": {
+      "%_Good": 100,
+      "%_TooFew": 0,
+      "%_TooMany": 0,
+      "n_Good": 3,
+      "n_TooFew": 0,
+      "n_TooMany": 0
+    },
+    "VentilationCycleNumber": 3,
+    "VentilationRate": {
+      "%_Good": 100,
+      "%_InFrequently": 0,
+      "%_TooFrequently": 0,
+      "n_Good": 3,
+      "n_InFrequently": 0,
+      "n_TooFrequently": 0
+    },
+    "VentilationSpeed": null,
+    "VentilationVolume": {
+      "%_Good": 33,
+      "%_TooLittle": 0,
+      "%_TooMuch": 67,
+      "n_Good": 2,
+      "n_TooLittle": 0,
+      "n_TooMuch": 4
+    }
+  },
+  "training_stats": {
+    "cycle_count": 3,
+    "elapsed_seconds": 88.051
+  }
+}

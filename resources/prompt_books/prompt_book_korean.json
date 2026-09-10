@@ -1,0 +1,298 @@
+{
+    "Ventilation only": {
+        "1st prompt": [
+            "인공호흡 실력이 탁월합니다",
+            {
+                "VentilationRate": "인공 호흡 빈도가 적절합니다",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "VentilationRate": ["인공 호흡 요소 중에서 호흡 빈도 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["인공 호흡 요소 중에서 호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "인공호흡 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "분당 10 ~ 12회 사이로 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡을 충분히 실시하십시오",
+                "wrong": "인공호흡 시, 숨을 400 ~ 700ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오"
+            }
+        }
+    },
+    "Chest compression only": {
+        "1st prompt": [
+            "가슴 압박 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다."
+            },
+            {
+                "CompressionDepth": ["가슴 압박 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["가슴 압박 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["가슴 압박 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["가슴 압박 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"]
+            },
+            "가슴압박 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 5 ~ 6cm 사이의 깊이로 압박 하십시오",
+                "wrong": "5 ~ 6cm 사이의 깊이로 압박 하십시오.",
+                "over": "가슴을 지나치게 압박하지 마십시오. 5 ~ 6cm 사이의 깊이로 압박 하십시오"
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완 시키십시오"
+        }
+    },
+    "CPR Training": {
+        "1st prompt": [
+            "심폐소생술 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다.",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "CompressionDepth": ["심폐소생술 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["심폐소생술 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["심폐소생술 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["심폐소생술 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["심폐소생술 요소 중에서 인공호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "심폐소생술 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 5 ~ 6cm 사이의 깊이로 압박 하십시오",
+                "wrong": "5 ~ 6cm 사이의 깊이로 압박 하십시오",
+                "over": "가슴을 지나치게 압박하지 마십시오. 5 ~ 6cm 사이의 깊이로 압박 하십시오"
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완 시키십시오",
+            "CompressionNo": "각 사이클에서 %d회의 가슴 압박을 하십시오",
+            "VentilationRate": "분당 4 ~ 12회 사이로 인공호흡을 실시하십시오",
+            "VentilationCount": "각 사이클에서 %d회의 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡 시, 숨을 충분히 불어 넣으십시오.숨을 500 ~ 600ml사이로 불어 넣으십시오 ",
+                "wrong": "인공호흡 시, 숨을 500 ~ 600ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오. 숨을 500 ~ 600ml사이로 불어 넣으십시오"
+            }
+        }
+    },
+    "Baby Ventilation only": {
+        "1st prompt": [
+            "인공호흡 실력이 탁월합니다",
+            {
+                "VentilationRate": "인공 호흡 빈도가 적절합니다",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "VentilationRate": ["인공 호흡 요소 중에서 호흡 빈도 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["인공 호흡 요소 중에서 호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "인공호흡 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "분당 12 ~ 20회 사이로 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡을 충분히 실시하십시오. 숨을 20 ~ 40ml사이로 불어 넣으십시오",
+                "wrong": "인공호흡 시, 숨을 20 ~ 40ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오. 숨을 20 ~ 40ml사이로 불어 넣으십시오 "
+            },
+            "VentilationSpeed": "1초간 숨을 불어 넣으십시오"
+        }
+    },
+    "Baby Chest compression only": {
+        "1st prompt": [
+            "가슴 압박 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다."
+            },
+            {
+                "CompressionDepth": ["가슴 압박 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["가슴 압박 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["가슴 압박 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["가슴 압박 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"]
+            },
+            "가슴압박 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 가슴두께의 최소 1/3이상 압박 하십시오",
+                "wrong": "가슴두께의 최소 1/3이상 압박 하십시오",
+                "over": "가슴을 지나치게 압박하지 마십시오. 가슴두께의 최소 1/3이상 압박 하십시오"
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완 시키십시오"
+        }
+    },
+    "Baby CPR Training": {
+        "1st prompt": [
+            "심폐소생술 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다.",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "CompressionDepth": ["심폐소생술 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["심폐소생술 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["심폐소생술 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["심폐소생술 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["심폐소생술 요소 중에서 인공호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "심폐소생술 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 3 ~ 4cm 사이의 깊이로 압박 하십시오.",
+                "wrong": "3 ~ 4cm 사이의 깊이로 압박 하십시오",
+                "over": "가슴을 지나치게 압박하지 마십시오. 3 ~ 4cm 사이의 깊이로 압박 하십시오"
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완 시키십시오",
+            "CompressionNo": "각 사이클에서 %d회의 가슴 압박을 하십시오",
+            "VentilationRate": "분당 4 ~ 12회 사이로 인공호흡을 실시하십시오",
+            "VentilationCount": "각 사이클에서 %d회의 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡 시, 숨을 충분히 불어 넣으십시오. 숨을 20 ~ 40ml사이로 불어 넣으십시오",
+                "wrong": "인공호흡 시, 숨을 20 ~ 40ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오. 숨을 20 ~ 40ml사이로 불어 넣으십시오"
+            },
+            "VentilationSpeed": "1초간 숨을 불어 넣으십시오"
+        }
+    },
+    "Child ventilation only": {
+        "1st prompt": [
+            "인공호흡 실력이 탁월합니다",
+            {
+                "VentilationRate": "인공 호흡 빈도가 적절합니다",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "VentilationRate": ["인공 호흡 요소 중에서 호흡 빈도 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["인공 호흡 요소 중에서 호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "인공호흡 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "분당 12 ~ 20회 사이로 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡을 충분히 실시하십시오. 숨을 400 ~ 700ml사이로 불어 넣으십시오",
+                "wrong": "인공호흡 시, 숨을 400 ~ 700ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오. 숨을 400 ~ 700ml사이로 불어 넣으십시오"
+            }
+        }
+    },
+    "Child Chest compression only": {
+        "1st prompt": [
+            "가슴 압박 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다."
+            },
+            {
+                "CompressionDepth": ["가슴 압박 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["가슴 압박 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["가슴 압박 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["가슴 압박 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"]
+            },
+            "가슴압박 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 가슴 전후 두께의 최소1/3이상 압박 하십시오.",
+                "wrong": "가슴 전후 두께의 최소1/3이상 압박 하십시오.",
+                "over": "가슴을 지나치게 압박하지 마십시오. 5가슴 전후 두께의 최소1/3이상 압박 하십시오."
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완십시오"
+        }
+    },
+    "Child CPR Training": {
+        "1st prompt": [
+            "심폐소생술 실력이 탁월합니다",
+            {
+                "CompressionDepth": "가슴 압박 깊이가 적절합니다",
+                "CompressionRate": "가슴 압박 속도가 적절합니다",
+                "Recoil": "가슴 이완율이 적절합니다",
+                "ScoreOfCCF": "가슴압박분율(CCF)이 좋습니다.",
+                "VentilationVolume": "인공 호흡량이 적절합니다"
+            },
+            {
+                "CompressionDepth": ["심폐소생술 요소 중에서 압박 깊이 점수가 ", "점으로 높습니다"],
+                "CompressionRate": ["심폐소생술 요소 중에서 압박 속도 점수가 ", "점으로 높습니다"],
+                "Recoil": ["심폐소생술 요소 중에서 이완율 점수가 ", "점으로 높습니다"],
+                "ScoreOfCCF": ["심폐소생술 요소 중에서 압박 비중 점수가 ", "점으로 높습니다"],
+                "VentilationVolume": ["심폐소생술 요소 중에서 인공호흡량 점수가 ", "점으로 높습니다"]
+            },
+            "심폐소생술 실력이 부족합니다"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "가슴을 충분히 깊게 압박 하십시오. 가슴 전후 두께의 최소1/3이상 압박 하십시오.",
+                "wrong": "가슴 전후 두께의 최소1/3이상 압박 하십시오.",
+                "over": "가슴을 지나치게 압박하지 마십시오. 가슴 전후 두께의 최소1/3이상 압박 하십시오."
+            },
+            "CompressionRate": {
+                "under": "가슴을 충분히 빠르게 압박 하십시오",
+                "wrong": "분당 100 ~ 120회의 속도로 압박 하십시오",
+                "over": "가슴을 너무 빠르게 압박하지 마십시오"
+            },
+            "HandPosition": "가슴 중앙인 가슴뼈의 아래쪽 1/2 부분을 압박하십시오",
+            "ScoreOfCCF": "가슴 압박 중단을 최소화 하십시오",
+            "Recoil": "가슴 압박 후, 가슴을 충분히 이완 시키십시오",
+            "CompressionNo": "각 사이클에서 %d회의 가슴 압박을 하십시오",
+            "VentilationRate": "분당 4 ~ 12회 사이로 인공호흡을 실시하십시오",
+            "VentilationCount": "각 사이클에서 %d회의 인공호흡을 실시하십시오",
+            "VentilationVolume": {
+                "under": "인공호흡 시, 숨을 충분히 불어 넣으십시오",
+                "wrong": "인공호흡 시, 숨을 400 ~ 700ml사이로 불어 넣으십시오",
+                "over": "인공호흡 시, 숨을 지나치게 불어 넣지 마십시오"
+            }
+        }
+    }
+}

@@ -1,0 +1,532 @@
+{
+  "action_count": {
+    "comp": 0,
+    "vent": 21
+  },
+  "aed_score": {
+    "overall": 0,
+    "part_scores": []
+  },
+  "chart_dataset_url": null,
+  "cpr_score": {
+    "part_scores": [
+      {
+        "action_with_score_list": [
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 0,
+              "value": 43.5097897026831
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 569
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 50,
+              "value": 50
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 66,
+              "value": 33.333333333333336
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 717
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 70,
+              "value": 46
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "high",
+              "grade": 87,
+              "value": 31.23373243102551
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 600
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 85,
+              "value": 43
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 28.585040495474036
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 899
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 39
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 26.67852378835038
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 600
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 39
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 23.80952380952381
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 781
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 38
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 24.691358024691358
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 689
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 95,
+              "value": 41
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 22.988505747126435
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 871
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 95,
+              "value": 41
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 25.641025641025642
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 900
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 40
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 22.997316979685703
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 838
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 39
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 23.25581395348837
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 749
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 38
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 22.727272727272727
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 809
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 37
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 23.25581395348837
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 689
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 38
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 21.291696238466997
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 869
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 38
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 20.840569642236886
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 809
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 40
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 21.269053527118043
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 961
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 40
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 21.50537634408602
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 869
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 39
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 21.978021978021978
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 900
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 40
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 20.61855670103093
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 900
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 95,
+              "value": 41
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 20.2020202020202
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 1048
+            },
+            "vent_vol": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 40
+            }
+          },
+          {
+            "vent_rate": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 20.62564455139223
+            },
+            "vent_speed": {
+              "criterion": "good",
+              "grade": 100,
+              "value": 1138
+            },
+            "vent_vol": {
+              "criterion": "high",
+              "grade": 85,
+              "value": 43
+            }
+          }
+        ],
+        "cycle_with_score_list": [
+          {
+            "calc_case": "only_vent",
+            "overall": 96,
+            "score_ccf": null,
+            "score_comp_count": null,
+            "score_comp_depth": null,
+            "score_comp_no": null,
+            "score_comp_rate": null,
+            "score_hand_position": null,
+            "score_recoil": null,
+            "score_vent_count": null,
+            "score_vent_rate": 98,
+            "score_vent_speed": 100,
+            "score_vent_vol": 94,
+            "total_action_ms": 52584
+          }
+        ],
+        "part_num": 1,
+        "score": {
+          "overall": 0,
+          "score_ccf": 0,
+          "score_comp_depth": 0,
+          "score_comp_no": 0,
+          "score_comp_rate": 0,
+          "score_hand_position": 0,
+          "score_recoil": 0,
+          "score_rescue_vent": 0,
+          "score_vent_count": 0,
+          "score_vent_rate": 0,
+          "score_vent_speed": 0,
+          "score_vent_vol": 0
+        }
+      }
+    ],
+    "total_score": {
+      "judg_result": "N/A",
+      "overall": 96,
+      "score_ccf": null,
+      "score_comp_count": null,
+      "score_comp_depth": null,
+      "score_comp_no": null,
+      "score_comp_rate": null,
+      "score_hand_position": null,
+      "score_recoil": null,
+      "score_rescue_vent": 0,
+      "score_vent_count": null,
+      "score_vent_rate": 98,
+      "score_vent_speed": 100,
+      "score_vent_vol": 94
+    }
+  },
+  "guide_prompts": [
+    "• Ventilation rate is very good",
+    "• Provide a ventilation volume of between 20ml and 40ml for each ventilation"
+  ],
+  "metrics": {
+    "AvgCompressionDepth": 0,
+    "AvgCompressionRate": 0,
+    "AvgVentilationSpeed": 819,
+    "AvgVentilationVolume": 40,
+    "CCF": {
+      "%_CCF": 0,
+      "ccf_count": 0,
+      "score": 0,
+      "sum_ccf": 0,
+      "sum_score": 0
+    },
+    "CompressionActionNumber": 0,
+    "CompressionCount": {
+      "%_Good": 0,
+      "%_TooFew": 0,
+      "%_TooMany": 0,
+      "n_Good": 0,
+      "n_TooFew": 0,
+      "n_TooMany": 0
+    },
+    "CompressionCycleNumber": 0,
+    "CompressionDepth": {
+      "%_Good": 0,
+      "%_TooDeep": 0,
+      "%_TooShallow": 0,
+      "n_Good": 0,
+      "n_TooDeep": 0,
+      "n_TooShallow": 0
+    },
+    "CompressionNo": {
+      "%_Good": 0,
+      "%_TooFew": 0,
+      "%_TooMany": 0,
+      "n_Good": 0,
+      "n_TooFew": 0,
+      "n_TooMany": 0
+    },
+    "CompressionRate": {
+      "%_Good": 0,
+      "%_TooFast": 0,
+      "%_TooSlow": 0,
+      "n_Good": 0,
+      "n_TooFast": 0,
+      "n_TooSlow": 0
+    },
+    "HandPosition": {
+      "%_Good": 0,
+      "%_IncorrectLR": 0,
+      "%_IncorrectStomach": 0,
+      "n_Good": 0,
+      "n_IncorrectLR": 0,
+      "n_IncorrectStomach": 0
+    },
+    "HandsOffTimeSec": 0,
+    "Recoil": {
+      "%_Good": 0,
+      "%_Incomplete": 0,
+      "n_Good": 0,
+      "n_Incomplete": 0
+    },
+    "ScoreOfCCF": 0,
+    "TotalEventTime": 52584,
+    "TotalHandsOffTime": 52584,
+    "VentilationActionNumber": 21,
+    "VentilationCount": {
+      "%_Good": 0,
+      "%_TooFew": 0,
+      "%_TooMany": 0,
+      "n_Good": 0,
+      "n_TooFew": 0,
+      "n_TooMany": 0
+    },
+    "VentilationCycleNumber": 1,
+    "VentilationRate": {
+      "%_Good": 90,
+      "%_InFrequently": 0,
+      "%_TooFrequently": 10,
+      "n_Good": 18,
+      "n_InFrequently": 0,
+      "n_TooFrequently": 2
+    },
+    "VentilationSpeed": {
+      "%_Good": 100,
+      "%_TooFast": 0,
+      "%_TooSlow": 0,
+      "n_Good": 21,
+      "n_TooFast": 0,
+      "n_TooSlow": 0
+    },
+    "VentilationVolume": {
+      "%_Good": 67,
+      "%_TooLittle": 0,
+      "%_TooMuch": 33,
+      "n_Good": 14,
+      "n_TooLittle": 0,
+      "n_TooMuch": 7
+    }
+  },
+  "training_stats": {
+    "cycle_count": 1,
+    "elapsed_seconds": 53.517
+  }
+}

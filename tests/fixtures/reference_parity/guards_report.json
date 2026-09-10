@@ -1,0 +1,49 @@
+{
+  "scope": "main.run_calculator plus legacy conversion only; no HTTP handler, certification, or submission execution",
+  "approved_exclusions": [],
+  "guard_check_only": true,
+  "approved_exception_case_count": 0,
+  "approved_exception_arithmetic": {},
+  "source_stable_during_run": {
+    "reference": true,
+    "current": true,
+    "generator": true
+  },
+  "guard_self_tests": {
+    "reference": {
+      "boto3.client": "blocked",
+      "boto3.resource": "blocked",
+      "session.client": "blocked",
+      "session.resource": "blocked",
+      "uploader.client": "blocked",
+      "socket.connect": "blocked",
+      "socket.connect_ex": "blocked",
+      "socket.create_connection": "blocked",
+      "socket.dns": "blocked",
+      "filesystem.write_detection": "blocked"
+    },
+    "current": {
+      "boto3.client": "blocked",
+      "boto3.resource": "blocked",
+      "session.client": "blocked",
+      "session.resource": "blocked",
+      "uploader.client": "blocked",
+      "socket.connect": "blocked",
+      "socket.connect_ex": "blocked",
+      "socket.create_connection": "blocked",
+      "socket.dns": "blocked",
+      "filesystem.write_detection": "blocked"
+    }
+  },
+  "unexpected_blocked_operations": [],
+  "legacy_conversion_available": {
+    "reference": null,
+    "current": null
+  },
+  "case_count": 0,
+  "different_cases": 0,
+  "execution_error_cases": 0,
+  "raw_reference_difference_count": 0,
+  "difference_count": 0,
+  "cases": []
+}

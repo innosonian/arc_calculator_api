@@ -1,0 +1,302 @@
+{
+    "Ventilation only": {
+        "1st prompt": [
+            "Ventilation performance is very good",
+            {
+                "VentilationRate": "Ventilation rate is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "VentilationRate": ["Ventilation rate score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Ventilation performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "Perform ventilations every 5 to 6 seconds",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "over": "Provide a ventilation volume of between 400ml and 700ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    },
+    "Chest compression only": {
+        "1st prompt": [
+            "Chest compression performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "]
+            },
+            "Chest compression performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of 2 inches to 2.4 inches",
+                "wrong": "Compress the chest to a depth of 2 inches to 2.4 inches",
+                "over": "Some compressions were too deep. Aim for a depth of 2 inches to 2.4 inches"
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions"
+        }
+    },
+    "CPR Training": {
+        "1st prompt": [
+            "Your overall CPR performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Overall CPR performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of 2 inches to 2.4 inches",
+                "wrong": "Compress the chest to a depth of 2 inches to 2.4 inches",
+                "over": "Some compressions were too deep. Aim for a depth of 2 inches to 2.4 inches"
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions",
+            "CompressionNo": "Compress the chest %d times each cycle",
+            "VentilationRate": "Perform 4 to 12 ventilations per minute",
+            "VentilationCount": "Perform %d ventilations during each cycle",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "over": "Provide a ventilation volume of between 400ml and 700ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    },
+    "Baby Ventilation only": {
+        "1st prompt": [
+            "Ventilation performance is very good",
+            {
+                "VentilationRate": "Ventilation rate is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "VentilationRate": ["Ventilation rate score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Ventilation performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "Perform ventilations every 3 to 5 seconds",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 20ml and 40ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 20ml and 40ml for each ventilation",
+                "over": "Provide a ventilation volume of between 20ml and 40ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    },
+    "Baby Chest compression only": {
+        "1st prompt": [
+            "Chest compression performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "]
+            },
+            "Chest compression performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of at least 1.5inches.",
+                "wrong": "Compress the chest to a  depth of at least 1.5inches.",
+                "over": "Some compressions were too deep. Aim for a  depth of at least 1.5inches."
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions"
+        }
+    },
+    "Baby CPR Training": {
+        "1st prompt": [
+            "Your overall CPR performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Overall CPR performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of at least 1.5inches.",
+                "wrong": "Compress the chest to a  depth of at least 1.5inches.",
+                "over": "Some compressions were too deep. Aim for a  depth of at least 1.5inches."
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions",
+            "CompressionNo": "Compress the chest %d times each cycle",
+            "VentilationRate": "Perform 4 to 12 ventilations per minute",
+            "VentilationCount": "Perform %d ventilations during each cycle",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 20ml and 40ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 20ml and 40ml for each ventilation",
+                "over": "Provide a ventilation volume of between 20ml and 40ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    },
+    "Child ventilation only": {
+        "1st prompt": [
+            "Ventilation performance is very good",
+            {
+                "VentilationRate": "Ventilation rate is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "VentilationRate": ["Ventilation rate score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Ventilation performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "VentilationRate": "Perform ventilations every 3 to 5 seconds",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "over": "Provide a ventilation volume of between 400ml and 700ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    },
+    "Child Chest compression only": {
+        "1st prompt": [
+            "Chest compression performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "]
+            },
+            "Chest compression performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of 2 inches to 2.4 inches",
+                "wrong": "Compress the chest to a depth of 2 inches to 2.4 inches",
+                "over": "Some compressions were too deep. Aim for a depth of 2 inches to 2.4 inches"
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions"
+        }
+    },
+    "Child CPR Training": {
+        "1st prompt": [
+            "Your overall CPR performance is very good",
+            {
+                "CompressionDepth": "Compression depth is very good",
+                "CompressionRate": "Compression rate is very good",
+                "Recoil": "Compression release is very good",
+                "ScoreOfCCF": "Compression fraction is very good",
+                "VentilationVolume": "Ventilation volume is very good"
+            },
+            {
+                "CompressionDepth": ["Compression depth score ", " "],
+                "CompressionRate": ["Compression rate score ", " "],
+                "Recoil": ["Compression release score ", " "],
+                "ScoreOfCCF": ["Compression fraction score ", " "],
+                "VentilationVolume": ["Ventilation volume score ", " "]
+            },
+            "Overall CPR performance is not satisfactory"
+        ],
+        "2nd 3rd prompt": {
+            "CompressionDepth": {
+                "under": "Some compressions were too shallow. Aim for a depth of 2 inches to 2.4 inches",
+                "wrong": "Compress the chest to a depth of 2 inches to 2.4 inches",
+                "over": "Some compressions were too deep. Aim for a depth of 2 inches to 2.4 inches"
+            },
+            "CompressionRate": {
+                "under": "Compress the chest at the correct rate (100 to 120 times per minute).",
+                "wrong": "Compress at a rate of between 100 to 120 times per minute",
+                "over": "Do not compress the chest too rapidly. Compress 100 to 120 times per minute"
+            },
+            "HandPosition": "Compress in the middle of the chest (between the nipples of the manikin)",
+            "ScoreOfCCF": "Try to minimize hands off time (CCF)",
+            "Recoil": "Allow the chest to fully recoil between compressions",
+            "CompressionNo": "Compress the chest %d times each cycle",
+            "VentilationRate": "Perform 4 to 12 ventilations per minute",
+            "VentilationCount": "Perform %d ventilations during each cycle",
+            "VentilationVolume": {
+                "under": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "wrong": "Provide a ventilation volume of between 400ml and 700ml for each ventilation",
+                "over": "Provide a ventilation volume of between 400ml and 700ml for each ventilation"
+            },
+            "VentilationSpeed": "Each ventilation should be delivered within one second"
+        }
+    }
+}

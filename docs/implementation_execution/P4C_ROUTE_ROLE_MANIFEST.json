@@ -1,0 +1,90 @@
+{
+  "schema_version": "arc-mock-route-role-v1",
+  "scope": "Implemented local handler contract; not a deployment or remote calculator approval",
+  "api_entrypoint": "mock_journey.handler.run",
+  "calculator_public_entrypoint": "lambda_handler.run",
+  "trusted_regression_helper": "lambda_handler._run_trusted_calculation (not a public HTTP entrypoint)",
+  "handler_function": "mock_journey.handler.handle",
+  "gateway_event_shape": "REST proxy: httpMethod/path/headers/multiValueHeaders/body/isBase64Encoded/queryStringParameters/multiValueQueryStringParameters",
+  "common_response_headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
+  "query_parameters": "nonempty single or multi query maps are rejected before routing/authentication",
+  "control_body_limit_bytes": 16384,
+  "session_seconds": 86400,
+  "chart_link_seconds": 300,
+  "configured_wait_policy_upper_bound_seconds": 30,
+  "implemented_wait": "No in-process wait; queued/processing responses are early 202 with wait_expired=false",
+  "attempt_path_parameter": "lowercase hexadecimal UUID-shaped 8-4-4-4-12 string; handler does not restrict UUID version",
+  "routes": [
+    {"id":"login","method":"POST","path":"/mock/v1/sessions","auth":"external_test_access_only","request_body":"control_json","required_string_fields":["login_id","password"],"dispatch":"service.login","success_statuses":[201],"response":"login"},
+    {"id":"session","method":"GET","path":"/mock/v1/session","auth":"session_bearer","request_body":"ignored","dispatch":"service.session","success_statuses":[200],"response":"session"},
+    {"id":"logout","method":"DELETE","path":"/mock/v1/session","auth":"session_bearer_or_own_logout_receipt","request_body":"ignored","dispatch":"service.state.logout","success_statuses":[204],"response":"empty"},
+    {"id":"programs","method":"GET","path":"/mock/v1/programs","auth":"session_bearer","request_body":"ignored","dispatch":"service.programs","success_statuses":[200],"response":"programs"},
+    {"id":"create_attempt","method":"POST","path":"/mock/v1/attempts","auth":"session_bearer","request_body":"control_json","required_string_fields":["client_request_id","catalog_version","program_id","target"],"dispatch":"service.create_attempt","success_statuses":[200,201],"response":"attempt_with_resume_credential"},
+    {"id":"attempt","method":"GET","path":"/mock/v1/attempts/{attempt_id}","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.get_attempt","success_statuses":[200],"response":"attempt"},
+    {"id":"reauthorize","method":"POST","path":"/mock/v1/attempts/{attempt_id}/reauthorize","auth":"same_principal_session_bearer_and_resume_proof","request_body":"control_json","required_string_fields":["resume_credential"],"dispatch":"service.reauthorize","success_statuses":[200],"response":"attempt"},
+    {"id":"cancel","method":"POST","path":"/mock/v1/attempts/{attempt_id}/cancel","auth":"bound_session_bearer","request_body":"control_json","required_string_fields":["reason"],"dispatch":"service.cancel","success_statuses":[204],"response":"empty"},
+    {"id":"submit_calculation","method":"POST","path":"/mock/v1/attempts/{attempt_id}/calculation","auth":"bound_session_bearer","request_body":"existing_measurement_wire","dispatch":"service.calculation.submit","success_statuses":[200,202],"response":"stored_legacy_json_or_pending"},
+    {"id":"submit_calculation_alias","method":"POST","path":"/cpr-analysis","auth":"bound_session_bearer","attempt_id_header":"X-Attempt-ID","request_body":"existing_measurement_wire","dispatch":"service.calculation.submit","success_statuses":[200,202],"response":"stored_legacy_json_or_pending","measurement_error":"HTTP 400 legacy type/client_error and sanitized message; attempt route retains 422"},
+    {"id":"calculation","method":"GET","path":"/mock/v1/attempts/{attempt_id}/calculation","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.calculation.result","success_statuses":[200,202],"response":"stored_legacy_json_or_pending"},
+    {"id":"chart_link","method":"GET","path":"/mock/v1/attempts/{attempt_id}/chart-link","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.calculation.chart_link","success_statuses":[200],"response":"chart_link"}
+  ],
+  "errors": {
+    "INVALID_REQUEST":{"status":400,"message":"Invalid request."},
+    "LOGIN_FAILED":{"status":401,"message":"Login failed."},
+    "SESSION_REQUIRED":{"status":401,"message":"A valid session is required."},
+    "SESSION_EXPIRED":{"status":401,"message":"The session has expired."},
+    "SESSION_REVOKED":{"status":403,"message":"The session has been revoked."},
+    "NOT_FOUND":{"status":404,"message":"Not found."},
+    "PROGRAM_ALREADY_COMPLETED":{"status":409,"message":"This program and target are already completed."},
+    "IDEMPOTENCY_CONFLICT":{"status":409,"message":"The request identifier has different input."},
+    "ATTEMPT_INPUT_CONFLICT":{"status":409,"message":"The attempt already has different input."},
+    "PROFILE_MISMATCH":{"status":409,"message":"The attempt profile does not match."},
+    "INVALID_STATE":{"status":409,"message":"The operation is not allowed in this state."},
+    "PAYLOAD_TOO_LARGE":{"status":413,"message":"The request exceeds the verified payload limit."},
+    "MEASUREMENT_INPUT_INVALID":{"status":422,"message":"The measurement input is invalid."},
+    "TEMPORARILY_UNAVAILABLE":{"status":503,"message":"The service is temporarily unavailable."},
+    "CALCULATOR_CONTRACT_MISMATCH":{"status":503,"message":"The calculator contract is not verified."},
+    "CALCULATION_OUTCOME_UNKNOWN":{"status":503,"message":"The calculator outcome is unknown."},
+    "STORED_INPUT_INVALID":{"status":503,"message":"The stored input could not be verified."},
+    "CALCULATION_FAILED":{"status":503,"message":"The calculation could not be completed."}
+  },
+  "roles": [
+    {
+      "role":"api","entrypoint":"mock_journey.handler.run","injected_entrypoint":"mock_journey.handler.handle",
+      "events":["REST proxy"],
+      "dependencies":["DynamoStateRepository","AuthManager with explicit resume keyring","Catalog with verified execution definitions","CalculationService with versioned projection schemas","DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings"],
+      "direct_sdk_calls":{"dynamodb":["get_item","put_item","transact_get_items","transact_write_items"],"s3":["get_object","put_object"]},
+      "legacy_binding_calls":["build_key_stem","org_prefix","date_prefix","build_raw_input_meta","upload_raw_input","create_signed_url"],
+      "does_not_require":["internal calculator invocation","SQS sender"],
+      "runtime_status":"Configuration opt-in can build control-only JourneyService with Catalog() lacking execution definitions; no complete calculation runtime is wired"
+    },
+    {
+      "role":"worker","entrypoint":"mock_journey.worker.run","injected_entrypoint":"mock_journey.worker.handle",
+      "events":["SQS Records containing only a job_id reference"],
+      "dependencies":["DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings","versioned verified AdapterRegistry","explicit lease_seconds/retry_seconds"],
+      "direct_sdk_calls":{"dynamodb":["get_item","transact_get_items","transact_write_items"],"s3":["get_object","put_object"]},
+      "legacy_binding_calls":["upload_json_file","create_signed_url"],
+      "does_not_require":["app session bearer","resume keyring","SQS sender"],
+      "runtime_status":"get_worker raises CALCULATOR_CONTRACT_MISMATCH; dependency-injected local execution only"
+    },
+    {
+      "role":"relay","entrypoint":"mock_journey.dispatch.run","injected_entrypoint":"mock_journey.dispatch.handle_stream",
+      "events":["DynamoDB Stream keys and sequence numbers","source=aws.events reconciliation trigger"],
+      "dependencies":["DynamoJobRepository with explicit table binding and the existing fixed GSI1 due index","QueueSender with explicit client/queue URL","explicit relay lease/retry/page limits"],
+      "direct_sdk_calls":{"dynamodb":["get_item","transact_get_items","transact_write_items","query"],"sqs":["send_message"]},
+      "legacy_binding_calls":[],
+      "does_not_require":["app session bearer","resume keyring","S3 client","internal calculator"],
+      "runtime_status":"get_relay raises TEMPORARILY_UNAVAILABLE; dependency-injected local execution only"
+    }
+  ],
+  "deployment_review_required":[
+    "Per-team-member test access protection ahead of every mock route including login; the application does not implement this outer identity provider",
+    "Prevent direct unauthenticated invocation of legacy lambda_handler.run or alternate deployment routes",
+    "REST proxy header/body/base64 preservation and ingress payload/timeout enforcement",
+    "Actual deployment configuration and complete program definitions require separate verification",
+    "Role identities, resource identifiers, actual least-privilege IAM/resource policies and credentials are not supplied by this manifest",
+    "Platform SQS receive/delete, stream read permissions, trigger retry/DLQ settings and scheduled reconciliation need deployment configuration; these are not application SDK calls",
+    "Presigned URL generation is a signing operation, not an S3 SDK network request; verify the signing identity's object read permission and policies; the URL holder does not need separate AWS credentials",
+    "Storage retention/deletion, encryption and logging policies require infrastructure evidence; no retention duration or deletion job is created here"
+  ]
+}
