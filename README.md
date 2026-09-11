@@ -2,7 +2,7 @@
 
 앱이 누적한 CPR/AED 바이너리를 기존 내부 계산기로 계산하고 점수·통계·코칭·차트를 반환하는 American Red Cross 전용 백엔드다. 로그인·프로그램·시도·공유 진도를 제공하며, 계산 결과와 프로그램 완료 및 ARC 제출 상태를 구별한다.
 
-현재:** 기본 로컬 서버·DynamoDB Local·별도 Worker·파일/차트 연결을 검증했다. 5개 프로그램 × 3개 연령의 계산 결과를 제공한다. Only는 실제 목표 횟수+기존 tester Pass로 완료하고, CPR의 완전한 cycle 완료 규칙은 미정이라 `pending_policy`로 남긴다. 실제 iPad/Android·마네킨 현장 인수와 AWS·ARC 연동은 별도다. `submit_arc={"status":"disabled","ok":false,"error":"arc_contract_pending"}`이며 실제 ARC 제출은 수행하지 않는다.
+**현재:** 기본 로컬 서버·DynamoDB Local·별도 Worker·파일/차트 연결을 검증했다. 5개 프로그램 × 3개 연령의 계산 결과를 제공한다. Only는 실제 목표 횟수+기존 tester Pass로 완료하고, CPR의 완전한 cycle 완료 규칙은 미정이라 `pending_policy`로 남긴다. 실제 iPad/Android·마네킨 현장 인수와 AWS·ARC 연동은 별도다. `submit_arc={"status":"disabled","ok":false,"error":"arc_contract_pending"}`이며 실제 ARC 제출은 수행하지 않는다.
 
 ## 핵심 문서 9개
 
@@ -18,7 +18,11 @@
 | [앱팀용 API](docs/APP_API.md) | 바로 연결할 Method·Endpoint·필수 필드. 서버 주소 제외 |
 | [로컬 실행](docs/LOCAL_RUN.md) | Mac 실행·iPad 연결·DB/파일 보관·문제 확인 |
 | [AWS·Dev 후속 안내](docs/DEPLOY_GUIDE.md) | 개인 접근·실자원 확인·미완성 연결·배포/복구·환경파일 |
-| [검증 요약](docs/VALIDATION.md) | 실제 실행 증거·검토 한계·회귀 방법·문서 정리 확인 |
+| [검증·리팩터링](docs/VALIDATION.md) | 실제 실행 증거·발견한 문제·변경 전후 코드·성능 측정·남은 제약 |
+
+2026-09-11 코드 품질 점검에서는 배포 ZIP 압축·스트리밍 해시, AWS 설정 한도 검사, 기존 로그 정책 유지와 경로가 있는 IAM 역할 지정, 공용 훈련 정의 분리를 반영했다. [환경변수 예시](.env.example)·[자원 연결표 예시](deploy/bindings.example.json)·[배포 간접 의존성 제약](constraints-lambda.txt)을 제공한다. **로컬 검증 완료와 AWS 전체 Journey 배포 준비 완료는 다르다.** 미완성 실행 연결은 배포 안내의 완료 조건을 따른다.
+
+기존 핵심 문서 9개를 활용한다. 요청한 리팩터링 보고서는 `docs/VALIDATION.md`의 8절, AWS 배포 문서는 `docs/DEPLOY_GUIDE.md`에 통합하며 별도 중복 문서를 만들지 않는다.
 
 ## 로컬 시작
 

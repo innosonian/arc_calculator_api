@@ -16,8 +16,12 @@ import sys
 
 _SELECTORS = {"local": "local", "dev": "development", "development": "development",
               "beta": "beta", "prod": "production", "production": "production"}
-_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]+\Z")
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+# Standard Lambda and CloudWatch Logs API constraints, checked 2026-09-11.
+# These are service limits, not selected ARC operating values.
+_LOG_RETENTION_DAYS = frozenset((1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180,
+                               365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653))
 _RESERVED = {
     "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
     "AWS_SECRET_KEY", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN", "AWS_EXECUTION_ENV", "_HANDLER",
@@ -118,6 +122,22 @@ def parse_env_file(path):
     return variables
 
 
+def _validate_environment(variables):
+    # Recheck callers of validate_configuration, not only dotenv input.
+    if (type(variables) is not dict or any(
+            type(key) is not str or not _KEY.fullmatch(key) or key in _RESERVED
+            or key.startswith("AWS_LAMBDA_") or type(value) is not str
+            for key, value in variables.items())):
+        _fail("ENV_FILE_INVALID")
+    try:
+        size = sum(len(key.encode("utf-8")) + len(value.encode("utf-8"))
+                   for key, value in variables.items())
+    except UnicodeError:
+        _fail("ENV_FILE_INVALID")
+    if size > 4096:
+        _fail("LAMBDA_ENVIRONMENT_TOO_LARGE")
+
+
 def read_storage_contract():
     """Read the preserved source constants without importing runtime/SDK code."""
     path = Path(__file__).resolve().parents[1] / "util" / "uploader.py"
@@ -163,17 +183,25 @@ def validate_configuration(selector, component, document, variables, *, storage_
     _text(binding["account_id"], r"[0-9]{12}")
     _text(binding["region"], r"[a-z]{2}(?:-[a-z]+)+-[0-9]+")
     _text(binding["runtime_stage"], _SEGMENT.pattern)
-    if type(variables) is not dict or any(type(k) is not str or type(v) is not str for k, v in variables.items()):
-        _fail("ENV_FILE_INVALID")
+    _validate_environment(variables)
     if variables.get("STAGE") != binding["runtime_stage"]:
         _fail("RUNTIME_STAGE_MISMATCH")
     calc = binding["calculator"]
     _object(calc, ("function_name", "role_name", "memory_mb", "timeout_seconds", "log_retention_days",
-                   "reserved_concurrency", "storage_bucket", "storage_prefix", "storage_region"))
+                   "reserved_concurrency", "storage_bucket", "storage_prefix", "storage_region"), ("role_arn",))
     _text(calc["function_name"], r"[A-Za-z0-9_-]{1,64}")
     _text(calc["role_name"], r"[A-Za-z0-9_+=,.@-]{1,64}")
-    for key in ("memory_mb", "timeout_seconds", "log_retention_days"):
+    if "role_arn" in calc:
+        # An explicit path-qualified role still belongs to the selected account
+        # and must end in the exact get-role name. Never discover a substitute.
+        _text(calc["role_arn"], rf"arn:aws:iam::{binding['account_id']}:role/(?:[A-Za-z0-9_+=,.@-]+/)*{re.escape(calc['role_name'])}")
+    for key in ("memory_mb", "timeout_seconds"):
         _integer(calc[key])
+    if not 128 <= calc["memory_mb"] <= 10240 or calc["timeout_seconds"] > 900:
+        _fail("LAMBDA_LIMIT_INVALID")
+    retention = calc["log_retention_days"]
+    if retention is not None and (type(retention) is not int or retention not in _LOG_RETENTION_DAYS):
+        _fail("LOG_RETENTION_INVALID")
     if calc["reserved_concurrency"] is not None:
         _integer(calc["reserved_concurrency"], zero=True)
     _text(calc["storage_bucket"], r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
@@ -222,6 +250,8 @@ def _shell_values(checked):
                   ARC_LAMBDA_TIMEOUT_SEC=calc["timeout_seconds"], ARC_LOG_RETENTION_DAYS=calc["log_retention_days"],
                   ARC_LAMBDA_RESERVED_CONCURRENCY=calc["reserved_concurrency"],
                   ARC_STORAGE_BUCKET=calc["storage_bucket"], ARC_STORAGE_PREFIX=calc["storage_prefix"])
+    values["ARC_EXPECTED_ROLE_ARN"] = calc.get(
+        "role_arn", f"arn:aws:iam::{binding['account_id']}:role/{calc['role_name']}")
     if checked["component"] == "gateway":
         gateway = binding["gateway"]
         values.update(API_ID=gateway["api_id"], API_STAGE=gateway["stage"], API_ROUTE=gateway["route"],

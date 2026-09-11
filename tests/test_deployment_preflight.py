@@ -157,7 +157,7 @@ if args[:2] == ['sts', 'get-caller-identity']: print(os.environ.get('FAKE_ACCOUN
 elif action == 'get-function' and '--query' in args and args[args.index('--query') + 1] == 'Configuration.Handler':
     print(os.environ.get('FAKE_HANDLER', 'lambda_handler.run'))
 elif args[:2] == ['iam', 'get-role'] or (action == 'get-function' and '--query' in args):
-    print('arn:aws:iam::000000000000:role/FixtureRole')
+    print(os.environ.get('FAKE_ROLE', 'arn:aws:iam::000000000000:role/FixtureRole'))
 elif action == 'get-resources': print('fixtureresource')
 elif action == 'get-rest-api' and '--query' in args: print('multipart/form-data')
 else: print('{{"Environment":{{"Variables":{{"SECRET":"SECRET-MARKER"}}}}}}')
@@ -170,14 +170,16 @@ else: print('{{"Environment":{{"Variables":{{"SECRET":"SECRET-MARKER"}}}}}}')
     return env, log
 
 
-def run_shell(tmp_path, script, selector, *, configured=False, changes=None):
+def run_shell(tmp_path, script, selector, *, configured=False, changes=None, calculator_changes=None):
     env, log = sandbox_commands(tmp_path)
     env.update(changes or {})
     env_file = tmp_path / "env"
     env_file.write_text("".join(f"{key}={value}\n" for key, value in variables().items()) + "SYNTHETIC_SECRET=SECRET-MARKER\n")
     binding = tmp_path / "bindings.json"
-    binding.write_text(json.dumps(configuration(preflight.normalize_selector(selector)) if configured
-                                  else {"schema_version": 1, "environments": {}}))
+    document = configuration(preflight.normalize_selector(selector)) if configured else {"schema_version": 1, "environments": {}}
+    if calculator_changes:
+        document["environments"][preflight.normalize_selector(selector)]["calculator"].update(calculator_changes)
+    binding.write_text(json.dumps(document))
     result = subprocess.run(["/bin/bash", str(ROOT / "scripts" / script), selector, str(env_file), str(binding)],
                             env=env, cwd=tmp_path, capture_output=True, text=True, timeout=10)
     calls = [json.loads(row) for row in log.read_text().splitlines()] if log.exists() else []
@@ -256,6 +258,81 @@ def test_final_bare_cr_is_not_silently_removed(tmp_path):
     path.write_bytes(b"FIRST=literal\r")
     with pytest.raises(preflight.PreflightError, match="ENV_FILE_INVALID"):
         preflight.parse_env_file(path)
+
+
+@pytest.mark.parametrize("key,value,code", [
+    ("memory_mb", 127, "LAMBDA_LIMIT_INVALID"), ("memory_mb", 10241, "LAMBDA_LIMIT_INVALID"),
+    ("timeout_seconds", 901, "LAMBDA_LIMIT_INVALID"),
+    ("log_retention_days", 2, "LOG_RETENTION_INVALID"),
+    ("log_retention_days", True, "LOG_RETENTION_INVALID"),
+])
+def test_invalid_aws_limits_stop_before_external_commands(tmp_path, key, value, code):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             calculator_changes={key: value})
+    assert result.returncode != 0 and code in result.stderr
+    assert calls == []
+
+
+@pytest.mark.parametrize("memory,timeout,retention", [(128, 1, 1), (10240, 900, 3653), (512, 120, None)])
+def test_service_limit_boundaries_and_unchanged_retention(memory, timeout, retention):
+    document = configuration()
+    document["environments"]["beta"]["calculator"].update(
+        memory_mb=memory, timeout_seconds=timeout, log_retention_days=retention)
+    preflight.validate_configuration("beta", "calculator", document, variables(),
+                                     storage_contract=preflight.read_storage_contract())
+
+
+def test_null_retention_never_changes_or_removes_existing_policy(tmp_path):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             calculator_changes={"log_retention_days": None})
+    assert result.returncode == 0, result.stderr
+    assert not any(call[:2] == ["aws", "logs"] for call in calls)
+
+
+def test_explicit_service_role_path_is_used_without_changing_identity(tmp_path):
+    role = "arn:aws:iam::000000000000:role/service-role/FixtureRole"
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             calculator_changes={"role_arn": role}, changes={"FAKE_ROLE": role})
+    assert result.returncode == 0, result.stderr
+    assert not any(call[:3] == ["aws", "iam", "create-role"] for call in calls)
+
+
+def test_different_live_role_is_still_rejected_before_mutation(tmp_path):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             calculator_changes={"role_arn": "arn:aws:iam::000000000000:role/service-role/FixtureRole"})
+    assert result.returncode != 0 and "EXISTING_ROLE_BINDING_MISMATCH" in result.stderr
+    assert not any(call[:3] == ["aws", "lambda", "update-function-code"] for call in calls)
+
+
+@pytest.mark.parametrize("role", ["arn:aws:iam::111111111111:role/FixtureRole",
+                                 "arn:aws:iam::000000000000:role/service-role/OtherRole",
+                                 "arn:aws:iam::000000000000:role/*/FixtureRole"])
+def test_explicit_role_cannot_change_the_account_or_name(role):
+    document = configuration()
+    document["environments"]["beta"]["calculator"]["role_arn"] = role
+    with pytest.raises(preflight.PreflightError):
+        preflight.validate_configuration("beta", "calculator", document, variables(),
+                                         storage_contract=preflight.read_storage_contract())
+
+
+@pytest.mark.parametrize("key", ["A", "_PRIVATE", "1PRIVATE"])
+def test_lambda_env_key_constraints(tmp_path, key):
+    path = tmp_path / "env"
+    path.write_text(key + "=PRIVATE\n")
+    with pytest.raises(preflight.PreflightError, match="ENV_FILE_INVALID"):
+        preflight.parse_env_file(path)
+
+
+def test_environment_limit_counts_utf8_bytes_and_accepts_exact_boundary():
+    env = variables()
+    remaining = 4096 - sum(len(k.encode()) + len(v.encode()) for k, v in env.items()) - len("PRIVATE")
+    env["PRIVATE"] = "한" * (remaining // 3) + "x" * (remaining % 3)
+    preflight.validate_configuration("beta", "calculator", configuration(), env,
+                                     storage_contract=preflight.read_storage_contract())
+    env["PRIVATE"] += "x"
+    with pytest.raises(preflight.PreflightError, match="LAMBDA_ENVIRONMENT_TOO_LARGE"):
+        preflight.validate_configuration("beta", "calculator", configuration(), env,
+                                         storage_contract=preflight.read_storage_contract())
 
 
 def test_workflow_preflight_precedes_every_aws_credential_step():

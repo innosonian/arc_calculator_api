@@ -162,3 +162,123 @@ python -B scripts/verify_reference_parity.py --output-dir <별도_검증_폴더>
 범위의 한계: 로그만 실패하는 상황에서 훈련을 유지한다. 전체 DB 장애·디스크 고갈까지 훈련 저장이 성공한다는 뜻은 아니다. RAM 대기열의 과부하/강제 종료·저장 응답 미확정으로 기록이 누락될 수 있으며 로그의 무손실 전달을 보장하지 않는다. `/healthz`의 기록 카운터는 API 프로세스만 나타내고 재시작하면 초기화된다. 영속 로그 행은 자동 삭제하지 않는다. 원격 환경의 전달 수명·권한·용량 격리·알림은 후속 검증 대상이다.
 
 실행 로그·변경 전 지문·최종 변경 patch·확인 JSON은 `.documentation-backup/2026-09-10-operational-logs/`에 보관한다. Git/배포물에서 제외한다. 이번 구현 작업자는 staging/unstaging·commit·push를 실행하지 않았으며 작업 중 다른 경로에서 바뀐 index도 되돌리지 않았다.
+
+
+## 8. 코드 품질과 배포 준비 — 2026-09-11
+
+새로 합류한 엔지니어 관점에서 소스·핵심 문서·배포 도구를 조사하고 작은 범위의 실제 개선을 반영했다. 작업 시작의 `git status --short`는 비어 있었다. 기존 사용자 변경을 덮거나 Git index를 조작하지 않았다. 이 절이 별도 `REFACTORING.md`를 대신한다. AWS 절차는 기존 [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md)에 통합하여 핵심 Markdown 9개를 유지한다.
+
+사용자는 AWS 운영값·배치가 아직 미정이며 **기존 구성 기반 제안과 안전한 준비까지만** 요청 범위를 확정했다([D37](DECISIONS.md)). 실제 AWS runtime 전체 연결을 완료했다고 보고하지 않는다. 별도 AI 검토자·CTO 또는 사람의 운영 승인을 수행하지 않았다.
+
+### 발견 사항과 수정 범위
+
+P1은 전체 AWS 훈련 실행 전 해결할 항목, P2는 작게 수정할 수 있는 배포 신뢰성·구조 문제, P3는 측정이나 후속 검토가 필요한 후보를 뜻한다. 줄 번호는 이번 수정 후 기준이다.
+
+| 우선순위·위치 | 구체 근거, 드러나는 조건과 영향 | 처리·예상 범위·동작 보존 |
+|---|---|---|
+| P1 `mock_journey/runtime.py:16 get_application`, `worker_runtime.py:6 get_worker / :12 get_relay` | 제어 서비스에 CalculationService가 없고 Worker·Relay는 항상 오류. AWS 설정값만 넣어 전체 Journey를 배포할 수 없음 | **사용자 답변에 따라 별도 연결 작업으로 보류.** 여러 런타임·IAM·트리거·로그 수명 범위. 기존 공용 조립을 재사용하고 API·저장·lease/epoch를 바꾸지 않는 구성 제안 작성 |
+| P2 `scripts/deployment_preflight.py:161 validate_configuration` | 변경 전 memory=1/10241, timeout=901, retention=2가 실제로 통과. 늦은 AWS 오류 때문에 코드 갱신 뒤 설정만 실패할 수 있음 | 서비스 한도·허용 보관 일수·환경변수 key/UTF-8 총량 검사 추가. 두 shell이 AWS 호출 전에 공유 검사. 유효한 기존 설정값은 유지 |
+| P2 `scripts/deploy_arc_lambda.sh:110` 로그 보관 | 이전에는 양의 보관 일수 필수·항상 정책 변경. 미정 정책을 유지한 코드 배포가 불가능 | `log_retention_days=null`이면 보관 명령을 실행하지 않음. 숫자를 명시한 기존 동작·실패 처리는 유지. 기존 만료 정책 제거 기능을 만들지 않음 |
+| P2 `scripts/deploy_arc_lambda.sh:84` 역할 비교 | 경로 없는 ARN을 조합해 비교하므로 `role/service-role/Name`인 정상 기존 역할도 거절 | optional `role_arn`을 추가. 계정·마지막 역할명·AWS 조회 ARN이 모두 일치해야 함. 역할 생성·권한 확대 없음. 변경 범위는 설정 검사·shell·회귀 |
+| P2 `scripts/build_mock_artifact.py:247 build_artifact` | ZIP_STORED와 완성 ZIP의 `read_bytes()` 때문에 전송량·최고 메모리 증가. 기존 ZIP은 50MiB 미만이었으므로 기존 배포 실패로 단정하지 않음 | DEFLATE 압축·스트리밍 SHA-256, 로컬 패키지 한도 초과 거절. 입력 allowlist·RECORD hash·권한·출력 충돌 보호 유지. 아래 실측 |
+| P2 `local_server/runtime.py` → `mock_journey/execution_definitions.py:10 execution_catalog` | 제품의 15개 정의가 로컬 프로세스 감독 모듈에 있었고 그 모듈은 Lambda ZIP 제외. AWS 조립 시 코드 복사·로컬 감독기 의존 위험 | 정의만 공용 파일로 이동. 기존 import 위치에서 재노출하며 문자열 버전·15개 조건·pending 정책 그대로. 키·운영 한도·client 생성은 이동하지 않음 |
+| P2 `scripts/deploy_arc_lambda.sh` 의존성 설치 | 직접 패키지 2개만 고정되어 같은 소스도 설치 날짜에 따라 간접 의존성 버전이 달라질 수 있음 | 이번 기준 환경과 같은 7개 간접 버전을 `constraints-lambda.txt`로 고정하고 기존 pip에 `-c` 추가. 새 패키지·SDK 업그레이드 없음. wheel hash lock·취약점 감사 완료를 뜻하지 않음 |
+| P3 `mock_journey/jobs.py:528 _due_page` | 한 페이지의 GSI Query 뒤 행마다 최신 GetItem. N개면 Query+N회 조회인 **네트워크 병목 후보** | AWS 지연·호출량 미측정. 다음에 페이지 크기별 p95·읽기 비용 측정. GSI 지연·lease 확인을 위해 최신 행 재확인이 필요하므로 이를 삭제하는 최적화는 보류. batch로 바꾸면 미처리 키/일관성 시험 필요 |
+| P3 `services/guide_prompts.py:73 _load_prompt_book_file` | 계산마다 코칭 JSON 파일 읽기·파싱. **반복 I/O 후보**이며 현재 부하 병목이라는 측정 없음 | 실제 계산 프로파일에서 비중 측정 후 결정. 즉시 캐시하면 파일 교체·실패 후 복구·mutable 반환값 의미가 달라질 수 있어 미변경 |
+| P3 `mock_journey/worker.py:74 _process`, `calculators/merge_calculator.py:17 calculate_total_score` | 각각 132줄·211줄. Worker는 복구·소유권·차트·평가·최종 거래를 한 흐름에서 처리하여 부분 이동 시 순서 오류 위험 | 길이만으로 결함으로 단정하지 않음. 상태별 실패 시험을 먼저 유지하며 단계 추출 검토. 이번에는 계산식·트랜잭션 흐름에 손대지 않음 |
+| P3 `scripts/deploy_arc_lambda.sh:50` / `deploy_arc_api_gateway.sh:40`의 `aws_value`, `aws_quiet` | 같은 AWS 오류 정제 wrapper가 두 곳에 존재해 향후 수정 불일치 가능 | 현재 불일치 없음. 공통 수정 수요가 생기면 작은 shell helper로 통합 가능. 지금은 별도 helper 의존을 추가하지 않고 두 스크립트의 대역 오류 회귀로 보호 |
+
+`auth.extract_bearer`와 `handler._single_header`도 duplicate header 판독 모양은 비슷하지만 누락·잘못된 값의 오류와 허용 규칙이 다르다. 이를 단순 중복으로 합치지 않았다. `legacy_bridge.py:3`의 handler 파서 helper 역참조는 계층 유지보수 후보다. 현재 공개 handler가 router를 호출 시점에 import하고 모든 배포 entrypoint import가 성공했으므로, 즉시 발생하는 순환 import 장애로 단정하지 않는다.
+
+### 핵심 변경 전후 코드
+
+배포 ZIP의 내용은 유지하고 포장·해시 메모리만 바꿨다.
+
+```python
+# 이전
+archive.writestr(info, data)  # ZIP_STORED
+zip_bytes = staged_zip.read_bytes()
+manifest["zip"] = {"sha256": _sha(zip_bytes), "size": len(zip_bytes)}
+
+# 이후
+archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
+with staged_zip.open("rb") as stream:
+    zip_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+manifest["zip"] = {"sha256": zip_sha256, "size": zip_size}
+```
+
+실제 코드에는 압축 해제 내용 250MiB·직접 업로드 ZIP 50MiB 검사도 있다. 출력 게시 전에 실패하며 기존 파일을 덮지 않는다. 추가 원격 layer·계정 제한까지 검증한 것은 아니다. [Lambda ZIP 한도](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html)
+
+```python
+# 이전: 양수만 검사하므로 지원하지 않는 AWS 값도 통과
+for key in ("memory_mb", "timeout_seconds", "log_retention_days"):
+    _integer(calc[key])
+
+# 이후: 일반 Lambda 한도, 보관 일수의 별도 의미를 검사
+for key in ("memory_mb", "timeout_seconds"):
+    _integer(calc[key])
+if not 128 <= calc["memory_mb"] <= 10240 or calc["timeout_seconds"] > 900:
+    _fail("LAMBDA_LIMIT_INVALID")
+retention = calc["log_retention_days"]
+if retention is not None and (type(retention) is not int or retention not in _LOG_RETENTION_DAYS):
+    _fail("LOG_RETENTION_INVALID")
+```
+
+로컬 실행 정의는 함수 본문 그대로 이동했다. 저장된 Job과 연결되는 `arc-local-projection-v1`·adapter/profile 버전도 유지했다.
+
+```python
+# 이전: local_server/runtime.py 안에 15개 정의 생성 함수가 존재
+# 이후: 기존 호출부가 같은 이름을 계속 사용
+from mock_journey.execution_definitions import PROJECTION_VERSION, execution_catalog
+```
+
+### 실측과 회귀 결과
+
+변경 전 전체 검사를 먼저 끝낸 후 코드를 수정했다. 최초 실행은 sandbox의 loopback bind 금지로 제품 테스트 시작 전에 실패했고, 허용을 받아 별도 임시 DB에서 재실행했다. 사용자의 기존 서버·DB·저장 파일을 시험 대상으로 사용하지 않았다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 전 전체 `--suite all` | **2363 passed, 4 xfailed, 9 subtests passed**, 5063 warnings, 191.88초, exit 0 |
+| 변경 후 배포·구성 집중 검사 | **234 passed**, 26.24초, exit 0 |
+| 변경 후 전체 `--suite all` | **2384 passed, 4 xfailed, 9 subtests passed**, 5065 warnings, 197.34초, exit 0 |
+| 실제 의존성 ZIP | 2198개 파일, 13,738,339 bytes. CRC 검사·모든 entry SHA-256 확인. 이전 ZIP의 2197개 파일 내용 동일; 실행 정의 파일만 추가 |
+| ZIP 독립 import | 저장소 경로 없는 `python -I -B` + 추출 폴더에서 entrypoint 5개·실행 정의 15개 확인. SDK client 생성 0, network guard 적용. `local_server`를 import하지 않음 |
+| 설치 의존성 확인 | 검증 Python 환경에서 `pip check`: 깨진 요구사항 없음. 실제 ZIP 의존성 9개와 requirements/constraints 일치. 새 패키지를 설치하거나 AWS 자격 증명을 사용하지 않음 |
+| 정적·문서 검사 | Python 198개 파일 compile, 두 shell `bash -n`, `git diff --check` 통과. 핵심 Markdown 9개·로컬 링크 51개 유효 |
+
+전체 묶음은 계산·입출력/자료형/null·15개 조합·인증/소유권·중복/epoch·lease/fence·로컬 실제 HTTP/DB/Worker/차트·로그 실패를 포함한다. 변경 후 새 회귀 21개는 배포 한도·역할 binding·로그 보관 불변·ZIP 게시 경계를 겨냥했다. 기존 기대값이나 4개 xfail은 바꾸지 않았다. 경고는 같은 botocore UTC deprecation이며 DB retry 횟수에 따라 수가 다를 수 있다. 전체 실행 시간 차이를 제품 성능 변화로 해석하지 않는다.
+
+패키징 자체는 **같은 수정 후 소스·동일 의존성 2198개 파일**을 이전/이후 builder로 각각 독립 Python 프로세스에서 3회 생성하여 비교했다. 테스트 fixture 패키지가 아니라 기존 설치된 실제 SDK 파일 사본을 사용했다. 최초에는 사용 중인 설치에 생성 bytecode가 있어 builder가 `FORBIDDEN_DEPENDENCY_FILE`로 거절했다. 이 보호를 완화하지 않고 원본 설치를 보존한 새 임시 사본에서 생성 bytecode만 제외하여 측정했다.
+
+| 동일 입력 패키징 측정 | 이전 | 이후 |
+|---|---:|---:|
+| ZIP 크기 | 21,126,585 bytes | 13,738,339 bytes (**35.0% 감소**) |
+| 프로세스 최고 RSS 중앙값(macOS bytes) | 73,007,104 | 54,067,200 (**25.9% 감소**) |
+| 빌드 시간 중앙값 | 0.549초 | 0.839초 |
+
+압축으로 이 환경의 빌드 CPU 시간이 약 0.29초 늘었다. 전송량·메모리를 줄이는 교환이며 API 계산 속도 향상 주장은 아니다. 각 방식의 3회 ZIP hash는 동일했다. Python/zlib 버전이 다른 시스템의 압축 bytes까지 동일하다고 보장하지 않는다. 전체 파일 내용을 메모리에 보관하는 기존 검증 구조는 여전히 남아 있으며, 이번에는 완성 ZIP의 추가 사본만 없앴다.
+
+실행한 대표 명령은 다음과 같다. 모든 경로는 이 Mac 기준이며 AWS 명령은 포함하지 않는다.
+
+```sh
+cd /Users/mac/arc_calculator_api
+/private/tmp/arc-implementation-py312/bin/python scripts/validate_local_integration.py \
+  --dynamodb-home /Users/mac/arc_calculator_api/var/dynamodb-local-3.3.1 --suite all
+/private/tmp/arc-implementation-py312/bin/python -m pytest -q \
+  tests/test_mock_artifact.py tests/test_deployment_preflight.py tests/test_deployment_preflight_security.py \
+  local_server_tests/test_runtime.py tests/test_mock_assembly.py
+/private/tmp/arc-implementation-py312/bin/python -m pip check
+bash -n scripts/deploy_arc_lambda.sh scripts/deploy_arc_api_gateway.sh
+git diff --check
+```
+
+배포 shell 회귀는 PATH를 명시적인 가짜 AWS/pip 실행기로 치환한 테스트다. 실제 배포 명령으로 실행하지 않았다. 실제 ZIP 빌드·측정·사전 오류 재현 기록은 `.documentation-backup/2026-09-11-quality/`에 있으며 Git/배포물에 포함되지 않는다.
+
+### 남은 검증과 다음 순서
+
+1. AWS 운영값·역할 배치·외부 팀원 접근 체계를 확정한 뒤 공용 API/Worker/Relay와 AWS 로그 전달을 연결한다. DB 스키마·공개 API·인증 변경이 필요하면 별도 검토한다.
+2. Linux Python 3.12 Lambda에서 import·실제 응답 크기·인증/파일 권한·중복/복구·전체 훈련을 인수한다. 이번 Mac의 pure Python ZIP 검사는 Linux 실행 성공이 아니다. 새 wheel 다운로드·서명/출처·보안 감사도 수행하지 않았다.
+3. 실제 AWS p95·요청량·DynamoDB 호출/비용을 측정한 후 due 조회와 코칭 로드 후보를 판단한다. 계정·리전·도메인·운영 한도는 임의로 입력하지 않았다.
+4. 실물 앱/마네킨 시험, CPR cycle 완료 규칙, ARC 계약과 실제 제출은 별도다. 현재 `pending_policy`·`submit_arc: disabled`를 그대로 유지한다.
+
+전용 lint/type-check 설정은 저장소에 없어서 임의 규칙이나 새 도구를 도입하지 않았다. Python 문법 compile, shell 문법, 문서 링크와 Git 공백 검사를 수행하며 정적 타입 검사 통과로 표현하지 않는다. 실제 AWS CLI·배포 shell 실행, 자원 변경·배포, commit·push 및 새 push 배포 자동화 활성화는 하지 않았다. 기존 `develop`/`main` push workflow는 그대로 남아 있어 사용자가 나중에 Secret/권한 연결 전에 확인해야 한다.

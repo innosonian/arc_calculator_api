@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "environments": {
+    "development": {
+      "account_id": "<AWS_ACCOUNT_ID>",
+      "region": "<AWS_REGION>",
+      "runtime_stage": "<RUNTIME_STAGE>",
+      "calculator": {
+        "function_name": "<EXISTING_LAMBDA_NAME>",
+        "role_name": "<EXISTING_ROLE_NAME>",
+        "role_arn": "<EXISTING_ROLE_ARN>",
+        "memory_mb": "<LAMBDA_MEMORY_MB_INTEGER>",
+        "timeout_seconds": "<LAMBDA_TIMEOUT_SECONDS_INTEGER>",
+        "log_retention_days": null,
+        "reserved_concurrency": null,
+        "storage_bucket": "<APPROVED_S3_BUCKET_MATCHING_SOURCE>",
+        "storage_prefix": "<APPROVED_S3_PREFIX_MATCHING_SOURCE>",
+        "storage_region": "<S3_REGION>"
+      },
+      "gateway": {
+        "api_id": "<EXISTING_REST_API_ID>",
+        "stage": "<EXISTING_API_STAGE>",
+        "route": "/cpr-analysis",
+        "rate_limit": null,
+        "burst_limit": null
+      }
+    }
+  }
+}

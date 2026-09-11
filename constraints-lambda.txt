@@ -1,0 +1,11 @@
+# Transitive versions already exercised by the local regression environment.
+# Use with: pip install -r requirements.txt -c constraints-lambda.txt
+# This constrains resolution; wheel origin/hashes and Linux execution remain
+# separate checks. It does not add packages or change the direct requirements.
+botocore==1.34.162
+jmespath==1.1.0
+s3transfer==0.10.4
+urllib3==2.7.0
+certifi==2026.7.22
+python-dateutil==2.9.0.post0
+six==1.17.0

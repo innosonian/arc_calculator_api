@@ -30,6 +30,10 @@ DIRECT_PINS = {"boto3": "1.34.140", "sentry-sdk": "2.22.0"}
 ENTRYPOINTS = ("lambda_handler.run", "submit_arc.run", "mock_journey.handler.run", "mock_journey.worker.run", "mock_journey.dispatch.run")
 EXCLUDED_PARTS = {"tests", "integration_tests", "docs", "scripts", "__pycache__", ".git", ".venv"}
 CA_FILES = {"certifi/cacert.pem", "botocore/cacert.pem"}
+# Standard ZIP Lambda limits, including the existing direct --zip-file path.
+# https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html
+MAX_ZIP_BYTES = 50 * 1024 * 1024
+MAX_UNZIPPED_BYTES = 250 * 1024 * 1024
 _VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.!+_-]*\Z")
 
 
@@ -253,6 +257,8 @@ def build_artifact(source_root, packages_dir, outdir):
     entries = _source_files(source)
     dependencies, provenance = _dependency_files(packages, pins)
     entries.update(dependencies)
+    if sum(len(data) for data in entries.values()) > MAX_UNZIPPED_BYTES:
+        _fail("UNZIPPED_ARTIFACT_TOO_LARGE")
     manifest = {
         "schema": "arc-mock-local-artifact-v1", "entrypoints": list(ENTRYPOINTS),
         "requirements": {"sha256": _sha(requirements), "direct_pins": pins},
@@ -265,13 +271,18 @@ def build_artifact(source_root, packages_dir, outdir):
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".artifact-", dir=output) as temporary:
         staged_zip = Path(temporary) / "runtime.zip"
-        with zipfile.ZipFile(staged_zip, "x", compression=zipfile.ZIP_STORED) as archive:
+        with zipfile.ZipFile(staged_zip, "x") as archive:
             for name, data in sorted(entries.items()):
                 info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
                 info.create_system, info.external_attr = 3, 0o100644 << 16
-                archive.writestr(info, data)
-        zip_bytes = staged_zip.read_bytes()
-        manifest["zip"] = {"sha256": _sha(zip_bytes), "size": len(zip_bytes)}
+                archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
+        zip_size = staged_zip.stat().st_size
+        if zip_size > MAX_ZIP_BYTES:
+            _fail("DIRECT_UPLOAD_ARTIFACT_TOO_LARGE")
+        # Hash the finished ZIP without keeping a second archive-sized copy.
+        with staged_zip.open("rb") as stream:
+            zip_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+        manifest["zip"] = {"sha256": zip_sha256, "size": zip_size}
         staged_manifest = Path(temporary) / "manifest.json"
         staged_manifest.write_bytes((json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode("utf-8"))
         try:

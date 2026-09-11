@@ -1,6 +1,47 @@
 # 현재 구조와 보안 경계
 
-2026-09-10 로컬 인수 기준. 사용자 정책은 [결정 문서](DECISIONS.md), HTTP·계산 필드는 [상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 명령은 [로컬 실행](LOCAL_RUN.md)과 [AWS 후속 안내](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조를 설명하며 미구현 ARC/AWS 연결을 완료로 취급하지 않는다.
+2026-09-11 소스 재점검 기준. 사용자 정책은 [결정 문서](DECISIONS.md), HTTP·계산 필드는 [상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 명령은 [로컬 실행](LOCAL_RUN.md)과 [AWS 후속 안내](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조를 설명하며 미구현 ARC/AWS 연결을 완료로 취급하지 않는다.
+
+## 기술과 실행 경계
+
+이 저장소는 Python 백엔드다. iPad/Android 화면과 마네킨 연결 코드는 포함하지 않으며, 앱이 모은 실제 측정 binary를 받는다. 웹 프런트엔드 빌드나 Node 패키지 구성은 없다.
+
+| 폴더·진입점 | 역할·의존 방향 |
+|---|---|
+| `scripts/serve_local.py` → `local_server/cli.py` | Python 3.12 + Waitress 3.0.2 HTTP 서버, Java/Javac + DynamoDB Local 3.3.1 실행 감독 |
+| `lambda_handler.run` → `mock_journey/handler.py` | AWS REST proxy 요청의 공개 인증 진입점. HTTP API v2 이벤트는 계약 밖 |
+| `mock_journey/` | 인증·훈련 상태·계산 접수·저장·Worker·Relay. `assembly.py`가 외부 client를 주입 |
+| `mock_journey/execution_definitions.py` | 승인된 15개 실행 정의. 로컬 감독기에서 분리해 ZIP에서도 재사용 가능. 자원·키·운영 한도는 포함하지 않음 |
+| `main.py`, `services/`, `data_handlers/` | 파싱된 입력 → 준비·계산·직렬화·기존 코칭, 오류 정제와 로그 |
+| `calculators/`, `transformers/`, `models/`, `config/` | 계산 수식, 측정 구간 분리, 데이터 모델, guideline·점수 기준 |
+| `resources/prompt_books/`, `util/` | 기존 코칭 문구와 업로드 규격. 런타임 문맥으로 로컬/Worker의 저장 부작용을 분리 |
+| `tests/` 및 별도 통합 시험 폴더 | 회귀·참고 출력·보안·실제 loopback HTTP/DB 검사. 기본 pytest는 `tests scripts`만 수집 |
+| `scripts/build_mock_artifact.py`, `deployment_preflight.py` | 네트워크 없는 ZIP 생성·설정 검사. 배포 shell은 사용자가 나중에 직접 실행 |
+
+핵심 SDK는 boto3 1.34.140, Sentry SDK 2.22.0이다. 직접 의존성은 `requirements.txt`, 이미 검증한 배포 간접 의존성 버전은 `constraints-lambda.txt`, 로컬 서버 의존성은 `requirements-local.txt`에 둔다. 새 프레임워크·컨테이너·DB 스키마는 도입하지 않았다.
+
+```mermaid
+flowchart TD
+    App["외부 iPad / Android 앱"] --> HTTP["로컬 Waitress / 공개 인증 Handler"]
+    HTTP --> Auth["세션·소유권·입력 검증"]
+    Auth --> Accept["CalculationService: 입력 접수"]
+    Accept --> Files["비공개 원본·입력·결과·차트 파일"]
+    Accept --> DB["DynamoDB Local: 상태·Job·Outbox·공유 진도"]
+    DB --> Worker["별도 Python Worker: lease / fence"]
+    Worker --> Core["기존 파서·내부 계산기·코칭"]
+    Core --> Worker
+    Worker --> Files
+    Worker --> DB
+    HTTP --> Result["결과·평가·현재 진도·차트 링크 조회"]
+    Result --> DB
+    Result --> Files
+    HTTP --> Log["유한 비동기 운용 로그 기록기"]
+    Worker --> Log
+    Log --> DB
+    Worker --> Submit["ARC 제출: disabled"]
+```
+
+실선은 현재 로컬 동작이다. AWS에서는 DynamoDB/S3/SQS client를 같은 공용 구성에 연결할 수 있으나, 기본 AWS runtime의 계산 접수·Worker·Relay·운용 로그 연결은 아직 없다. 다이어그램의 전체 경로가 AWS에 배포됐다는 뜻이 아니다.
 
 ## 요청부터 결과까지
 
@@ -112,7 +153,7 @@ LAN은 정확한 private Mac IP와 클라이언트 IP, 명시적 비암호화 �
 
 ## AWS의 미완성 연결
 
-현재 AWS runtime은 제어 서비스만 기본 조립하며 get_worker/get_relay는 미구성 오류다. 로컬 코드가 실행되었다고 AWS 전체 경로·큐·트리거·개인 접근·S3 권한이 구성되었다고 보지 않는다. 공용 API/Worker/Relay를 실제 승인 자원에 연결하는 후속 범위는 배포 안내에 있다.
+현재 `mock_journey/runtime.py:get_application`은 제어 서비스만 기본 조립하며 get_worker/get_relay는 미구성 오류다. 로컬 코드가 실행되었다고 AWS 전체 경로·큐·트리거·개인 접근·S3 권한이 구성되었다고 보지 않는다. 공용 API/Worker/Relay를 실제 승인 자원에 연결하는 후속 범위는 배포 안내에 있다.
 
 신규 DB 요구는 앱의 훈련 진도·계산 결과·운용 로그이며 이번 로컬 구현·검증까지 승인됐다. 개발 과정의 JSON·patch는 로컬 보관을 유지한다. 현재 진도/상태·결과 파일 참조는 DB에 저장하며 결과 본문은 비공개 객체 저장소에서 읽는다. [N03~N06](DECISIONS.md)은 기존 저장 구조 재사용, 주요/상세 진단 기록, 로그 장애로 훈련 차단 금지, 보관기간 확정 전 자동 삭제 없음으로 확정됐다.
 
@@ -138,3 +179,9 @@ LAN은 정확한 private Mac IP와 클라이언트 IP, 명시적 비암호화 �
 동일한 로컬 DB와 디스크를 쓰므로 물리 자원은 공유한다. 기록기 장애 격리는 전체 DB 고장·디스크 고갈에도 훈련이 된다는 보장이 아니다. 객체 파일의1GiB quota는 DB 로그에 적용되지 않는다. 로그 용량과 빈 공간을 확인해야 하며, 원격 환경의 용량·부하 격리와 알림은 AWS 연결 시 검증한다. 자동 보관기간을 임의로 정하지 않는다.
 
 조건부 추가·조회는 AWS의 [PutItem](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_PutItem.html), [Query](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Query.html) 계약을 따른다. 실제 AWS 자원 호출 없이 문서와 로컬 호환 DB로 검증한다.
+
+## 이번 구조 점검의 결론과 남은 맥락
+
+로컬 실행기가 소유하던 제품 실행 정의를 공용 모듈로 이동했다. `local_server.runtime.execution_catalog`와 버전 문자열은 유지하여 기존 호출부·저장 작업을 바꾸지 않는다. 순환 의존을 이유로 임의의 계층 재작성은 하지 않았다. `legacy_bridge`가 호환 handler의 파서 helper를 import하는 역방향 참조는 유지보수 후보이며, 당장 import 오류를 일으키는 순환으로 단정하지 않는다.
+
+미확인은 실제 AWS 자원·개인 접근 보호·운영 한도, Lambda 로그 배출 방식, 실물 앱 요청 크기와 Q22 CPR 완료 규칙이다. 코드에서 추측해 새 기본값을 정하지 않았다. 구체적인 우선순위·수정 전후·성능 측정은 [검증 문서의 리팩터링 기록](VALIDATION.md#8-코드-품질과-배포-준비--2026-09-11)에 모았다.

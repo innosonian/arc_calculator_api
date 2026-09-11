@@ -34,6 +34,7 @@ while IFS=$'\t' read -r key value; do
     ARC_EXPECTED_ACCOUNT_ID) ARC_EXPECTED_ACCOUNT_ID="${value}" ;;
     CALC_LAMBDA_NAME) CALC_LAMBDA_NAME="${value}" ;;
     LAMBDA_ROLE_NAME) LAMBDA_ROLE_NAME="${value}" ;;
+    ARC_EXPECTED_ROLE_ARN) ARC_EXPECTED_ROLE_ARN="${value}" ;;
     ARC_LAMBDA_MEMORY_MB) ARC_LAMBDA_MEMORY_MB="${value}" ;;
     ARC_LAMBDA_TIMEOUT_SEC) ARC_LAMBDA_TIMEOUT_SEC="${value}" ;;
     ARC_LOG_RETENTION_DAYS) ARC_LOG_RETENTION_DAYS="${value}" ;;
@@ -70,6 +71,7 @@ ACCOUNT_ID="$(aws_value sts get-caller-identity --query Account --output text)"
 if [[ "${ACCOUNT_ID}" != "${ARC_EXPECTED_ACCOUNT_ID}" ]]; then echo "AWS_ACCOUNT_MISMATCH" >&2; exit 1; fi
 # Build before IAM/Lambda mutations; no whole-repository rsync/zip.
 if ! python3 -m pip install -r "${SOURCE_ROOT}/requirements.txt" -t "${BUILD_DIR}/packages" \
+    -c "${SOURCE_ROOT}/constraints-lambda.txt" \
     --upgrade --no-compile --only-binary=:all: --platform manylinux2014_x86_64 \
     --implementation cp --python-version 3.12 --quiet >/dev/null 2>&1; then
   echo "DEPENDENCY_INSTALL_FAILED" >&2; exit 1
@@ -80,7 +82,7 @@ ZIP_PATH="${BUILD_DIR}/artifact/mock-lambda.zip"
 # New infrastructure/permissions require a separate explicit plan. Existing
 # bindings are reused without creating roles or guessed storage policies.
 ROLE_ARN="$(aws_value iam get-role --role-name "${LAMBDA_ROLE_NAME}" --query Role.Arn --output text)"
-if [[ "${ROLE_ARN}" != "arn:aws:iam::${ARC_EXPECTED_ACCOUNT_ID}:role/${LAMBDA_ROLE_NAME}" ]]; then
+if [[ "${ROLE_ARN}" != "${ARC_EXPECTED_ROLE_ARN}" ]]; then
   echo "EXISTING_ROLE_BINDING_MISMATCH" >&2; exit 1
 fi
 FUNCTION_ROLE="$(aws_value lambda get-function --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}" \
@@ -103,9 +105,12 @@ lambda_retry lambda update-function-configuration --function-name "${CALC_LAMBDA
   --memory-size "${ARC_LAMBDA_MEMORY_MB}" --timeout "${ARC_LAMBDA_TIMEOUT_SEC}" \
   --environment "file://${ENV_JSON}" --region "${AWS_REGION}"
 aws_quiet lambda wait function-updated --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}"
-# Failed requested retention is not a successful deployment. No group is created.
-aws_quiet logs put-retention-policy --log-group-name "/aws/lambda/${CALC_LAMBDA_NAME}" \
-  --retention-in-days "${ARC_LOG_RETENTION_DAYS}" --region "${AWS_REGION}"
+# Null leaves the existing retention untouched; it does not disable expiration.
+# Failed explicitly requested retention is not a successful deployment.
+if [[ -n "${ARC_LOG_RETENTION_DAYS}" ]]; then
+  aws_quiet logs put-retention-policy --log-group-name "/aws/lambda/${CALC_LAMBDA_NAME}" \
+    --retention-in-days "${ARC_LOG_RETENTION_DAYS}" --region "${AWS_REGION}"
+fi
 if [[ -n "${ARC_LAMBDA_RESERVED_CONCURRENCY}" ]]; then
   aws_quiet lambda put-function-concurrency --function-name "${CALC_LAMBDA_NAME}" \
     --reserved-concurrent-executions "${ARC_LAMBDA_RESERVED_CONCURRENCY}" --region "${AWS_REGION}"

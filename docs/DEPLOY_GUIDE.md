@@ -1,6 +1,6 @@
 # 로컬 검증 이후 AWS·Dev로 옮기는 순서
 
-2026-09-10 기준. BE 개발·설정·운용을 모두 직접 맡는 사용자를 위한 후속 안내다. 이 문서는 앞으로 할 일이며 **이번 작업에서 AWS 접속·자원 변경·배포·ARC 전송은 하지 않았다.** AWS 공식 문서는 아래 해당 설명에 연결했다. 실제 계정·자원은 아직 확인하지 않았다.
+2026-09-11 소스·공식 문서 재확인 기준. BE 개발·설정·운용을 모두 직접 맡는 사용자를 위한 후속 안내다. 이 문서는 앞으로 할 일이며 **이번 작업에서 AWS 접속·자원 변경·배포·ARC 전송은 하지 않았다.** AWS 공식 문서는 아래 해당 설명에 연결했다. 실제 계정·자원은 아직 확인하지 않았다.
 
 ## 먼저 알아둘 현재 상태
 
@@ -17,6 +17,32 @@ AWS에서는 계정 정보를 넣는 것 외에 **실행 연결 코드가 더 �
 | ARC | `submit_arc` 비활성 상태 표시 | 공식 계약 확보 후 별도 구현·실제 시험 |
 
 현재 코드 근거는 [runtime](../mock_journey/runtime.py), [worker runtime](../mock_journey/worker_runtime.py), [공용 조립 함수](../mock_journey/assembly.py), [배포 ZIP 허용 목록](../scripts/build_mock_artifact.py)이다.
+
+## 배포 경로 선택과 준비 완료의 뜻
+
+**기존 API Gateway REST API + Python 3.12 Lambda + DynamoDB + 비공개 S3 경로를 유지한다.** 전체 훈련에는 기존 공용 코드에 맞는 SQS·Relay·Worker 연결이 추가로 필요하다. 새 상시 서버, Kubernetes, 컨테이너나 다른 계산 서비스는 도입하지 않는다. 현재 API event 형식·SDK·배포 ZIP·거래/파일 저장 코드를 재사용하여 이전 비용과 운영 부담을 줄이는 선택이다. 트래픽과 실제 자원 정보가 없으므로 월 비용이나 필요한 Lambda 개수는 확정하지 않았다.
+
+| 준비 단계 | 2026-09-11 상태 |
+|---|---|
+| 로컬 기능 유지·회귀·배포 ZIP·설정 예시 | 검증 및 보완. 실행 결과는 [검증·리팩터링](VALIDATION.md#8-코드-품질과-배포-준비--2026-09-11) |
+| 사용자 정보만 넣으면 AWS 전체 훈련이 동작하는 상태 | **아직 아님.** `runtime.py`의 계산 서비스 및 `worker_runtime.py` 연결, 역할별 로그 배출·접근 보호가 남음 |
+| 실제 AWS 인증·연결·배포·실물 앱 인수 | 이번 작업에서 실행하지 않음 |
+
+이 문서의 AWS 명령은 모두 **사용자가 후속 단계에서 실행할 명령**이다. 이번에 실행한 것은 별도 임시 DB 회귀, 로컬 ZIP 빌드·검사, 문법 검사뿐이다. 실제 CLI 대신 대역 명령을 쓰는 배포 회귀 테스트는 AWS 실행 증거가 아니다.
+
+**사용자 확인: 운영값·배치는 아직 미정이며 이번에는 기존 구성 기반 제안과 안전한 준비까지만 진행한다.** 운영값·접근 보호·배치를 임의로 정하면 기존 보존 경계를 바꿀 수 있어 해당 연결 변경은 분리했다. 필요한 맥락은 기존 Lambda/DB/S3/SQS 구성표, 팀원 개인 접근 방식, 최대 요청·결과 크기, 실행·lease·재시도 제한, retention이다. 자격 증명·실제 키는 공유하지 않고 비밀을 제외한 설정 위치만 확인한다. CPR 완료 규칙과 ARC 계약은 AWS 준비와 별개로 계속 미정 상태를 보존한다.
+
+### 준비물과 비용 확인
+
+| 어디에서 → 할 일 | 성공 기준·비용 |
+|---|---|
+| Mac 터미널 → `python3.12 --version`, `java -version`, `javac -version` 확인 | 로컬 Python 3.12·검증된 DynamoDB Local을 실행할 Java 도구가 있음. 로컬 검사는 AWS 사용료 없음 |
+| 사용자 터미널 → `aws --version` 확인 | 회사에서 허용한 AWS CLI v2 설치. 자격 증명은 `.env`에 넣지 않음 |
+| 회사 관리자 → 개인 SSO/Role, 읽기 및 계획된 변경 권한 확인 | 공유 비밀번호나 관리자 전체 권한 없이 승인 자원에 접근 가능 |
+| AWS Pricing Calculator → 선택 리전의 Lambda/API Gateway/DynamoDB/S3/SQS/CloudWatch 입력 | 요청 수·계산 시간·파일 및 로그 보관량에 근거한 예상 비용 확인 |
+| Billing and Cost Management → Budgets → Create budget | 본인이 승인한 예산·수신 주소 입력 후 알림 설정 확인. 자동 비용 차단으로 해석하지 않음 |
+
+**비용 발생:** AWS 자원 생성·사용·로그/원본 보관·데이터 전송부터 과금 가능하다. 본 저장소 스크립트는 새 인프라 전체를 만들지 않으며, 기존 설정 변경도 가동 중 자원의 비용·보관량에 영향을 줄 수 있다. 정리하지 않은 보관 데이터는 계속 비용이 생길 수 있다. [AWS 비용 계산기](https://calculator.aws/), [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html)
 
 ## 1. 기존 BE팀에서 내 개인 접근 권한과 자원 목록을 받기
 
@@ -75,7 +101,7 @@ Console(관리 화면)에서 기존 API Gateway와 Calculator Lambda를 먼저 �
 | Worker(계산 실행기) | 같은 내부 계산기를 호출하고 결과·별도 평가·진도를 영속 저장 |
 | Submit Lambda(ARC 제출 함수) | 공식 계약 확보 후 Calculator 역할에서 동기 호출. 지금은 비활성 유지 |
 
-현재 공용 코드의 Queue 메시지는 `job_id`만 전달한다. 원본 파일·세션 토큰을 Queue 메시지에 넣지 않는다. 로컬의 Python 자식 프로세스나 Java DB 실행기를 Lambda에 복사하지 않는다. 로컬의 15개 실행 정의와 완료 대기 정책은 공용 구성으로 재사용할 수 있도록 옮겨 연결하되 기존 점수 계산을 복제하지 않는다.
+현재 공용 코드의 Queue 메시지는 `job_id`만 전달한다. 원본 파일·세션 토큰을 Queue 메시지에 넣지 않는다. 로컬의 Python 자식 프로세스나 Java DB 실행기를 Lambda에 복사하지 않는다. `mock_journey/execution_definitions.py`로 분리한 15개 실행 정의와 완료 대기 정책을 공용 구성에서 재사용한다. 버전 문자열과 기존 점수 계산은 바꾸지 않는다.
 
 개발 연결 지점은 `assembly.py`의 `build_application`·`build_worker`·`build_relay`, `mock_journey.worker.run`과 `mock_journey.dispatch.run`이다. 실행 정의·계산 adapter·입력 projection(계산 요청의 허용 필드 규격)의 버전을 명시하고, 이미 접수된 작업의 고정 버전을 새 설정으로 덮지 않는다. 로컬 전용 lease 갱신기는 ZIP에 없으므로 AWS 실행 시간에 맞는 갱신·소유권 검사도 연결해야 한다. 실제 Lambda를 몇 개로 배치할지는 확인한 기존 자원과 역할 구성을 바탕으로 정한다.
 
@@ -120,18 +146,76 @@ API Gateway의 `binaryMediaTypes`와 실제 `isBase64Encoded` 전달을 확인�
 
 기존 Binding은 Calculator/Gateway용이며 전체 Journey 자원 연결표를 대신하지 않는다. Worker·Relay·Queue·DB·Secret 연결에 필요한 배포 설정을 다음 개발에서 보완한다. 저장 Bucket/경로가 보존된 업로더 상수와 다르면 현재 사전 검사는 중단한다. 오류를 없애려고 HSTM 또는 운영 경로를 무작정 지정하지 않는다. 실제 승인된 저장 대상과 코드의 바인딩을 먼저 맞춘다.
 
-실제 파일이 준비된 뒤 외부 접속 없이 수행하는 명령 형식이다. 꺾쇠 값은 받은 실제 파일 경로로 교체한다.
+먼저 **저장소 루트**에서 아래 명령으로 예시를 비공개 작업 사본으로 복사한다. 이미 사본이 있으면 `cp -n`은 덮어쓰지 않는다. 이 단계는 AWS에 연결하지 않는다.
+
+```sh
+cd /Users/mac/arc_calculator_api
+umask 077
+mkdir -p var/deployment
+cp -n .env.example .env.dev
+cp -n deploy/bindings.example.json var/deployment/bindings.json
+chmod 600 .env.dev var/deployment/bindings.json
+```
+
+편집기에서 두 파일의 `<...>`를 아래 표와 부록 A에 따라 바꾼다. `memory_mb`, `timeout_seconds`의 문자열 자리표시자는 **따옴표 없는 정수**로 바꾼다. 예를 들어 문법상 `512`, `120`은 가능하지만 이 숫자가 승인된 운영값은 아니다. `null`은 기존 설정 유지이며 자동 삭제를 끄는 명령이 아니다. 미확정 예시 그대로는 preflight가 실패하는 것이 정상이다.
+
+| 환경변수 | 의미 → 얻는 위치 → 입력 위치 |
+|---|---|
+| `STAGE` | 기존 파일 경로의 환경 문자열 → 기존 Lambda 설정 확인 → `.env.dev`, binding의 `runtime_stage`에 동일하게 입력 |
+| `ARC_STORAGE_REGION` | 저장소 리전 → S3 속성 → `.env.dev`, binding `storage_region` |
+| `ARC_MOCK_ENABLED` | 현재 AWS 제어 runtime 활성화 → 기본 예시는 `false`; 전체 연결 인수 후에만 `true`로 결정 |
+| `ARC_MOCK_ENVIRONMENT` | 세션 서명 namespace → 기존 환경 분리 정의 → `.env.dev`; 기존 값을 임의 변경하지 않음 |
+| `ARC_MOCK_TABLE_NAME`, `ARC_MOCK_REGION` | 상태 테이블·리전 → DynamoDB 테이블 정보 → `.env.dev` |
+| `ARC_MOCK_RESUME_KEYS` | 복구 서명 keyring JSON → 승인된 비밀 관리 절차 → 비공개 환경 파일/주입 경로. 버전별 base64 키이며 decode 후 최소 32 bytes |
+| `ARC_MOCK_RESUME_KEY_VERSION` | 현재 발급할 키 버전 → 위 keyring의 기존 key → `.env.dev` |
+| `SENTRY_DSN` | 선택적 오류 수집 주소 → 승인된 Sentry 설정. 빈 값은 비활성. 전체 요청 수집을 켜지 않음 |
+
+관리용 `AWS_PROFILE`은 터미널에만 지정하며 Lambda `.env`에 AWS access key·session token을 넣지 않는다. `ARC_DEPLOYMENT_BINDINGS`는 배포 shell의 선택적 파일 경로이고 런타임 환경변수가 아니다. `.env`는 자동으로 로컬 서버에 로드되지 않는다. `serve_local.py`는 기존 격리 설정과 CLI 옵션을 사용한다.
+
+현재 runtime은 Secret ARN을 해석하지 않는다. Secrets Manager 참조를 자동 조회한다고 가정하지 말고, 향후 연결 단계에서 조회 권한과 코드까지 검증한다. 기존 환경변수 전체를 보존해 주입할 때만 파일 입력을 사용하며 `source`, `eval`, `cat .env.dev`, 명령줄에 키 값을 쓰는 방법은 사용하지 않는다. [Lambda 비밀 설정·전체 환경 교체 동작](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html)
+
+실제 파일이 준비된 뒤 **저장소 루트에서** 외부 접속 없이 수행한다. 아래 출력의 `syntax_and_composition_valid`가 형식 검사 성공이다.
 
 ```text
-python3 scripts/deployment_preflight.py --environment dev --component calculator --bindings <자원연결표.json> --env-file <비공개환경파일>
-python3 scripts/deployment_preflight.py --environment dev --component gateway --bindings <자원연결표.json> --env-file <비공개환경파일>
+python3.12 scripts/deployment_preflight.py --environment dev --component calculator --bindings var/deployment/bindings.json --env-file .env.dev
+python3.12 scripts/deployment_preflight.py --environment dev --component gateway --bindings var/deployment/bindings.json --env-file .env.dev
 ```
 
 성공 결과 `syntax_and_composition_valid`는 형식 검사를 통과했다는 뜻이다. `aws_resources_verified=false`, `runtime_verified=false`이므로 실제 배포 가능 판정은 아니다. 환경파일을 `source`/`eval`하지 않는다. 상세 형식은 아래 부록의 환경 연결표·환경파일 계약을 따른다.
 
+### 로컬 빌드와 정상 동작 확인
+
+**저장소 루트, 사용자 터미널.** 현재 Mac의 로컬 Journey 시작·상태 확인은 [LOCAL_RUN.md](LOCAL_RUN.md)를 따른다. `GET /healthz`의 200은 로컬 DB·Worker 감독 상태이고 AWS에는 이 health 경로가 구현돼 있지 않다. 전체 재검증은 사용자의 서버를 공유하지 않는 다음 명령이다.
+
+```sh
+var/local-python/bin/python scripts/validate_local_integration.py --dynamodb-home var/dynamodb-local-3.3.1 --suite all
+```
+
+pytest가 없는 환경이면 먼저 별도 개발 가상환경에 `requirements-local.txt`와 `requirements-dev.txt`를 설치한다. 사용자 DB 폴더를 시험 입력으로 지정하지 않는다. 성공은 pytest 종료 코드 0이며 예상 실패는 별도로 보고한다.
+
+**다음은 사용자가 깨끗한 빌드 환경에서 실행할 명령이다.** pip 단계는 Python 패키지 저장소 다운로드가 필요하지만 AWS 인증·연결은 하지 않는다. ZIP 경로는 엄격한 검사 때문에 `/tmp` 대신 실제 경로인 `/private/tmp`를 사용한다. 매 실행 새 작업 폴더를 만들며 기존 산출물을 덮지 않는다.
+
+```sh
+cd /Users/mac/arc_calculator_api
+umask 077
+ARC_BUILD_DIR="$(mktemp -d /private/tmp/arc-lambda-build.XXXXXX)"
+python3.12 -m venv "$ARC_BUILD_DIR/python"
+"$ARC_BUILD_DIR/python/bin/python" -m pip install \
+  -r requirements.txt -c constraints-lambda.txt \
+  --target "$ARC_BUILD_DIR/packages" --no-compile --only-binary=:all: \
+  --platform manylinux2014_x86_64 --implementation cp --python-version 3.12
+"$ARC_BUILD_DIR/python/bin/python" scripts/build_mock_artifact.py \
+  --source-root "$PWD" --packages-dir "$ARC_BUILD_DIR/packages" --outdir "$ARC_BUILD_DIR/artifact"
+"$ARC_BUILD_DIR/python/bin/python" -m zipfile -t "$ARC_BUILD_DIR/artifact/mock-lambda.zip"
+```
+
+성공하면 마지막 검사에 `Done testing`이 나오고 `artifact/`에 `mock-lambda.zip`, `artifact-manifest.json`이 생긴다. manifest는 포함 파일 hash·의존성 버전과 **검증하지 않은 범위**를 기록한다. 동일 Python/zlib와 동일 입력으로 반복 생성한 ZIP은 동일하다. 서로 다른 압축 라이브러리 버전까지 ZIP hash 일치를 보장하지 않으며 파일별 hash로 내용도 대조한다.
+
+압축 ZIP 50MiB·압축 해제 내용 250MiB를 초과하면 게시 전에 실패한다. 추가 Lambda layer가 있으면 원격 합산 크기도 별도로 확인한다. 설치에 사용하는 간접 버전은 `constraints-lambda.txt`로 고정했지만 wheel 출처·hash 기반 공급망 검증이나 Linux Lambda 실행 인수를 대체하지 않는다. [Lambda 패키지 한도](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html), [Python ZIP 패키징](https://docs.aws.amazon.com/lambda/latest/dg/python-package.html)
+
 ## 8. 검토한 변경만 Dev에 배포하기
 
-앞 단계의 연결 코드·권한·대상 자원과 원복 계획을 완성한 후 진행한다. 아직 이 조건을 충족하지 않았으므로 여기에는 바로 실행할 배포 명령을 제시하지 않는다.
+앞 단계의 연결 코드·권한·대상 자원과 원복 계획을 완성한 후 진행한다. **현재는 이 조건을 충족하지 않았다. 아래 배포 명령은 나중에 사용자가 실행할 형식이며 지금 실행하지 않는다.**
 
 1. Linux/Python 3.12 대상 Artifact(배포 ZIP)를 만들고 의존성·Handler import·회귀를 검사한다. Mac 가상환경·DynamoDB Local·테스트 데이터·비밀파일을 포함하지 않는다.
 2. 실제 대상 계정·기존 함수·Role·API Stage를 다시 대조한다. 배포 전에 현재 함수·설정·API Deployment ID를 기록한다.
@@ -142,7 +226,24 @@ python3 scripts/deployment_preflight.py --environment dev --component gateway --
 
 현재 [Calculator 스크립트](../scripts/deploy_arc_lambda.sh)와 [Gateway 스크립트](../scripts/deploy_arc_api_gateway.sh)는 기존 자원을 갱신하는 일부 도구다. 전체 Journey의 DB/Queue/트리거/개인 접근 보호를 한 번에 구성하는 도구가 아니다. 함수 코드·설정 갱신의 중간 실패도 있을 수 있으므로 오류 후 이전 상태를 자동 복구했다고 가정하지 않는다.
 
-특히 현재 Gateway 도구는 `/cpr-analysis`의 POST만 연결하며 나머지 앱 경로·인증의 충분성·Lambda 호출 권한을 완성하지 않는다. Lambda 도구는 **환경변수 전체 목록을 교체**하므로 필요한 기존 변수를 누락하면 사라진다. IAM Role 이름에 `service-role/` 같은 경로가 있는 기존 구성도 현재 검사와 맞지 않을 수 있다. 이때 새 Role을 만들어 우회하지 말고 확인한 기존 ARN(자원 식별자)에 맞게 도구를 보완한다. 현재 Gateway 도구가 가리키는 함수는 특정 버전·별칭으로 고정되지 않아 코드 갱신이 버전 발행 전부터 요청에 영향을 줄 수 있다. 현재 도구에는 별칭 전환 기반의 자동 원복이 없으므로 함수·환경변수·API 연결의 원복 절차를 직접 준비한다.
+특히 현재 Gateway 도구는 `/cpr-analysis`의 POST만 연결하며 나머지 앱 경로·인증의 충분성·Lambda 호출 권한을 완성하지 않는다. Lambda 도구는 **환경변수 전체 목록을 교체**하므로 필요한 기존 변수를 누락하면 사라진다. IAM Role에 `service-role/` 같은 경로가 있으면 binding의 `role_name`에는 마지막 이름, `role_arn`에는 확인한 전체 ARN(자원 식별자)을 지정한다. 생략 시에는 이전처럼 경로 없는 역할만 허용한다. 계정·이름·실제 ARN 일치 검사는 유지하며 새 역할을 만들어 우회하지 않는다. 현재 Gateway 도구가 가리키는 함수는 특정 버전·별칭으로 고정되지 않아 코드 갱신이 버전 발행 전부터 요청에 영향을 줄 수 있다. 현재 도구에는 별칭 전환 기반의 자동 원복이 없으므로 함수·환경변수·API 연결의 원복 절차를 직접 준비한다.
+
+### 조건을 충족한 뒤의 사용자 실행 명령
+
+**AWS 변경·비용 영향이 있는 단계. 저장소 루트에서만 실행한다.** 본 작업에서 실행하지 않았다. 기존 함수·역할·로그 그룹·REST method·stage와 호출 권한이 먼저 있어야 하며 스크립트가 생성하지 않는다. `python3`가 Python 3.12인 전용 가상환경을 PATH 앞에 두고 `aws` CLI v2가 사용 가능한지 확인한다.
+
+```sh
+cd /Users/mac/arc_calculator_api
+export AWS_PROFILE=<APPROVED_CLI_PROFILE>
+export AWS_PAGER=""
+aws sts get-caller-identity --query Account --output text
+bash scripts/deploy_arc_lambda.sh development .env.dev var/deployment/bindings.json
+bash scripts/deploy_arc_api_gateway.sh development .env.dev var/deployment/bindings.json
+```
+
+`<APPROVED_CLI_PROFILE>`은 앞서 설정한 개인 프로필 이름(예: `arc-dev`)으로 바꾼다. 표시 계정이 승인 계정과 다르면 다음 명령을 실행하지 않는다. 두 스크립트의 `…DEPLOYMENT_FINISHED`는 각각의 일부 갱신 완료이며 전체 훈련 인수 성공이 아니다. Lambda 스크립트는 새 버전을 발행하지만 Gateway는 현재 별칭 없는 함수에 연결하므로, 갱신 도중부터 요청에 영향을 줄 수 있다.
+
+**로그 데이터 삭제 영향:** `log_retention_days`에 숫자를 명시하면 그 기간을 넘긴 CloudWatch 로그가 삭제 대상이 될 수 있다. 미정이면 `null`로 기존 정책을 유지하고, 기존 정책도 사용자 요구와 맞는지 따로 확인한다. `null`을 무기한 보관으로 오해하지 않는다. [CloudWatch 보관 정책](https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutRetentionPolicy.html)
 
 ## 9. Dev에서 직접 인수하고, 그다음 Beta·Prod로 이동하기
 
@@ -162,6 +263,62 @@ Beta와 Prod는 각각 다른 실제 연결표·권한·데이터 격리와 같�
 Beta·Prod라는 환경명도 Dummy 로그인을 실제 사용자 인증으로 바꾸지는 않는다. ARC 연동 전에는 승인된 시험팀의 접근 범위를 유지하며 고객 공개 운영이 승인됐다고 간주하지 않는다.
 
 문제가 생기면 새 접수·실행을 제한하고 진단 자료를 보존한다. 코드·설정·API 연결을 기록한 이전 버전으로 되돌릴 때, DB/작업/파일 형식을 이전 코드도 읽을 수 있는지 먼저 확인한다. 원복을 위해 DB를 삭제하거나 모든 작업을 새 ID로 재제출하지 않는다.
+
+### 배포 후 접속·상태·로그 확인
+
+**사용자가 AWS 연결 후 실행한다.** 모든 `<...>`는 자원 연결표에서 확인한 값으로 바꾼다. 실행 폴더는 저장소 루트이며 선택 계정은 `AWS_PROFILE`로 유지한다.
+
+```sh
+aws lambda get-function-configuration --function-name <EXISTING_LAMBDA_NAME> --region <AWS_REGION> \
+  --query '{State:State,LastUpdateStatus:LastUpdateStatus,Handler:Handler,Runtime:Runtime,CodeSha256:CodeSha256}' --output json
+aws apigateway get-stage --rest-api-id <EXISTING_REST_API_ID> --stage-name <EXISTING_API_STAGE> \
+  --region <AWS_REGION> --query '{Stage:stageName,Deployment:deploymentId}' --output json
+```
+
+Lambda `State=Active`, `LastUpdateStatus=Successful`, `Handler=lambda_handler.run`, `Runtime=python3.12`와 기록한 배포 ID를 대조한다. 이 상태는 실제 훈련 성공을 보장하지 않는다. API Gateway Console → 해당 REST API → Stages → 승인 Stage의 **Invoke URL**을 확인한다. 사용자 도메인은 미정이므로 임의 도메인이나 인증서를 생성하지 않는다.
+
+해당 URL과 [앱 API](APP_API.md)를 이용해 위 인수 표의 정상·거절 경로를 확인한다. 로그인 응답·차트 링크·토큰은 캡처나 공유 로그에 넣지 않는다. AWS `/healthz` 호출이나 단순 함수 상태만으로 15개 계산 경로 검증을 대신하지 않는다.
+
+CloudWatch Console → Log groups → 해당 함수의 실제 로그 그룹 → 최신 stream에서 request ID·정제된 오류 코드·처리 시간을 확인한다. 원문 요청 추적은 끈다. 함수가 사용자 지정 로그 그룹을 사용한다면 `/aws/lambda/<이름>`을 자동으로 맞는 것으로 취급하지 않는다. DynamoDB의 OPS 로그는 AWS runtime에 아직 연결되지 않았으므로 CloudWatch 조회만으로 DB 로그 완성을 주장하지 않는다. [Lambda 상태 조회](https://docs.aws.amazon.com/cli/latest/reference/lambda/get-function-configuration.html)
+
+### 실패 확인 순서와 롤백
+
+롤백은 이전 코드·설정으로 돌아가는 작업이다. **AWS를 변경하므로 후속 단계에서 사용자가 실행한다.** 갱신 전에 이전 ZIP과 manifest, 전체 환경변수의 보호된 사본, 함수 메모리·timeout·runtime·handler, 로그/동시성 설정, API deployment ID·integration·binaryMediaTypes·method throttle을 기록한다. 기존 ZIP이 없으면 Lambda Console의 해당 버전 Code 탭에서 다운로드해 비공개 폴더에 보관한다. 서명된 다운로드 URL을 문서나 로그에 복사하지 않는다.
+
+| 증상 | 어디에서 → 확인할 일 → 복구 판단 |
+|---|---|
+| preflight 실패 | 터미널 오류 코드 → `<...>`, 정수 타입, stage/region/저장 상수, 전체 환경 크기 대조 | AWS 호출 전 실패. 키를 출력하지 말고 설정만 교정 |
+| `AWS_ACCOUNT_MISMATCH`·역할 불일치 | 개인 프로필과 승인 binding 대조 | 다른 자원을 새로 만들어 우회하지 않음 |
+| `503`·훈련 생성 실패 | runtime 연결·키 버전·테이블·실행 정의 확인 | 현재 기본 AWS runtime의 미연결과 실제 서비스 장애 구분 |
+| 계속 `202` | SQS/Relay/Worker 트리거·due Job·lease 상태 확인 | 입력·job ID를 바꾸어 재제출하지 않음 |
+| `403`·차트 실패 | 개인 접근·S3 namespace·서명 만료·권한 확인 | 소유권 확인 없이 공개 bucket으로 바꾸지 않음 |
+| 코드 갱신 후 설정 실패 | 함수 현재 코드 hash·LastUpdateStatus와 이전 설정 비교 | 자동 원복된 것으로 가정하지 말고 아래 부분 복구 수행 |
+
+새 접수를 제한하고 진행 중 작업을 확인한 뒤, 이전 ZIP과 저장된 작업/파일 버전이 호환되는 경우에만 되돌린다. **데이터 삭제는 하지 않는다.** 아래는 코드와 API Stage의 복구 형식이며 전체 자동 롤백 스크립트가 아니다.
+
+```sh
+aws lambda update-function-code --function-name <EXISTING_LAMBDA_NAME> --region <AWS_REGION> \
+  --zip-file "fileb://<PREVIOUS_ZIP_ABSOLUTE_PATH>" --query CodeSha256 --output text
+aws lambda wait function-updated --function-name <EXISTING_LAMBDA_NAME> --region <AWS_REGION>
+aws apigateway update-stage --rest-api-id <EXISTING_REST_API_ID> --stage-name <EXISTING_API_STAGE> \
+  --region <AWS_REGION> --patch-operations 'op=replace,path=/deploymentId,value=<PREVIOUS_DEPLOYMENT_ID>' \
+  --query deploymentId --output text
+```
+
+코드 hash·deployment ID가 기록과 일치하면 해당 단계 성공이다. 함수 환경변수·메모리·시간·로그 보관·동시성은 별도 복구한다. Lambda Console → Configuration에서 이전 보호된 설정 사본과 대조하고 복원한다. 환경변수는 부분 목록으로 갱신하지 않는다. API Stage를 되돌려도 현재 REST API 편집 상태의 integration/binaryMediaTypes나 throttle이 모두 복원되는 것은 아니므로 저장한 값과 대조한다. DB/비공개 파일은 유지하고 결과 재조회·인증·공유 진도까지 다시 인수한다. [코드 복구 명령](https://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-code.html), [갱신 대기](https://docs.aws.amazon.com/cli/latest/reference/lambda/wait/function-updated.html), [Stage 변경](https://docs.aws.amazon.com/cli/latest/reference/apigateway/update-stage.html)
+
+### 사용자의 후속 체크리스트
+
+- [ ] 개인 SSO/Role과 승인 계정·리전·기존 자원 목록을 확인한다.
+- [ ] Dev/Beta/Prod 격리·개인 접근 보호·입력/결과 한도·실행/lease/재시도·보관 정책을 결정한다.
+- [ ] 그 결정에 맞춰 API 계산 접수, Worker, Relay, S3 binding, 비밀 조회와 로그 배출 연결 코드를 완성하고 격리 환경에서 검증한다.
+- [ ] `.env.dev`와 `var/deployment/bindings.json`을 채워 오프라인 검사·빌드를 통과시킨다.
+- [ ] 기존 GitHub push 배포의 보호 조건을 확인한다. 이번에는 자동화·Secret 연결을 활성화하지 않았다.
+- [ ] 비용 예상·알림, 이전 ZIP·전체 설정·API 연결 및 복구 절차를 확보한다.
+- [ ] AWS 로그인·계정 대조 후 승인한 기존 자원에만 갱신하고 실제 앱 Journey를 인수한다.
+- [ ] 시험 종료 시 접근 회수·새 접수 중단·남은 Job 확인·보관 대상을 확정한다. **삭제는 비용·복구 영향과 대상 자원을 확인한 뒤 별도 승인된 범위에서만** 한다.
+
+이번 변경은 AWS 자원을 만들지 않았으므로 정리할 신규 원격 자원이 없다. 전체 계정 정리·bucket 비우기·table 삭제 명령은 제공하지 않는다. 나중에 생성한 전용 시험 자원이 있다면 AWS Console에서 정확한 이름·환경·연결 관계와 백업을 확인하고 삭제 확인 화면에서 사용자 본인이 처리한다. 기존 공유 자원과 보관기간 미정 데이터는 유지한다. 로컬 새 빌드 폴더는 ZIP/manifest 보관 후 그 폴더만 Finder에서 정리할 수 있고 `var/local-server`는 대상이 아니다.
 
 ## 10. ARC 제출은 공식 계약을 받은 뒤 별도로 연결하기
 
@@ -214,8 +371,9 @@ JSON 중복 필드, 알 수 없는 필드, 비정상 자료형·비유한 수치
 
 Calculator 객체의 필드:
 
-- `function_name`, `role_name`: 기존 함수와 역할을 특정하는 명시적 이름.
-- `memory_mb`, `timeout_seconds`, `log_retention_days`: 명시적 양의 정수. AWS가 실제 값을 수용하는지 검증한 것은 아니다.
+- `function_name`, `role_name`: 기존 함수와 역할의 명시적 이름. 선택 필드 `role_arn`은 경로를 포함한 기존 ARN이며 같은 계정·마지막 역할 이름과 일치해야 한다.
+- `memory_mb`: 일반 Lambda 구성의 128~10240 정수. `timeout_seconds`: 1~900 정수. 해당 계정의 더 낮은 한도는 별도 확인한다.
+- `log_retention_days`: CloudWatch가 허용하는 일수 또는 `null`(기존 보관 설정 유지). 부록 A의 형식 검사는 실제 삭제 정책의 승인이 아니다.
 - `reserved_concurrency`: 명시적 0 이상의 정수 또는 `null`. `null`이면 기존 동시성 설정을 변경하지 않는다.
 - `storage_bucket`, `storage_prefix`: 보존된 계산기 소스의 저장 상수와 정확히 같아야 한다.
 - `storage_region`: env 파일의 `ARC_STORAGE_REGION`과 정확히 같아야 한다.
@@ -238,7 +396,7 @@ env 파일에 `ARC_API_GATEWAY_ID`, `ARC_API_STAGE`, `ARC_API_ROUTE`도 있다�
 ### A3. env 파일과 비밀값
 
 형식은 기존과 같이 한 줄의 `KEY=VALUE`다. LF·CRLF 줄 끝만 지원한다.
-`export`, 중복 key, Lambda 예약 key, 값을 감싸는 따옴표는 거절한다.
+`export`, 중복 key, Lambda 예약 key, 값을 감싸는 따옴표는 거절한다. key는 영문자로 시작하는 2자 이상의 영문·숫자·밑줄이며 key와 value의 UTF-8 합계가 4096 bytes 이하여야 한다. [환경변수 제한](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html)
 VT·FF·NEL·Unicode line separator·단독 CR을 새 설정 줄로 해석하지 않는다.
 허용한 값의 공백·쉼표·`#`·`=`·문자 그대로의 `$()`·backtick을 셸 코드로 실행하지 않는다.
 진짜 비밀값을 command argument(명령 인자)나 Git에 넣지 않는다.

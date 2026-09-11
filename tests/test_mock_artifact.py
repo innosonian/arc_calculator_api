@@ -83,6 +83,7 @@ def test_identical_inputs_produce_identical_zip_and_file_provenance(roots):
     with zipfile.ZipFile(output / "mock-lambda.zip") as archive:
         assert archive.namelist() == sorted(first["files"])
         for entry in archive.infolist():
+            assert entry.compress_type == zipfile.ZIP_DEFLATED
             data = archive.read(entry)
             assert first["files"][entry.filename] == {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
             assert entry.date_time == (1980, 1, 1, 0, 0, 0)
@@ -92,6 +93,26 @@ def test_identical_inputs_produce_identical_zip_and_file_provenance(roots):
         assert archive.read("submit_arc.py") == (source / "submit_arc.py").read_bytes()
     assert set(first["dependencies"]) == set(VERSIONS)
     assert "linux-lambda-execution" in first["not_verified"]
+
+
+def test_archive_hashing_does_not_read_the_entire_zip_into_memory(roots, monkeypatch):
+    original = Path.read_bytes
+    def bounded_read(path):
+        assert path.suffix != ".zip", "ZIP hashing must stream the completed artifact."
+        return original(path)
+    monkeypatch.setattr(Path, "read_bytes", bounded_read)
+    builder.build_artifact(*roots)
+
+
+@pytest.mark.parametrize("limit,code", [
+    ("MAX_ZIP_BYTES", "DIRECT_UPLOAD_ARTIFACT_TOO_LARGE"),
+    ("MAX_UNZIPPED_BYTES", "UNZIPPED_ARTIFACT_TOO_LARGE"),
+])
+def test_oversized_artifact_is_not_published(roots, monkeypatch, limit, code):
+    monkeypatch.setattr(builder, limit, 1)
+    reject(roots, code)
+    assert not (roots[2] / "mock-lambda.zip").exists()
+    assert not (roots[2] / "artifact-manifest.json").exists()
 
 
 def test_repository_secrets_tests_and_unreferenced_resources_are_never_read(roots, monkeypatch):
