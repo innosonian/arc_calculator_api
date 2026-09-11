@@ -508,3 +508,75 @@ Backup 복구는 먼저 격리된 위치에서 수행하고 복구본의 작업 
 | 용량·복구·업데이트 | 자동 재시작이 결과 복구를 대신하지 않으며 DB·파일·키·작업 버전까지 복구 시험 |
 
 Kubernetes 보안 지침도 비밀 보호, 역할별 권한, 네트워크 정책의 실제 적용을 별도로 다룬다. 상태 검사와 종료는 각각 요청 배정·재시작·진행 작업의 처리를 확인한다. 이 표는 도입 시 확인할 항목이며 현재 클러스터가 안전하다는 판정이 아니다. [Kubernetes 보안 지침](https://kubernetes.io/docs/concepts/security/security-checklist/), [실행 상태 검사](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+## 부록 F. Dependabot 검증 CI 도입과 승인 후 원격 확인
+
+2026-09-11 구현. 로컬 검증 결과는 [VALIDATION 9절](VALIDATION.md#9-dependabot-검증-ci--2026-09-11)에 둔다. **로컬 구현, GitHub 실행, 의존성 PR 병합, AWS 배포 준비는 별도 결과**다. 아래 원격 명령·승인·병합은 이번 작업에서 실행하지 않았다. CI 도입 PR 게시 승인과 도입 PR 병합 승인, 기존 Dependabot PR 병합 승인은 각각 구별한다.
+
+### F1. 검증 범위와 유지 방법
+
+[validate_actions.yml](../.github/workflows/validate_actions.yml)은 `pull_request`의 opened/synchronize/reopened만 받는 단일 GitHub 호스팅 job이다. `contents: read`, 자격증명 미유지 checkout, 15분 제한과 PR별 이전 실행 취소를 사용한다. 실제 Secret, `id-token`, AWS 액션 실행, 배포 단계는 없다. 기존 배포 workflow의 `develop`/`main` push·수동 실행 조건과 인증 분기는 그대로다.
+
+checkout·setup-python 후보는 정적인 전체 SHA `uses`로 실행한다. 사후 단계에서 실제 `git HEAD == GITHUB_SHA`, Python 3.12 및 setup-python 출력 경로와 후속 `python3`가 같은 실행 파일인지 확인한다. 로컬에서는 이 확인 코드만 시험할 수 있으며 실제 GitHub 액션 실행을 대신하지 않는다. AWS 액션은 현재 배포 참조와 별도 후보를 공식 `action.yml`의 입력·런타임과 대조하고, 현재 인증 분기·리전·세션 이름·사전검사 순서 및 환경변수 보존을 확인한다. 정상 STS/OIDC 호출을 모사하지 않는다.
+
+`scripts/validate_actions.py`는 PR base 대비 배포 workflow에 **새로 생긴 checkout/setup-python 참조**만 실제 smoke 참조에 포함하도록 요구한다. 따라서 CI 선도입, 개별 PR, 전체 조합을 허용하며 기존 모든 참조의 동일성을 강요하지 않는다. 미검증 새 SHA만 배포 파일에 넣으면 `SMOKE_REF_UNCOVERED`로 실패한다. 필수 단계 삭제·건너뛰기·실패 무시, 다른 base를 넘기는 변경도 거절한다. 이 검사는 리뷰 보조이며, 검사 코드까지 함께 변경하는 악성 PR에 대한 독립 보안 격리가 아니다.
+
+후속 액션 갱신은 공식 저장소의 정확한 릴리스·commit을 확인하고 `scripts/actions_contracts.json`에 metadata SHA-256와 runtime을 등록한다. checkout/setup-python 새 참조는 smoke `uses`도 갱신한다. AWS 후보는 manifest의 `contract_candidates`에 연결한다. 미등록 metadata, 내용 변경, 미검토 runtime, 알 수 없는 입력은 실패한다. 새 릴리스의 의미·기본값 변화는 README/릴리스/실제 소스 리뷰가 필요하며 입력 키 검사만으로 대체하지 않는다.
+
+actionlint 1.7.12는 [공식 릴리스](https://github.com/rhysd/actionlint/releases/tag/v1.7.12)의 플랫폼별 SHA-256을 설치기에 고정했다. checksum 확인 후 archive의 정규 `actionlint` 파일만 읽으며 기존 파일을 덮지 않는다. `-shellcheck= -pyflakes=`로 우연히 설치된 보조 도구를 사용하지 않고, 별도 `bash -n`·Python AST 검사로 문법을 확인한다. pytest·PyYAML 및 도구 간접 의존성은 `requirements-ci.txt`에 고정한다. 앱 의존성은 **검사하는 소스의** `requirements.txt`와, 그 소스에 있을 때만 `constraints-lambda.txt`를 사용한다. constraints 없는 소스의 간접 의존성과 hosted image/Python patch까지 영구 동일하다는 뜻은 아니며 매 실행의 설치 버전을 기록한다.
+
+회귀는 `STAGE=test`로 시작한다. `run_actions_regression.py`가 conftest 수집 전에 SDK client·Session·transport와 Python 연결 시도를 차단하고, 기존 autouse 보호와 fake CLI 시험을 그대로 실행한다. 설치·공식 metadata 다운로드의 네트워크와 시험 중 연결 차단을 구분한다. 이는 해당 Python 프로세스의 보호이며 OS 전체 방화벽이 아니다. 자식 배포 shell 시험은 기존 PATH 대역을 사용한다. 사용자 환경파일·키·DB를 시험 입력으로 사용하지 않는다.
+
+### F2. 승인 후 순서
+
+1. **CI 도입 PR 게시 승인 후** 최신 원격 기본 브랜치를 다시 조회한다. 현재 관찰은 `master@6648f058788a02242a1d0d0a5acdbcb4e1e48e03`이며 로컬 `develop@a561764909e32f6cd2fd7976a102d890f294958b`와 다르다. 별도 clone의 `codex/validate-actions-ci`에서 CI 변경만 적용한다. 현재 develop을 push하는 절차를 사용하지 않는다.
+2. CI 도입 PR의 `pull_request` 실행에서 새 CI 자체를 확인한다. 새 workflow는 PR 이벤트가 가리키는 소스에서 읽힐 수 있으므로 처음부터 PR 방식으로 도입한다. fork 승인·Actions 정책·충돌 등으로 실행되지 않으면 미실행/대기로 기록한다. `workflow_dispatch`는 기본 브랜치에 workflow가 있어야 하므로 최초 도입 우회 수단이 아니다. [workflow 선택](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows), [PR·dispatch 이벤트](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+3. 실제 run과 검토 결과를 제시한 뒤 **사용자가 CI 도입 PR 병합을 별도 승인**한다. 검사 성공이 자동 병합 승인이나 브랜치 보호 변경 권한은 아니다.
+4. 도입 후 기존 #3/#2/#1의 base/head와 변경 파일을 다시 조회한다. **새 이벤트 발생을 승인받은 뒤** 각 PR을 close/reopen하거나 필요한 rebase로 `reopened`/`synchronize`를 발생시킨다. 아래 예시는 상태를 변경하므로 이 단계 승인 전 실행하지 않는다. 옛 run의 rerun은 원래 SHA/ref를 재사용하므로 새 CI 검증의 대체가 아니다. [재실행 동작](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
+5. **통합 PR 게시 승인 후** 최신 기본 브랜치에서 별도 `codex/validate-actions-combined`를 만든다. 당시 #3/#2/#1의 승인된 정확한 diff만 적용하고 변경 파일이 배포 workflow 한 개, 변경 내용이 세 액션 참조뿐인지 확인한다. 같은 CI로 전체 조합을 검사한다. 이미 병합된 변경은 다시 적용하지 않는다. 검증용 통합 PR은 자동으로 병합하지 않는다.
+6. 개별 PR과 조합의 최신 증거를 대조해 병합 판단을 다시 제출한다. head/base가 바뀌거나 검사에 다른 소스가 사용됐으면 영향을 받는 부분을 재검증한다. AWS 정상 인증이 미검증이라는 사실을 그대로 남기되, 이를 이유로 모든 의존성 병합을 일률 금지하는 새 정책도 만들지 않는다.
+
+다음은 **① 승인 후에만**, 경로가 아직 없는 별도 clone에서 실행하는 예시다. 기본 브랜치나 SHA가 달라졌다면 먼저 patch의 적용 범위를 재검토한다. 상세 patch는 로컬 기록 경로에만 보관하며 Git에 넣지 않는다.
+
+```sh
+gh api repos/innosonian/arc_calculator_api --jq '.default_branch'
+git clone git@github.com:innosonian/arc_calculator_api.git /private/tmp/arc-actions-ci-publish
+cd /private/tmp/arc-actions-ci-publish
+git rev-parse origin/master
+git switch -c codex/validate-actions-ci origin/master
+git apply --check /Users/mac/arc_calculator_api/.documentation-backup/2026-09-11-dependabot-ci-wenrd4g3/ci-introduction.patch
+git apply /Users/mac/arc_calculator_api/.documentation-backup/2026-09-11-dependabot-ci-wenrd4g3/ci-introduction.patch
+git diff --check
+git status --short
+git add .github/workflows/validate_actions.yml requirements-ci.txt \
+  scripts/actions_contracts.json scripts/validate_actions.py scripts/install_actionlint.py \
+  scripts/run_actions_regression.py tests/test_validate_actions.py tests/test_actions_regression.py \
+  docs/VALIDATION.md docs/DEPLOY_GUIDE.md
+git commit -m "Add isolated validation for dependency action updates"
+git push -u origin codex/validate-actions-ci
+gh pr create --base master --head codex/validate-actions-ci \
+  --title "Add isolated validation for dependency action updates" \
+  --body-file /Users/mac/arc_calculator_api/.documentation-backup/2026-09-11-dependabot-ci-wenrd4g3/ci-pr-body.txt
+```
+
+① 게시 후 조회는 `gh pr checks <도입PR번호>`와 `gh run view <run-id> --json headSha,event,status,conclusion,url,jobs`를 사용한다. ④ 승인된 새 이벤트의 예시는 `gh pr close 3 --repo innosonian/arc_calculator_api` 후 `gh pr reopen 3 --repo innosonian/arc_calculator_api`이며 #2/#1도 각각 상태를 확인한 뒤 수행한다. 명령은 댓글·승인·병합을 추가하지 않는다. 다른 사람이 이미 닫거나 병합한 PR에는 그대로 적용하지 않는다.
+
+⑤ 통합 PR은 최신 origin/master에서 새 codex 브랜치를 만든 뒤, `gh pr diff <번호> --repo innosonian/arc_calculator_api`의 출력을 임시 patch에 저장하고 `git apply --check` 후 적용한다. 각 다운로드 전후 PR head를 조회해 같은 SHA인지 대조한다. 적용 후 `git diff --name-only origin/master`와 전체 diff가 세 변경만 포함하는지 확인한 뒤 별도 승인 범위에서 commit·push·PR 게시한다. CI 도입 변경·로컬 개발 커밋을 중복해서 섞지 않는다.
+
+### F3. 실행 증거와 AWS 후속 준비
+
+| 기록 | 의미·확인 방법 |
+|---|---|
+| PR base/head SHA | 해당 실행의 이벤트 JSON과 현재 PR API 응답. 짧은 SHA 대신 전체 값을 보존 |
+| 합성 merge SHA | PR 이벤트의 `GITHUB_SHA`; PR head와 다른 값일 수 있음 |
+| 실제 checkout SHA | smoke의 `git rev-parse HEAD`. 위 merge SHA와 정확히 같아야 함 |
+| workflow SHA/ref | `GITHUB_WORKFLOW_SHA`·`GITHUB_WORKFLOW_REF`. 실행한 workflow 출처 |
+| action SHA | workflow 선언 및 실제 각 job 단계 로그. 로컬에서 선언을 읽었다고 액션 실행을 입증하지 않음 |
+| 도구·환경 | Python 버전/경로·PATH, pip freeze, actionlint 버전/asset/hash. runner 버전은 GitHub `Set up job` 로그에서 확인 |
+| run URL·attempt·검사 상태 | 성공/실패/대기/skipped/미실행을 구별. head의 빈 검사 목록을 성공으로 보지 않음 |
+
+가짜 키로 AWS 액션 정상 경로를 실행하지 않는다. [검토한 AWS 액션 소스](https://github.com/aws-actions/configure-aws-credentials/blob/cbe3b392738ccf3f987d68400dafcf4b0624a56c/src/index.ts)는 키 입력에서도 자격증명 검증을 호출한다. metadata·fake CLI 통과는 STS, 실제 OIDC/키 인증, IAM·운영 자원 연결의 성공이 아니다. skip·실패 무시·실패 outcome을 인증 성공으로 바꾸지 않는다.
+
+실제 배포 준비 때는 비밀값 대신 역할 ARN, OIDC provider, `aud`, `sub`, 허용 branch/environment, 필요한 자원 권한을 확인한다. 2026-09-11 GitHub API 관찰에서 이 저장소는 immutable subject를 사용하며 접두사는 `repo:innosonian@42329732/arc_calculator_api@1359821753`이다. 현재 job에는 environment가 없어 branch 문맥을 대조해야 한다. `docs/iam/` 예시는 과거 ID 없는 형식이고 실제 AWS 정책의 증거가 아니다. 이번에 수정하거나 적용하지 않았다. [공식 subject 규칙](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
+
+같은 조회에서 저장소 Secret/Variable/Environment는 없었고 조직에서 제공하는 Secret 이름은 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`뿐이었다. workflow가 참조하는 DEV/PROD 이름과 binding Variable은 없었다. 이는 성공한 메타데이터 조회로 확인한 부재이며 권한 부족으로 추정한 결과가 아니다. 향후 연결 시점에 다시 확인하며 Secret 이름만 맞추기 위해 기존 인증 정책을 임의 변경하지 않는다.

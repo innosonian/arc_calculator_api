@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "contract_candidates": [
+    "aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c"
+  ],
+  "actions": {
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262": {
+      "release": "v4.4.0",
+      "runtime": "node20",
+      "sha256": "6188f6991491ed38977347cdaad0b0cd921a6d6232892363c91f433c22954f4f"
+    },
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": {
+      "release": "v7.0.1",
+      "runtime": "node24",
+      "sha256": "d59219cb79590abdb877deaa14e3b65a00c05318bf5a6f3b989b9162b5d08c35"
+    },
+    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": {
+      "release": "v7.0.0",
+      "runtime": "node24",
+      "sha256": "e6dc8046c02bd3c9f7bf2fea6ba2e59b4e83c7de2b26ec2149a1627f5d66f96c"
+    },
+    "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065": {
+      "release": "v5.6.0",
+      "runtime": "node20",
+      "sha256": "0acca40eee6f548ea8269ece66fd625fe9deb1f61f31f0b58562068fc083eb37"
+    },
+    "aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a": {
+      "release": "v4.3.1",
+      "runtime": "node20",
+      "sha256": "677df096ab426d9d63eb16c8237c076838cfb97c8b1fed315b439061ed3bc209"
+    },
+    "aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c": {
+      "release": "v6.2.4",
+      "runtime": "node24",
+      "sha256": "fcf5ffc4d827b8bf8494a7c99ebc5b49b91a4022f804ba596bd3bbee707b046d"
+    }
+  }
+}

@@ -282,3 +282,75 @@ git diff --check
 4. 실물 앱/마네킨 시험, CPR cycle 완료 규칙, ARC 계약과 실제 제출은 별도다. 현재 `pending_policy`·`submit_arc: disabled`를 그대로 유지한다.
 
 전용 lint/type-check 설정은 저장소에 없어서 임의 규칙이나 새 도구를 도입하지 않았다. Python 문법 compile, shell 문법, 문서 링크와 Git 공백 검사를 수행하며 정적 타입 검사 통과로 표현하지 않는다. 실제 AWS CLI·배포 shell 실행, 자원 변경·배포, commit·push 및 새 push 배포 자동화 활성화는 하지 않았다. 기존 `develop`/`main` push workflow는 그대로 남아 있어 사용자가 나중에 Secret/권한 연결 전에 확인해야 한다.
+
+## 9. Dependabot 검증 CI — 2026-09-11
+
+**로컬 구현·검증 완료, GitHub CI 실행 미완료, 세 PR 및 조합은 조건부 가능, AWS 배포 준비 미완료**다. 원격 검사는 이번에 실행하지 않았다. 앞 절의 앱 전체 시험과 이번 CI 검증의 소스·범위는 다르다. 도입 순서와 별도 승인 경계는 [DEPLOY_GUIDE 부록 F](DEPLOY_GUIDE.md#부록-f-dependabot-검증-ci-도입과-승인-후-원격-확인)에 둔다.
+
+### 구현과 보존 범위
+
+| 파일 | 변경 목적 |
+|---|---|
+| `.github/workflows/validate_actions.yml` | 배포와 분리된 PR 검사. 읽기 권한·실제 Secret 미사용·15분 제한·PR별 중복 취소. 후보 checkout/setup-python을 실제 `uses`에 연결 |
+| `requirements-ci.txt`, `scripts/install_actionlint.py` | 소스별 기존 의존성에 고정 검증 도구를 추가. actionlint 공식 asset의 checksum을 확인한 후 설치 |
+| `scripts/actions_contracts.json`, `scripts/validate_actions.py` | 정확한 공식 metadata·runtime·입력 검사, 새 참조와 smoke 연결, YAML 중복/구조·Python/shell 문법 및 배포 인증 경계 보존 검사 |
+| `scripts/run_actions_regression.py`, `tests/test_actions_regression.py` | `STAGE=test`와 수집 전 SDK/연결 차단을 적용해 기존 preflight 회귀 재사용. 대역·오류 정제·정확한 차단 원인 검사 |
+| `tests/test_validate_actions.py` | CI 선도입·개별/전체 변경 허용, 미검증 참조·검사 삭제/우회·권한/인증 변경 거절 등 반례 |
+| `docs/VALIDATION.md`, `docs/DEPLOY_GUIDE.md` | 이번 결과와 승인 후 실행 절차만 통합 |
+
+시작 시 로컬은 `develop@a561764909e32f6cd2fd7976a102d890f294958b`, 작업 트리와 index가 깨끗했다. 기존 배포 workflow·Dependabot 설정·앱 코드·기존 테스트/fixture·IAM 예시·결정 문서는 변경하지 않았다. 새 검증 파일 8개와 위 문서 2개만 변경 범위다. 세 Dependabot 변경은 사용자 작업 브랜치에 적용하지 않았다. 상세 JSON·로그·patch는 Git 제외 경로 `.documentation-backup/2026-09-11-dependabot-ci-wenrd4g3/`에 보관하며 새 개발 기록 Markdown을 추가하지 않았다.
+
+### 정확한 소스별 로컬 증거
+
+각 소스를 별도 임시 clone으로 checkout하고 **동일한 최종 검증 파일 8개만 추가**했다. 원본 파일 hash와 추가 파일 hash를 각 `*-evidence.json`에 분리했다. 원격 소스에는 로컬의 미게시 앱 변경이나 `constraints-lambda.txt`를 복사하지 않았다.
+
+| 임시 소스 | 원본 commit SHA | 결과 |
+|---|---|---|
+| 원격 기본 `master` + CI 선도입 | `6648f058788a02242a1d0d0a5acdbcb4e1e48e03` | 192 passed, 29.44초 |
+| [PR #3 checkout](https://github.com/innosonian/arc_calculator_api/pull/3) + CI | `59c0cc2cf3bded2ec8c29d938c30ad24b7214d85` | 192 passed, 30.64초 |
+| [PR #2 setup-python](https://github.com/innosonian/arc_calculator_api/pull/2) + CI | `4b3f995679b5a872c85eb60179e5e100202e94bd` | 192 passed, 29.32초 |
+| [PR #1 AWS credentials](https://github.com/innosonian/arc_calculator_api/pull/1) + CI | `dc477ad25727505608d9bb2bfadf65b76fd57529` | 192 passed, 29.44초 |
+| 위 기본 + 위 세 PR의 정확한 diff + CI | 기본 SHA는 위 `6648f058…`; 새 commit을 만들지 않은 합성 파일 상태 | 192 passed, 29.08초 |
+| 현재 로컬 `develop` + CI | `a561764909e32f6cd2fd7976a102d890f294958b` | 210 passed, 33.41초 |
+
+모든 표의 소스에서 actionlint·공식 계약·관련 문법 검사도 exit 0이다. 합성 조합의 배포 workflow SHA-256은 `e4cecf80d2d00f371ad5aab8acbd1fffaf645d88328cfd1a8df70b03e6f9929c`이며 GitHub의 합성 merge commit을 뜻하지 않는다. CI workflow SHA-256은 `b1196eddec651e33294ad096535172f1df66ef3c04d3457eaca0db8e34a0a3d1`, 검사기 SHA-256은 `41650316b83615dc77d2a9752fc09d0e93af358c2105e38e197a3d9ea3ad34fe`다. 나머지 추가 파일은 `code-overlay.json`에 기록했다.
+
+환경은 macOS ARM64, Python 3.12.1의 새 가상환경 2개다. pytest 9.1.1·PyYAML 6.0.3·actionlint 1.7.12를 사용했다. 원격 소스는 그 소스의 requirements, 로컬은 그 소스의 requirements와 constraints를 설치했고 두 환경의 `pip check`가 통과했다. 실제 설치 목록은 `local-dependencies.json`·`remote-dependencies.json`에 보관한다. actionlint는 Mac ARM64 공식 archive checksum과 실행 버전을 확인했다. Linux archive checksum은 공식 배포 자료와 대조했지만 Linux runner 실행은 아직 하지 않았다.
+
+새 회귀는 92개(검사기 73개, 실행 보호 19개)다. 나머지는 해당 소스의 기존 preflight 회귀 100개/118개다. 정상 가상 설정의 region 출력, 누락·불일치 시 외부 명령 차단, OIDC/키 분기와 세션/리전 연결, 오류 비밀정보 정제, conftest 수집 단계 SDK 호출 차단을 확인했다. Python 연결 차단과 기존 자식 shell의 fake CLI를 사용하며 OS 전체 통신 격리라고 주장하지 않는다. 실제 사용자 환경파일·키·DB는 사용하지 않았다.
+
+CI smoke 확인 함수는 로컬에서 정상 checkout/Python 경로를 통과시키고 잘못된 기대 SHA를 `CHECKOUT_SHA_MISMATCH`로 거절했다. 이는 Node 24 액션 실행 증거가 아니다. 공식 metadata는 고정 SHA의 실제 다운로드와 checksum 대조도 통과했다. 최초 샌드박스 네트워크에서는 다운로드 실패가 발생했고, 허용된 외부 네트워크 재실행에서 통과했다. 다운로드 실패를 계약 성공으로 처리하지 않았다.
+
+### 두 차례 상호 검토와 반론 처리
+
+이번 구현에는 총괄 포함 실제 에이전트 4개를 사용했다. 하위 에이전트 3개가 각각 두 역할을 순차 수행했다: 선임1/전문가2, 선임2/전문가1, 선임3/전문가3. 여섯 개의 독립 에이전트나 사람의 운영 승인으로 표현하지 않는다.
+
+| 역할 | 설계 전 상호 검토 | 구현 후 상호 검토·총괄 처리 |
+|---|---|---|
+| 선임1: CI 설계 | 선임3에 조건부 job/step의 검증 누락 가능성 지적. 단일 무조건 실행 구조 채택 | 선임3의 합성 단위시험만으로 실제 PR SHA를 입증할 수 없다는 반론 수용. 실제 여섯 소스 사본으로 별도 검증 |
+| 선임2: 회귀 | 기존 autouse fixture만으로 수집 중 SDK 호출을 막는다는 주장 반박. pytest import 전 보호 채택 | 선임1의 필수 lint/회귀 step 삭제가 false green을 만드는 반례 수용. ID·순서·실제 명령 검사와 실패 회귀 추가 |
+| 선임3: 보존·유지보수 | 선임1의 실행 프레임워크 확대와 선임2의 완전 재현성 주장 검토. 정적 `uses`와 소스별 의존성 채택 | 설치기의 임시 시험만으로 회귀가 남지 않는다는 반론 수용. checksum 선검사·archive member·기존 파일 보존 5개 시험 추가. echo만 남긴 preflight도 거절 |
+| 전문가1: AWS | 가짜 키를 넣은 정상 AWS 액션 경로도 STS를 호출하므로 오프라인이라는 주장 기각. 기본 범위를 정적 계약·fake CLI로 한정 | `with`만 확인하면 환경변수 `ROLE_CHAINING`이 인증 경로를 바꾸는 반례 수용. workflow/job/AWS step 환경 보존과 세 scope 회귀 추가 |
+| 전문가2: GitHub | 전문가3의 owner+40자리 SHA만으로 검토한 릴리스를 보증할 수 없다는 반론 수용. 공식 tag 대조와 metadata hash 등록 채택 | Secret 대괄호 접근, closed 이벤트만 남긴 CI가 통과하는 반례 재현·수정 확인. 도입/기존 PR/조합 실행을 별도 증거로 구분 |
+| 전문가3: 권한·공급망 | 전문가1의 정적 검사를 실제 인증 증거로 해석하지 않도록 제한. 실행 전 actionlint checksum 확인 채택 | 전문가1과 환경 입력 변화, 선임2와 Python 보호의 OS 격리 한계를 교차 검토. 정확한 권한·필수 명령·base 전달 반례 보강 |
+
+초기 시험에서 발견한 구조 오류·검사 누락은 수정 후 위 최종 소스로 재검증했다. 최종 검토 범위에 알려진 중대한 코드 결함은 남지 않았으나, 미실행인 hosted runner·AWS 인증을 합의로 통과 처리하지 않았다.
+
+### 액션별 판단과 남은 조건
+
+기존/제안 버전은 PR 주석만 읽지 않고 공식 tag가 가리키는 commit과 대조했다. 세 후보는 Node 24이며 GitHub hosted runner에서 실제 기동 여부를 다음 PR 실행으로 확인해야 한다. 전체 SHA와 metadata hash는 `scripts/actions_contracts.json`에 둔다.
+
+| 대상 | 검증한 기존 → 제안 릴리스 | 현재 판단·남은 조건 |
+|---|---|---|
+| #3 checkout | [4.4.0](https://github.com/actions/checkout/releases/tag/v4.4.0) → [7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) | **조건부 가능**. 현재 `persist-credentials: false`, 후속 인증 Git·서브모듈·LFS 미사용의 정적 호환 근거와 로컬 회귀는 확보. 최신 PR의 실제 checkout SHA·Node 24 smoke 및 CI 성공 필요 |
+| #2 setup-python | [5.6.0](https://github.com/actions/setup-python/releases/tag/v5.6.0) → [7.0.0](https://github.com/actions/setup-python/releases/tag/v7.0.0) | **조건부 가능**. Python 3.12 명시·캐시 미사용. 최신 PR의 실제 Python 선택·출력/PATH 연결과 CI 성공 필요 |
+| #1 AWS credentials | [4.3.1](https://github.com/aws-actions/configure-aws-credentials/releases/tag/v4.3.1) → [6.2.4](https://github.com/aws-actions/configure-aws-credentials/releases/tag/v6.2.4) | **조건부 가능**. 공식 입력·분기·리전·세션·preflight 선행 구조 및 fake CLI 회귀 확보. 최신 PR CI 성공과 실제 인증 미검증 범위의 사용자 판단 필요. 실제 AWS 인증을 모든 의존성 병합의 필수 조건으로 새로 정하지 않음 |
+| 세 변경의 조합 | 위 세 후보 | **조건부 가능**. 로컬 조합 통과, 코드상 병합 순서 의존성 없음. 최신 base에 세 변경만 적용한 원격 조합 CI와 개별 증거 확인 필요 |
+
+권장 순서는 CI 선도입 → 개별/조합 검사 → #3/#2 → #1이다. 마지막 순서는 인증 변경을 별도로 살펴보기 위한 검토 편의이며 기술적 선후 의존성은 아니다. GitHub의 `mergeable: true`/`clean`은 호환성·검사 통과·사용자 병합 승인을 뜻하지 않는다. 종료 시점 원격 상태와 검사·보호 규칙 재조회는 상세 `end-remote.json`에 기록한다. 빈 status 목록의 집계 `pending`은 실제 실행 중인 검사로 세지 않는다.
+
+실제 checkout/setup-python 액션 실행, GitHub PR run URL·합성 merge/workflow SHA, AWS 액션 정상 실행·STS·OIDC/키 인증·실제 IAM 신뢰 정책과 자원 연결은 **미검증**이다. 앱 전체·실물 장치·DB 인수시험도 이번 범위에서 재실행하지 않았다. 배포 준비에는 역할 ARN·OIDC provider·aud/sub·허용 branch/environment·자원 권한 및 누락 설정을 별도 확인해야 한다. 현재 GitHub 설정 부재와 IAM 예시/immutable subject 차이는 DEPLOY_GUIDE F3에 구분했다.
+
+staging/unstaging·commit·push·PR 생성/변경/승인/병합·CI dispatch/재실행·AWS 연결/조회/배포·ARC/HSTM 전송은 실행하지 않았다. 로컬 index의 시작/종료 SHA-256 및 기존 파일 보존 결과는 `start-local.json`·`end-local.json`에 기록한다.
+
+종료 재조회에서도 원격 기본 `master`와 위 세 PR의 base/head·diff는 시작과 같았다. 세 PR은 모두 OPEN·non-draft·`mergeable: true`/`clean`이며, 각 최신 head의 check run·commit status·workflow run은 각각 0개다. master는 protected=false이고 적용되는 branch rule 목록은 비어 있었다. 이 조회는 성공했으며 권한 부족을 설정 부재로 처리하지 않았다. 원격 CI 성공이나 사용자 병합 승인은 아직 없다.

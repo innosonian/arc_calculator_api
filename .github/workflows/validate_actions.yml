@@ -1,0 +1,77 @@
+name: Validate Actions
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-actions-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  STAGE: test
+  AWS_EC2_METADATA_DISABLED: "true"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Smoke checkout
+        id: checkout_smoke
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Smoke Python setup
+        id: python_smoke
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify checkout and Python on PATH
+        id: verify_smoke
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SETUP_PYTHON_PATH: ${{ steps.python_smoke.outputs.python-path }}
+        run: python3 scripts/validate_actions.py smoke --expected-sha "$EXPECTED_SHA" --python-path "$SETUP_PYTHON_PATH"
+
+      - name: Install isolated validation dependencies
+        id: dependencies
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/actions-venv"
+          ci_constraints_args=()
+          if [[ -f constraints-lambda.txt ]]; then
+            ci_constraints_args=(-c constraints-lambda.txt)
+          fi
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip install --only-binary=:all: \
+            -r requirements.txt -r requirements-ci.txt "${ci_constraints_args[@]}"
+          "$RUNNER_TEMP/actions-venv/bin/python" --version
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip --version
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip freeze
+
+      - name: Install verified actionlint and lint workflows
+        id: actionlint
+        run: |
+          python3 scripts/install_actionlint.py --output-dir "$RUNNER_TEMP/actionlint"
+          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= \
+            .github/workflows/deploy_arc_lambdas.yml .github/workflows/validate_actions.yml
+
+      - name: Validate action contracts and newly introduced refs
+        id: contracts
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/validate_actions.py check \
+            --base-sha "$PR_BASE_SHA" --metadata-dir "$RUNNER_TEMP/action-metadata"
+
+      - name: Run offline deployment regressions
+        id: regression
+        run: '"$RUNNER_TEMP/actions-venv/bin/python" scripts/run_actions_regression.py'
