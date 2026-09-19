@@ -35,12 +35,42 @@ _STATUS_BODY = {
 _CALCULATION_PATH = re.compile(
     r"/mock/v1/attempts/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/calculation\Z"
 )
+_V2_CALCULATION_PATH = re.compile(
+    r"/api/v2/attempts/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/calculation/\Z"
+)
 
 
-def _calculation_route(method, path):
-    return method == "POST" and type(path) is str and (
-        path == "/cpr-analysis" or _CALCULATION_PATH.fullmatch(path) is not None
-    )
+def _path_only(path):
+    if type(path) is not str:
+        return path
+    return path.split("?", 1)[0]
+
+
+def _calculation_route(method, path, *, course_v2=False):
+    path = _path_only(path)
+    if method != "POST" or type(path) is not str:
+        return False
+    if course_v2:
+        return _V2_CALCULATION_PATH.fullmatch(path) is not None
+    return path == "/cpr-analysis" or _CALCULATION_PATH.fullmatch(path) is not None
+
+
+def _parse_query(query_string):
+    if query_string == "":
+        return {}, {}
+    params = {}
+    multi = {}
+    for part in query_string.split("&"):
+        if "=" not in part:
+            raise JourneyError("INVALID_REQUEST")
+        key, _, value = part.partition("=")
+        if not key or not value or key in params:
+            raise JourneyError("INVALID_REQUEST")
+        if any(char in key or char in value for char in "%+#\\"):
+            raise JourneyError("INVALID_REQUEST")
+        params[key] = value
+        multi[key] = [value]
+    return params, multi
 
 
 def _body_limit(value):
@@ -154,19 +184,35 @@ def make_application(service, ready, host, port, allowed_clients, *, calculation
             if ("HTTP_ORIGIN" in environ
                     or environ.get("HTTP_SEC_FETCH_SITE", "none") not in ("none", "same-origin")):
                 raise JourneyError("INVALID_REQUEST")
-            raw_path = environ.get("REQUEST_URI")
-            if (type(raw_path) is not str or not raw_path.startswith("/")
-                    or "//" in raw_path or raw_path != environ.get("PATH_INFO")
-                    or any(char in raw_path for char in "%?#\\")
-                    or any(ord(char) < 33 or ord(char) > 126 for char in raw_path)
-                    or environ.get("QUERY_STRING", "")):
+            course_v2 = getattr(service, "course_mode", None) == "course_v2"
+            path_info = environ.get("PATH_INFO")
+            request_uri = environ.get("REQUEST_URI")
+            query_string = environ.get("QUERY_STRING") or ""
+            if type(path_info) is not str or not path_info.startswith("/") or "//" in path_info:
                 raise JourneyError("INVALID_REQUEST")
+            if (any(char in path_info for char in "%?#\\")
+                    or any(ord(char) < 33 or ord(char) > 126 for char in path_info)):
+                raise JourneyError("INVALID_REQUEST")
+            if query_string:
+                if not course_v2:
+                    raise JourneyError("INVALID_REQUEST")
+                if (any(char in query_string for char in "%?#\\")
+                        or any(ord(char) < 33 or ord(char) > 126 for char in query_string)):
+                    raise JourneyError("INVALID_REQUEST")
+                expected = path_info + "?" + query_string
+                if type(request_uri) is not str or request_uri not in (expected, path_info):
+                    raise JourneyError("INVALID_REQUEST")
+            elif type(request_uri) is not str or request_uri != path_info:
+                raise JourneyError("INVALID_REQUEST")
+            raw_path = path_info
             method = environ.get("REQUEST_METHOD")
-            if method not in ("GET", "POST", "DELETE"):
+            allowed_methods = ("GET", "POST", "DELETE", "PUT") if course_v2 else ("GET", "POST", "DELETE")
+            if method not in allowed_methods:
                 raise JourneyError("NOT_FOUND")
             if "HTTP_CONTENT_ENCODING" in environ or "HTTP_TRANSFER_ENCODING" in environ:
                 raise JourneyError("INVALID_REQUEST")
-            calculation = (calculation_body_limit is not None and _calculation_route(method, raw_path))
+            calculation = (calculation_body_limit is not None
+                           and _calculation_route(method, raw_path, course_v2=course_v2))
             limit = calculation_body_limit if calculation else BODY_LIMIT
             length_text = environ.get("CONTENT_LENGTH", "0") or "0"
             if (type(length_text) is not str or not length_text.isascii()
@@ -180,7 +226,7 @@ def make_application(service, ready, host, port, allowed_clients, *, calculation
             content_type = environ.get("CONTENT_TYPE", "")
             if type(content_type) is not str or "," in content_type:
                 raise JourneyError("INVALID_REQUEST")
-            if method == "POST" and not calculation:
+            if method in ("POST", "PUT") and not calculation:
                 content_parts = tuple(part.strip().lower() for part in content_type.split(";"))
                 if content_parts not in (("application/json",), ("application/json", "charset=utf-8")):
                     raise JourneyError("INVALID_REQUEST")
@@ -232,6 +278,9 @@ def make_application(service, ready, host, port, allowed_clients, *, calculation
                 # Local diagnostics only. API logging readiness never changes
                 # business readiness or the health HTTP status. Worker counters
                 # are not falsely presented as this process's counters.
+                if getattr(service, "course_mode", None) == "course_v2":
+                    status_body.update(mode="course_v2", login_path="/api/v2/sessions/",
+                                       programs_path="/api/v2/courses/progress/")
                 recorder = getattr(service, "operations", None)
                 if recorder is not None:
                     try:
@@ -246,11 +295,13 @@ def make_application(service, ready, host, port, allowed_clients, *, calculation
                 headers["Authorization"] = auth
             if attempt_id is not None:
                 headers["X-Attempt-ID"] = attempt_id
+            query_params, multi_query = _parse_query(query_string)
             event = {
                 "httpMethod": method, "path": raw_path,
                 "headers": headers,
                 "multiValueHeaders": {name: [value] for name, value in headers.items()},
-                "queryStringParameters": {}, "multiValueQueryStringParameters": {},
+                "queryStringParameters": query_params,
+                "multiValueQueryStringParameters": multi_query,
                 "body": body, "isBase64Encoded": encoded,
             }
             result = handle(event, SimpleNamespace(aws_request_id=request_id), service)
@@ -269,6 +320,7 @@ def make_application(service, ready, host, port, allowed_clients, *, calculation
     # configuration. Wrapping this callable drops back to the safe default.
     application._local_calculation_body_limit = calculation_body_limit
     application._local_response_body_limit = response_body_limit
+    application._local_course_v2 = getattr(service, "course_mode", None) == "course_v2"
     return application
 
 
@@ -277,6 +329,7 @@ def create_server(application, host, port):
     host, port = _address(host), _port(port)
     calculation_body_limit = _body_limit(getattr(application, "_local_calculation_body_limit", None))
     response_body_limit = getattr(application, "_local_response_body_limit", None)
+    course_v2 = getattr(application, "_local_course_v2", False) is True
     if response_body_limit is not None and (
             type(response_body_limit) is not int or response_body_limit < BODY_LIMIT):
         raise ValueError("An explicit local response-body limit is required.")
@@ -307,7 +360,8 @@ def create_server(application, host, port):
                 # body. Never enlarge the shared Adjustments object: a large
                 # calculation must not enlarge a concurrent login request.
                 limit = (calculation_body_limit if calculation_body_limit is not None
-                         and _calculation_route(self.command, self.request_uri) else BODY_LIMIT)
+                         and _calculation_route(self.command, self.request_uri, course_v2=course_v2)
+                         else BODY_LIMIT)
                 self.adj = copy(self.adj)
                 self.adj.max_request_body_size = limit + 1
                 # Each request closes its channel; queued pipelined requests

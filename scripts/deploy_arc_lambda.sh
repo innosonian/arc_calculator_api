@@ -97,6 +97,22 @@ if [[ "${FUNCTION_HANDLER}" != lambda_handler.run ]]; then
   # separate reviewed correction is needed before this deployment can proceed.
   echo "EXISTING_PUBLIC_HANDLER_REQUIRED" >&2; exit 1
 fi
+# Resolve the actual existing destination before any AWS mutation. A successful
+# null response means Lambda's documented default; a failed/invalid read never
+# silently falls back. Null retention requires no log-group lookup or change.
+if [[ -n "${ARC_LOG_RETENTION_DAYS}" ]]; then
+  FUNCTION_LOG_GROUP_JSON="$(aws_value lambda get-function --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}" \
+    --query Configuration.LoggingConfig.LogGroup --output json)"
+  LOG_GROUP_JSON_PATTERN='^"([A-Za-z0-9._/#-]+)"$'
+  if [[ "${FUNCTION_LOG_GROUP_JSON}" == null ]]; then
+    ARC_FUNCTION_LOG_GROUP="/aws/lambda/${CALC_LAMBDA_NAME}"
+  elif [[ ${#FUNCTION_LOG_GROUP_JSON} -le 514 && "${FUNCTION_LOG_GROUP_JSON}" =~ ${LOG_GROUP_JSON_PATTERN} ]]; then
+    ARC_FUNCTION_LOG_GROUP="${BASH_REMATCH[1]}"
+  else
+    echo "EXISTING_LOG_GROUP_INVALID" >&2; exit 1
+  fi
+  unset FUNCTION_LOG_GROUP_JSON LOG_GROUP_JSON_PATTERN
+fi
 lambda_retry lambda update-function-code --function-name "${CALC_LAMBDA_NAME}" \
   --zip-file "fileb://${ZIP_PATH}" --region "${AWS_REGION}"
 aws_quiet lambda wait function-updated --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}"
@@ -108,7 +124,7 @@ aws_quiet lambda wait function-updated --function-name "${CALC_LAMBDA_NAME}" --r
 # Null leaves the existing retention untouched; it does not disable expiration.
 # Failed explicitly requested retention is not a successful deployment.
 if [[ -n "${ARC_LOG_RETENTION_DAYS}" ]]; then
-  aws_quiet logs put-retention-policy --log-group-name "/aws/lambda/${CALC_LAMBDA_NAME}" \
+  aws_quiet logs put-retention-policy --log-group-name="${ARC_FUNCTION_LOG_GROUP}" \
     --retention-in-days "${ARC_LOG_RETENTION_DAYS}" --region "${AWS_REGION}"
 fi
 if [[ -n "${ARC_LAMBDA_RESERVED_CONCURRENCY}" ]]; then

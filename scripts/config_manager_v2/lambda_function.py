@@ -14,7 +14,6 @@ import json
 import os
 
 import boto3
-from botocore.exceptions import ClientError
 
 SECRET_PREFIX = os.environ.get("SECRET_PREFIX", "config-manager/arc")
 REGION = os.environ.get("AWS_REGION", "us-east-2")
@@ -53,21 +52,23 @@ def _get_config(config_type: str) -> dict | None:
             pass
 
     secret_name = f"{SECRET_PREFIX}/{config_type}"
-    client = _get_sm_client()
-
     try:
+        client = _get_sm_client()
         response = client.get_secret_value(SecretId=secret_name)
-    except ClientError as e:
-        _log("error", "sm_get_failed", secret_name=secret_name, error=str(e))
+        secret_string = response.get("SecretString", "")
+    except Exception:
+        # Client creation/credential providers and transport failures can raise
+        # beyond ClientError. Preserve the fixed unavailable response without
+        # logging SDK text, configured names, endpoints or exception objects.
+        _log("error", "sm_get_failed", config_type=config_type)
         return None
 
-    secret_string = response.get("SecretString", "")
     _cache[config_type] = secret_string
 
     try:
         return json.loads(secret_string)
     except (json.JSONDecodeError, TypeError):
-        _log("error", "sm_parse_failed", secret_name=secret_name)
+        _log("error", "sm_parse_failed", config_type=config_type)
         return None
 
 
@@ -90,5 +91,14 @@ def _response(status_code: int, body: dict) -> dict:
 
 
 def _log(level: str, message: str, **fields) -> None:
-    payload = {"level": level, "message": message, **fields}
-    print(json.dumps(payload, default=str))
+    try:
+        if level != "error" or message not in {"secret_not_found", "sm_get_failed", "sm_parse_failed"}:
+            return
+        payload = {"level": level, "message": message}
+        config_type = fields.get("config_type")
+        if type(config_type) is str and config_type in VALID_TYPES:
+            payload["config_type"] = config_type
+        print(json.dumps(payload))
+    except Exception:
+        # Logging is optional; cache/lookup and response contracts are not.
+        pass

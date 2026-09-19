@@ -1,4 +1,5 @@
 from calculators.cycle_evaluator import CycleWithScore
+from calculators.action_timeline import timeline_totals
 from config.calculation_config import BaseCalculationConfig
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT
 from config.enums import Actor
@@ -178,7 +179,9 @@ class MetricEvaluator:
         for action in action_with_score_list:
             self._collect_comp_metrics(action)
             self._collect_vent_metrics(action)
-            self._collect_time_metrics(action)
+        elapsed, handsoff = timeline_totals([action.action_data for action in action_with_score_list])
+        self.metric["TotalEventTime"] += elapsed
+        self.metric["TotalHandsOffTime"] += handsoff
 
     def _collect_comp_event_metrics(self, cycle_with_score: CycleWithScore) -> None:
         # depth/recoil 지표는 액션이 아니라 파형 이벤트 판정으로 집계한다

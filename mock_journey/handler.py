@@ -122,9 +122,18 @@ def handle(event, context, service):
         return _handle(event, context, service)
 
 
+def _handle_course_v2(event, context, service):
+    http = getattr(service, "course_http", None)
+    if http is None:
+        raise JourneyError("TEMPORARILY_UNAVAILABLE")
+    return http.dispatch(event)
+
+
 def _handle(event, context, service):
     request_id = getattr(context, "aws_request_id", "local")
     try:
+        if getattr(service, "course_mode", None) == "course_v2":
+            return _handle_course_v2(event, context, service)
         if type(event) is not dict:
             raise JourneyError("INVALID_REQUEST")
         query = event.get("queryStringParameters")
@@ -199,12 +208,14 @@ def _handle(event, context, service):
 
 def run(event, context):
     from mock_journey.runtime import get_application
+    from mock_journey.aws_runtime import invocation
     try:
         service = get_application()
+        with invocation(service, context):
+            return handle(event, context, service)
     except Exception as error:
         write_diagnostic("error", "request_failed", {"exception": error})
         return _response(503, {"error": {
             "code": "TEMPORARILY_UNAVAILABLE", "message": "The service is temporarily unavailable.",
             "request_id": getattr(context, "aws_request_id", "local"),
         }})
-    return handle(event, context, service)

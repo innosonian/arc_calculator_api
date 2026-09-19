@@ -1,8 +1,7 @@
 PACKET_MS = 50
-# 스트림이 하강 전에 끊긴 마지막 환기를 액션으로 인정할 최소 관측 길이(패킷 수).
-# 직전 액션을 확정한 패킷부터 세어 이보다 짧으면 새 호흡이 아니라 직전 호흡의 잔여 흔들림으로 본다.
-# 실데이터에서 잔여 흔들림은 1~8패킷, 잘린 새 호흡은 27패킷 이상으로 갈린다.
-VENT_TAIL_MIN_PACKETS = 15  # 15 * PACKET_MS = 750ms
+# Historical fixture boundary only. The approved detector requires two real
+# confirmation packets and never adds a breath solely because EOF is reached.
+VENT_TAIL_MIN_PACKETS = 15
 HANDSOFF_DEADTIME_MS = 1000  # TODO: action 소요 시간이 handsoff 로 넘어간다는 기준을 정해야함
 
 # lay person 기준, aed shock(no-shock) 이후 cpr 시작 사이에 적용하는 handsoff buffer
@@ -39,6 +38,8 @@ EVENT_ID_END_VENT = 11
 EVENT_ID_START_AED = 20
 EVENT_ID_END_AED = 21
 
+# Historical clamp value retained for legacy imports/fixtures. Active detection
+# uses peak-drop10mL(adult/child) or provisional5mL(infant), without this clamp.
 MINIMUM_VENT_VOLUME = 10
 
 # 압박이 실제로 일어난(신호 있는) 패킷·액션을 판별하는 raw depth 하한.

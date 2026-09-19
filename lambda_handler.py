@@ -1,7 +1,7 @@
 """ARC calculator HTTP API with reference-compatible wire formats.
 
 Compatibility exceptions and verification are tracked in
-docs/ARC_CPR_POLICY_AND_HSTM_COMPARISON_KO.md.
+docs/ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md.
 The legacy document schema is not an ARC submission specification.
 """
 

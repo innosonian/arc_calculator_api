@@ -1,4 +1,5 @@
 from calculators.waveform import COMP_PEAK_AMP, CompressionEvent, count_depth_peaks, drop_tap_events, segment_compressions
+from calculators.action_timeline import timeline_totals
 from config.borders import fall_linear_get_point, rise_linear_get_point, trapezium_get_point, BaseBorder, dart_get_point
 from config.calculation_config import BaseCalculationConfig
 from config.constants import (
@@ -76,10 +77,16 @@ class Cycle:
         self.actor_type = self._get_actor_type()
 
     def handsoff(self) -> int:
-        return sum([a.action_data["handsoff_ms"] for a in self.actions])
+        if any("_elapsed_interval" not in a.action_data for a in self.actions):
+            return sum(a.action_data["handsoff_ms"] for a in self.actions)
+        return timeline_totals([a.action_data for a in self.actions])[1]
 
     def total_action_ms(self) -> int:
-        return sum([a.action_data["total_action_ms"] for a in self.actions])
+        # Historical library callers may supply only the field being queried.
+        # Reading elapsed time must not newly require a hands-off measurement.
+        if any("_elapsed_interval" not in a.action_data for a in self.actions):
+            return sum(a.action_data["total_action_ms"] for a in self.actions)
+        return timeline_totals([a.action_data for a in self.actions])[0]
 
     def get_comp_count(self) -> int:
         return len([1 for a in self.actions if a.action_type == ACTION_TYPE_COMP])

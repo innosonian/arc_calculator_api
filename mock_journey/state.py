@@ -24,6 +24,10 @@ _TEMPLATE_FIELDS = (
     "program_id", "target", "profile_name", "definition_json",
     "resume_nonce", "resume_key_version", "resume_digest",
 )
+_COURSE_BINDING_FIELDS = (
+    "scope_key", "placement_key", "start_role", "definition_hash",
+    "content_version", "epoch", "policy_version",
+)
 _SESSION_FIELDS = (
     "session_id", "principal", "token_hash", "issued_at", "expires_at", "status", "revision",
 )
@@ -31,6 +35,19 @@ _SESSION_FIELDS = (
 
 def _unavailable():
     return JourneyError("TEMPORARILY_UNAVAILABLE")
+
+
+def _optional_course_binding(template):
+    if "course_binding" not in template:
+        return None
+    from mock_journey.course_contracts import CourseBinding
+    value = template["course_binding"]
+    if type(value) is CourseBinding:
+        return {key: getattr(value, key) for key in _COURSE_BINDING_FIELDS}
+    if type(value) is dict and set(value) == set(_COURSE_BINDING_FIELDS):
+        CourseBinding(**{key: value[key] for key in _COURSE_BINDING_FIELDS})
+        return {key: value[key] for key in _COURSE_BINDING_FIELDS}
+    raise _unavailable()
 
 
 class _ReadConflict(Exception):
@@ -169,6 +186,76 @@ class DynamoStateRepository:
             ExpressionAttributeValues=_encode(values),
         )
         return action
+
+    def control_get(self, key):
+        """Public CourseStore read. Python types; missing row is None."""
+        if type(key) is not dict or set(key) != {"PK", "SK"}:
+            raise _unavailable()
+        if any(type(key[name]) is not str or not key[name] for name in ("PK", "SK")):
+            raise _unavailable()
+        return self._get({"PK": key["PK"], "SK": key["SK"]})
+
+    def control_transact(self, actions):
+        """Public CourseStore write. True committed, False condition/conflict."""
+        if type(actions) is not list or not actions:
+            raise _unavailable()
+        return self._write([self._course_control_action(action) for action in actions])
+
+    def _course_control_action(self, action):
+        if type(action) is not dict or action.get("op") not in ("put", "condition_check"):
+            raise _unavailable()
+        if action["op"] == "put":
+            item = action.get("item")
+            if type(item) is not dict or item.get("PK") is None or item.get("SK") is None:
+                raise _unavailable()
+            expression, names, values = self._course_condition(action, item)
+            encoded = {"Put": {"TableName": self.table_name, "Item": _encode(item)}}
+            if expression:
+                encoded["Put"]["ConditionExpression"] = expression
+                if names:
+                    encoded["Put"]["ExpressionAttributeNames"] = names
+                if values:
+                    encoded["Put"]["ExpressionAttributeValues"] = _encode(values)
+            return encoded
+        key = action.get("key")
+        if type(key) is not dict or set(key) != {"PK", "SK"}:
+            raise _unavailable()
+        match = action.get("if_match")
+        if type(match) is not dict or not match:
+            raise _unavailable()
+        expression, names, values = self._field_equals(match, "c")
+        expression = "attribute_exists(#pk) AND " + expression
+        names["#pk"] = "PK"
+        return self._condition({"PK": key["PK"], "SK": key["SK"]}, expression, names, values)
+
+    def _course_condition(self, action, item):
+        if action.get("if_not_exists"):
+            return "attribute_not_exists(#pk)", {"#pk": "PK"}, {}
+        match = action.get("if_match")
+        if match is not None:
+            if type(match) is not dict or not match:
+                raise _unavailable()
+            return self._field_equals(match, "m")
+        missing = action.get("if_missing_or_match")
+        if missing is not None:
+            if type(missing) is not dict or not missing:
+                raise _unavailable()
+            expression, names, values = self._field_equals(missing, "o")
+            names["#pk"] = "PK"
+            return "(attribute_not_exists(#pk) OR (" + expression + "))", names, values
+        return "attribute_not_exists(#pk)", {"#pk": "PK"}, {}
+
+    @staticmethod
+    def _field_equals(expected, prefix):
+        names, values, parts = {}, {}, []
+        for index, (field, value) in enumerate(expected.items()):
+            if type(field) is not str or not field:
+                raise _unavailable()
+            name, token = f"#{prefix}{index}", f":{prefix}{index}"
+            names[name] = field
+            values[token] = value
+            parts.append(f"{name} = {token}")
+        return " AND ".join(parts), names, values
 
     @staticmethod
     def _check_session(session, auth, now, *, allow_revoked=False):
@@ -322,15 +409,26 @@ class DynamoStateRepository:
                 "epoch": user["epoch"], "created_at": now, "state": "created", "revision": 0,
                 "active_counted": True, "evaluation": None, "progress_application": None,
             }
+            binding = _optional_course_binding(template)
+            counted = True
+            if binding is not None:
+                attempt["course_binding"] = binding
+                counted = template.get("active_counted") is True
+                attempt["active_counted"] = counted
+                for field in ("course_id", "enrollment_id", "course_item_link_id"):
+                    if field in template:
+                        attempt[field] = template[field]
             new_user = deepcopy(user)
-            new_user["slots"][slot_key]["open_attempts"] += 1
+            if counted:
+                new_user["slots"][slot_key]["open_attempts"] += 1
             new_user["revision"] += 1
             new_user["updated_at"] = now
             user_action = self._user_action(user, new_user)
-            user_action["Put"]["ConditionExpression"] += " AND #slots.#slot.#completed = :false"
-            user_action["Put"]["ExpressionAttributeNames"].update(
-                {"#slots": "slots", "#slot": slot_key, "#completed": "completed"})
-            user_action["Put"]["ExpressionAttributeValues"].update(_encode({":false": False}))
+            if counted:
+                user_action["Put"]["ConditionExpression"] += " AND #slots.#slot.#completed = :false"
+                user_action["Put"]["ExpressionAttributeNames"].update(
+                    {"#slots": "slots", "#slot": slot_key, "#completed": "completed"})
+                user_action["Put"]["ExpressionAttributeValues"].update(_encode({":false": False}))
             idem = {**idem_key, "request_digest": request_digest, "attempt_id": attempt["attempt_id"]}
             if self._write([self._session_condition(auth, now), user_action, self._put(attempt), self._put(idem)]):
                 return attempt
@@ -393,8 +491,30 @@ class DynamoStateRepository:
                 new_user = deepcopy(user)
                 new_user["slots"][slot_key]["open_attempts"] -= 1
                 new_user.update(revision=user["revision"] + 1, updated_at=now)
-            if self._write([self._session_condition(auth, now), self._attempt_action(attempt, updated),
-                            self._user_action(user, new_user)]):
+            actions = [self._session_condition(auth, now), self._attempt_action(attempt, updated),
+                       self._user_action(user, new_user)]
+            binding = _optional_course_binding(attempt)
+            if (binding is not None and binding["start_role"] == "final_assessment"
+                    and attempt["epoch"] == user["epoch"]):
+                pk = f"COURSE#{binding['scope_key']}"
+                head, final = self._read_only([
+                    {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#HEAD"},
+                    {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#FINAL"},
+                ])
+                if (head is None or final is None or final.get("phase") != "active"
+                        or final.get("active_attempt_id") != attempt_id):
+                    raise _unavailable()
+                for row, changes in ((head, {}), (final, {"phase": "free", "active_attempt_id": None})):
+                    changed = {**row, **changes, "revision": row["revision"] + 1}
+                    expression = "#r = :r AND #e = :e"
+                    names = {"#r": "revision", "#e": "epoch"}
+                    values = {":r": row["revision"], ":e": attempt["epoch"]}
+                    if row is final:
+                        expression += " AND #a = :a AND #p = :p"
+                        names.update({"#a": "active_attempt_id", "#p": "phase"})
+                        values.update({":a": attempt_id, ":p": "active"})
+                    actions.append(self._replace(changed, expression, names, values))
+            if self._write(actions):
                 record_event("attempt_cancelled", attempt_id=attempt_id, reason=reason)
                 return
         raise _unavailable()
@@ -441,3 +561,26 @@ class DynamoStateRepository:
             if self._write([self._session_condition(auth, now), old_condition, attempt_action]):
                 return updated
         raise _unavailable()
+
+
+class DynamoCourseStore:
+    """CourseStore adapter over DynamoStateRepository public control hooks."""
+
+    def __init__(self, state):
+        if type(state) is not DynamoStateRepository:
+            raise ValueError("Invalid course store.")
+        self._state = state
+
+    def get_item(self, key):
+        from mock_journey.course_errors import CourseError
+        try:
+            return self._state.control_get(key)
+        except JourneyError as error:
+            raise CourseError(error.code) from None
+
+    def transact(self, actions):
+        from mock_journey.course_errors import CourseError
+        try:
+            return self._state.control_transact(actions)
+        except JourneyError as error:
+            raise CourseError(error.code) from None

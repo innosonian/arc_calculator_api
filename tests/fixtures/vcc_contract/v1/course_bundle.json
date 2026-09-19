@@ -1,0 +1,566 @@
+{
+  "contract_version": "vcc-internal-v1",
+  "mapping_version": "vcc-fixture-mapping-v1",
+  "catalog_version": "vcc-fixture-catalog-v1",
+  "policy_version": "vcc-policy-v1",
+  "synthetic": true,
+  "source": "synthetic-test-assembly",
+  "note": "Synthetic provider/learner/enrollment. Not an ARC curriculum or operating limit.",
+  "clock": "2026-09-18T00:00:00Z",
+  "units": {
+    "video_duration": "ms",
+    "intervals": "[start,end) half-open ms"
+  },
+  "learners": {
+    "real": {
+      "provider": "fixture",
+      "tenant_id": "tenant-vcc-fixture",
+      "learner_id": 1,
+      "principal": "fixture-learner@example.test",
+      "is_dummy": false
+    },
+    "dummy": {
+      "provider": "fixture",
+      "tenant_id": "tenant-vcc-fixture",
+      "learner_id": "dummy-1",
+      "principal": "test@test.com",
+      "is_dummy": true
+    }
+  },
+  "id_map": {
+    "note": "Public IDs are exact integers. Source IDs keep their original type and are not passed through int().",
+    "course": {
+      "source_id": "src-course-101",
+      "public_id": 101
+    },
+    "enrollments": [
+      {
+        "source_id": "src-enroll-501",
+        "public_id": 501,
+        "progress_id": 601
+      },
+      {
+        "source_id": "src-enroll-502",
+        "public_id": 502,
+        "progress_id": 602
+      }
+    ],
+    "placements": [
+      {
+        "source_id": "src-place-1001",
+        "public_link_id": 1001,
+        "public_item_id": 201
+      },
+      {
+        "source_id": "src-place-1002",
+        "public_link_id": 1002,
+        "public_item_id": 202
+      },
+      {
+        "source_id": "src-place-1003",
+        "public_link_id": 1003,
+        "public_item_id": 203
+      },
+      {
+        "source_id": "src-place-1004",
+        "public_link_id": 1004,
+        "public_item_id": 204
+      },
+      {
+        "source_id": "src-place-1005",
+        "public_link_id": 1005,
+        "public_item_id": 205
+      }
+    ]
+  },
+  "item_type_wire": {
+    "video": {
+      "summary_item_type": "video",
+      "course_item_type": "content",
+      "content_type": "video",
+      "detail_item_type": "content"
+    },
+    "document": {
+      "summary_item_type": "pdf",
+      "course_item_type": "content",
+      "content_type": "pdf",
+      "detail_item_type": "content"
+    },
+    "training": {
+      "summary_item_type": "training",
+      "course_item_type": "training",
+      "content_type": null,
+      "detail_item_type": "training"
+    },
+    "assessment": {
+      "summary_item_type": "assessment",
+      "course_item_type": "assessment",
+      "content_type": null,
+      "detail_item_type": "assessment"
+    }
+  },
+  "learner_key": "080359c81b35bfec5a4be0cdedb01066d5ab930b59a3b931e2ab726a598c6485",
+  "assignments": [
+    {
+      "enrollment_public_id": 501,
+      "progress_id": 601,
+      "course_public_id": 101,
+      "scope": [
+        "fixture",
+        "tenant-vcc-fixture",
+        1,
+        "src-enroll-501",
+        "src-course-101"
+      ],
+      "scope_key": "9effd29b37723ec66bf1f784117462f9ebe0217bf552fc3ef968be6c648b8fb4",
+      "definition_hash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+      "source_revision": "rev-bundle-1"
+    },
+    {
+      "enrollment_public_id": 502,
+      "progress_id": 602,
+      "course_public_id": 101,
+      "scope": [
+        "fixture",
+        "tenant-vcc-fixture",
+        1,
+        "src-enroll-502",
+        "src-course-101"
+      ],
+      "scope_key": "14cb357dfb07e354e2b2173bd7fb9af3ca291886265a28322d2214e087a097e5",
+      "definition_hash": "da1e663229bcdcde015fb6f0980538ad38e15ac1dd9c9c4c1bc9a57c77c569fd",
+      "source_revision": "rev-bundle-1"
+    }
+  ],
+  "course_json": {
+    "courseId": 101,
+    "courseName": "VCC Fixture Course",
+    "certificationType": null,
+    "enrollment_metadata": {
+      "501": {
+        "id": 501,
+        "status": "ENROLLED",
+        "courseTitle": "VCC Fixture Course",
+        "courseId": 101,
+        "loginAt": null,
+        "finishedAt": null,
+        "elapsedSeconds": null,
+        "centerName": null,
+        "enrollStatusCode": null
+      },
+      "502": {
+        "id": 502,
+        "status": "ENROLLED",
+        "courseTitle": "VCC Fixture Course",
+        "courseId": 101,
+        "loginAt": null,
+        "finishedAt": null,
+        "elapsedSeconds": null,
+        "centerName": null,
+        "enrollStatusCode": null
+      }
+    }
+  },
+  "source_progress_json": {
+    "synthetic": true,
+    "progress": null,
+    "note": "No upstream ARC progress in the starting fixture. Do not merge into local evidence."
+  },
+  "placements": [
+    {
+      "source_id": "src-place-1001",
+      "public_link_id": 1001,
+      "public_item_id": 201,
+      "position": 1,
+      "kind": "video",
+      "content_version": "video-v1",
+      "duration_ms": 20000,
+      "execution_status": "absent",
+      "execution": null,
+      "content_identity": {
+        "source_item_id": "src-item-video",
+        "training_program_id": null,
+        "asset_ids": [
+          "src-asset-video"
+        ]
+      },
+      "detail": {
+        "id": 201,
+        "title": "Orientation Video",
+        "itemType": "content",
+        "displayOrder": 1,
+        "courseItemLinkId": 1001,
+        "usage": "OWNED",
+        "logicalId": "70000000-0000-4000-8000-000000000001",
+        "description": null,
+        "detail": {
+          "id": 301,
+          "fileName": "orientation.mp4",
+          "order": 1,
+          "url": "https://fixture.invalid/video/orientation.mp4?sig=display-only",
+          "contentUrl": "https://fixture.invalid/video/orientation-content.mp4"
+        }
+      },
+      "title": "Orientation Video",
+      "iconType": "video",
+      "logical_id": "70000000-0000-4000-8000-000000000001"
+    },
+    {
+      "source_id": "src-place-1002",
+      "public_link_id": 1002,
+      "public_item_id": 202,
+      "position": 2,
+      "kind": "document",
+      "content_version": "document-v1",
+      "duration_ms": null,
+      "execution_status": "absent",
+      "execution": null,
+      "content_identity": {
+        "source_item_id": "src-item-document",
+        "training_program_id": null,
+        "asset_ids": [
+          "src-asset-pdf"
+        ]
+      },
+      "detail": {
+        "id": 202,
+        "title": "Safety Document",
+        "itemType": "content",
+        "displayOrder": 2,
+        "courseItemLinkId": 1002,
+        "usage": "OWNED",
+        "logicalId": "71000000-0000-4000-8000-000000000001",
+        "description": null,
+        "detail": {
+          "id": 302,
+          "fileName": "safety.pdf",
+          "order": 1,
+          "url": "https://fixture.invalid/docs/safety.pdf?sig=display-only",
+          "contentUrl": "https://fixture.invalid/docs/safety-content.pdf"
+        }
+      },
+      "title": "Safety Document",
+      "iconType": "pdf",
+      "logical_id": "71000000-0000-4000-8000-000000000001"
+    },
+    {
+      "source_id": "src-place-1003",
+      "public_link_id": 1003,
+      "public_item_id": 203,
+      "position": 3,
+      "kind": "training",
+      "content_version": "training-v1",
+      "duration_ms": null,
+      "execution_status": "ready",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "compression_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "compressions",
+          "required": 60
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      },
+      "content_identity": {
+        "source_item_id": "src-item-training-only",
+        "training_program_id": "src-tp-compression-only",
+        "asset_ids": []
+      },
+      "detail": {
+        "id": 203,
+        "title": "Compression Practice A",
+        "itemType": "training",
+        "displayOrder": 3,
+        "courseItemLinkId": 1003,
+        "usage": "OWNED",
+        "logicalId": "72000000-0000-4000-8000-000000000001",
+        "description": null,
+        "detail": {
+          "id": 401,
+          "title": "Chest Compression Only",
+          "trainingType": "chest compression only",
+          "feedbackType": "standard",
+          "trainingMode": "practice",
+          "training": {
+            "manikinType": "adult",
+            "duration": null,
+            "compressionLimit": null,
+            "ventilationLimit": null,
+            "cycleLimit": null,
+            "compressionVentilationRatio": null,
+            "aed": null,
+            "cprGuideline": null,
+            "twoRescuers": null
+          },
+          "assessment": {
+            "passThreshold": {
+              "cpr": null,
+              "aed": null
+            }
+          },
+          "content": []
+        }
+      },
+      "title": "Compression Practice A",
+      "iconType": "training",
+      "logical_id": "72000000-0000-4000-8000-000000000001"
+    },
+    {
+      "source_id": "src-place-1004",
+      "public_link_id": 1004,
+      "public_item_id": 204,
+      "position": 4,
+      "kind": "training",
+      "content_version": "training-v1",
+      "duration_ms": null,
+      "execution_status": "ready",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "compression_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "compressions",
+          "required": 60
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      },
+      "content_identity": {
+        "source_item_id": "src-item-training-only",
+        "training_program_id": "src-tp-compression-only",
+        "asset_ids": []
+      },
+      "detail": {
+        "id": 204,
+        "title": "Compression Practice B",
+        "itemType": "training",
+        "displayOrder": 4,
+        "courseItemLinkId": 1004,
+        "usage": "OWNED",
+        "logicalId": "73000000-0000-4000-8000-000000000001",
+        "description": null,
+        "detail": {
+          "id": 401,
+          "title": "Chest Compression Only",
+          "trainingType": "chest compression only",
+          "feedbackType": "standard",
+          "trainingMode": "practice",
+          "training": {
+            "manikinType": "adult",
+            "duration": null,
+            "compressionLimit": null,
+            "ventilationLimit": null,
+            "cycleLimit": null,
+            "compressionVentilationRatio": null,
+            "aed": null,
+            "cprGuideline": null,
+            "twoRescuers": null
+          },
+          "assessment": {
+            "passThreshold": {
+              "cpr": null,
+              "aed": null
+            }
+          },
+          "content": []
+        }
+      },
+      "title": "Compression Practice B",
+      "iconType": "training",
+      "logical_id": "73000000-0000-4000-8000-000000000001"
+    },
+    {
+      "source_id": "src-place-1005",
+      "public_link_id": 1005,
+      "public_item_id": 205,
+      "position": 5,
+      "kind": "assessment",
+      "content_version": "assessment-v1",
+      "duration_ms": null,
+      "execution_status": "ready",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "ventilation_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "ventilations",
+          "required": 8
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      },
+      "content_identity": {
+        "source_item_id": "src-item-assessment",
+        "training_program_id": "src-tp-ventilation-assessment",
+        "asset_ids": []
+      },
+      "detail": {
+        "id": 205,
+        "title": "Final Ventilation Assessment",
+        "itemType": "assessment",
+        "displayOrder": 5,
+        "courseItemLinkId": 1005,
+        "usage": "OWNED",
+        "logicalId": "74000000-0000-4000-8000-000000000001",
+        "description": null,
+        "detail": {
+          "id": 402,
+          "title": "Ventilation Only",
+          "trainingType": "ventilation only",
+          "feedbackType": "standard",
+          "trainingMode": "practice",
+          "training": {
+            "manikinType": "adult",
+            "duration": null,
+            "compressionLimit": null,
+            "ventilationLimit": null,
+            "cycleLimit": null,
+            "compressionVentilationRatio": null,
+            "aed": null,
+            "cprGuideline": null,
+            "twoRescuers": null
+          },
+          "assessment": {
+            "passThreshold": {
+              "cpr": null,
+              "aed": null
+            }
+          },
+          "content": []
+        }
+      },
+      "title": "Final Ventilation Assessment",
+      "iconType": "assessment",
+      "logical_id": "74000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "starting_progress": {
+    "501": {
+      "course_status": "NOT_STARTED",
+      "completed_placements": [],
+      "passed_final": false
+    },
+    "502": {
+      "course_status": "NOT_STARTED",
+      "completed_placements": [],
+      "passed_final": false
+    }
+  },
+  "completion_expectations": {
+    "video_1001": {
+      "duration_ms": 20000,
+      "complete_intervals": [
+        [
+          0,
+          10000
+        ],
+        [
+          10000,
+          20000
+        ]
+      ],
+      "not_complete": {
+        "repeat_same_segment": [
+          [
+            0,
+            10000
+          ],
+          [
+            0,
+            10000
+          ]
+        ],
+        "one_millisecond_gap": [
+          [
+            0,
+            10000
+          ],
+          [
+            10001,
+            20000
+          ]
+        ],
+        "end_position_only": [
+          [
+            19999,
+            20000
+          ]
+        ],
+        "claimed_shorter_duration": "app-claimed duration is not used"
+      },
+      "button_not_required": true
+    },
+    "document_1002": {
+      "requires": [
+        "document_displayed",
+        "document_confirmed referencing that display report"
+      ],
+      "confirm_first": "application=pending_evidence, isCompleted=false until display exists"
+    },
+    "training_isolation": {
+      "complete_1003_does_not_complete_1004": true,
+      "complete_501_does_not_complete_502": true,
+      "same_program_source": "src-tp-compression-only"
+    },
+    "last_assessment": {
+      "placement": 1005,
+      "requires_all_prior_complete": true,
+      "single_active": true,
+      "fail_unlimited": true,
+      "pass_no_retry": true
+    }
+  },
+  "transaction_action_budgets": {
+    "note": "T4 write-set sizes used by W2. All must be <= max_transaction_actions=20.",
+    "begin_inventory": 1,
+    "apply_inventory": 1,
+    "ensure_epoch": 2,
+    "begin_refresh": 1,
+    "apply_refresh": 1,
+    "start_content": 4,
+    "start_attempt": 4,
+    "start_final_attempt": 5,
+    "content_report": 4,
+    "finalize": 7,
+    "cancel_before_accept": 3,
+    "reauthorize": 1,
+    "close_terminal": 5
+  },
+  "settings": {
+    "max_course_items": 64,
+    "max_assignments": 100,
+    "max_bundle_bytes": 262144,
+    "max_control_body_bytes": 16384,
+    "max_intervals_per_report": 128,
+    "max_merged_intervals_per_start": 512,
+    "max_reports_per_start": 4096,
+    "max_transaction_actions": 20,
+    "max_conflict_retries": 4
+  }
+}

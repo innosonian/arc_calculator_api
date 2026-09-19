@@ -1,27 +1,13 @@
-# 원본: hstm_v2 tests/test_action_boundary.py (ARC 각색 이식 — guideline ARC2020, 게이트 서술을
-# ARC 환경에서 실행. 검출 로직·기대값은 원본 그대로)
-"""훈련 종류상 버려질 액션이 반대편 액션을 삼키지 않는지 고정한다.
+"""Historical boundary inputs under the decisions in docs/DECISIONS.md D38-D43.
 
-예전 generate_action_rtdata_list는 comp/vent를 항상 둘 다 검출한 뒤 append 직전에만
-_is_valid_action으로 걸렀다. 그래서 버려질 액션이 검출되는 순간에도 그 패킷이 액션 경계로
-소비되어 buffer와 last_vent_vol을 리셋했고, 남아야 할 반대편 액션이 1회 증발했다.
-
-CPR 최소량 null 정책의 경계에서는 액션 1회 손실로 점수 산출 여부가 바뀔 수 있다.
-현재 경계는 성인·소아 압박 90회, 영아 압박 45회, 공통 호흡 6회이다.
-아래 전용 훈련의 60/12 샘플은 기존 검출 회귀 입력이며, CPR 정책의 기준값을 뜻하지 않는다.
-
-여기서 고정하는 것은 '가능한 손실 경로'다. 원본 저장소의 실캡처 8건 전부에서 트리거
-(압박 전이와 환기 하강이 같은 50ms 패킷에 정렬)는 0회 관측됐고, 이 수정은 모든
-실데이터에서 no-op이다(카운트·점수·경과시간 전 항목 동일).
-
-[이식 주의] 원본 테스트 파일은 원본 저장소에서 untracked(미커밋) 상태였고, 검출 게이팅
-수정 4건은 원본 프로덕션 코드에 구현돼 있지 않다(원본 스위트에서도 동일 4건 red 확인).
-스펙 §0(기능 동등 기본, §4·§5 외 변경 금지)에 따라 arc는 원본 코드 동작을 그대로
-이식하므로, 해당 4건은 expectedFailure로 표시해 계약 문서로만 보존한다.
-스펙 승인으로 게이팅 수정이 이식되면 unexpected success로 표면화된다.
+The four formerly expected failures retain their original names and bytes.
+Their old expected/observed counts were F1 12/11, F2 60/59, F3 60/61 and
+F4 12/11. Independent detection, first-packet baseline and two peak-relative
+confirmations now justify the ordinary assertions below. The twelve-breath
+fixture is not the product's eight-breath goal. Historical app/recording
+statistics are not evidence from the current repository or this test run.
 """
 
-import unittest
 from unittest import TestCase
 
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT
@@ -77,17 +63,11 @@ def _breaths(count: int, comp_count_at: dict[tuple[int, int], int] | None = None
 
 
 class TestVentilationOnlyIgnoresCompressionCount(TestCase):
-    """ventilation_only에서 Ccnt 변화가 진행 중인 호흡을 삼키면 안 된다.
-
-    앱은 ventilation_only에서 Ccnt를 아예 읽지 않고 볼륨 파형만 본다
-    (OneRescuerRealtimeEngine.shouldProcessCompression). 계산기도 같아야 한다 —
-    가슴에 손이 스쳐 Ccnt가 한 번 올라갔다고 실제 호흡 12회가 11회로 기록되면 안 된다.
-    """
+    """D38: counter changes cannot cancel a pending ventilation."""
 
     def test_twelve_breaths_count_twelve(self):
         self.assertEqual((0, 12), _count_actions(_breaths(12), "ventilation_only"))
 
-    @unittest.expectedFailure  # 원본 미구현(미커밋 수정) — 모듈 docstring [이식 주의] 참조
     def test_compression_count_change_mid_breath_does_not_swallow_it(self):
         # 8번째 호흡의 피크 패킷에서 Ccnt 0→1 (가슴 접촉). 수정 전에는 vent가 11로 떨어졌다.
         packets = _breaths(12, comp_count_at={(7, 3): 1})
@@ -118,7 +98,6 @@ class TestCompressionOnlyIgnoresVentilationVolume(TestCase):
     def test_sixty_compressions_count_sixty(self):
         self.assertEqual((60, 0), _count_actions(self._compressions(60), "compression_only"))
 
-    @unittest.expectedFailure  # 원본 미구현(미커밋 수정) — 모듈 docstring [이식 주의] 참조
     def test_ventilation_noise_does_not_swallow_a_compression(self):
         # 30번째 압박 패킷에 raw 1바이트(=10mL)의 환기 노이즈. 직전 패킷 대비 하강 + min<10 성립.
         packets = [_packet(0, (0, 0), 0), _packet(0, (1, 1), 50)]
@@ -129,11 +108,7 @@ class TestCompressionOnlyIgnoresVentilationVolume(TestCase):
 
 
 class TestCompressionSeedIsFirstPacket(TestCase):
-    """압박 카운트는 '업로드 파일 첫 패킷의 Ccnt' 기준 증분이다 — 파일에 없는 압박은 세지 않는다.
-
-    앱이 0을 기준으로 삼아 파일에 없는 압박 1회를 크레딧하던 결함(iOS 2026-08-26 수정)의
-    반대편 계약을 고정한다. 두 시드가 어긋나면 앱 60 / 계산기 59로 갈려 정책 경계가 선다.
-    """
+    """D41: the app includes a baseline packet; earlier events are not inferred."""
 
     def _from_ccnt(self, start: int, compressions: int) -> list[bytes]:
         packets = [_packet(start, (0, 0), 0)]
@@ -144,7 +119,6 @@ class TestCompressionSeedIsFirstPacket(TestCase):
     def test_counts_increments_after_first_packet(self):
         self.assertEqual((60, 0), _count_actions(self._from_ccnt(0, 60), "compression_only"))
 
-    @unittest.expectedFailure  # 원본 미구현(미커밋 수정) — 모듈 docstring [이식 주의] 참조
     def test_pre_session_compression_is_not_credited(self):
         # 세션이 열리기 전(RT 전송 시작~세션 개시 사이)에 이미 1회 압박해 Ccnt=1로 시작한 경우.
         # 그 압박의 파형은 파일에 없으므로 세면 안 된다 — 60회를 더 해야 60이다.
@@ -152,7 +126,7 @@ class TestCompressionSeedIsFirstPacket(TestCase):
 
 
 class TestCprCountsBothActionTypes(TestCase):
-    """cpr에서는 두 종류 다 유효하므로 검출 게이팅이 아무것도 바꾸지 않는다(무회귀)."""
+    """D38 applies to CPR as well as the single-skill modes."""
 
     def test_cpr_counts_compressions_and_ventilations(self):
         packets = [_packet(0, (0, 0), 0)]
@@ -170,18 +144,15 @@ class TestCprCountsBothActionTypes(TestCase):
         self.assertEqual(4, vent)
 
 
-# EOF에서 아직 하강 중인 마지막 호흡: 상승 후 볼륨이 10 미만으로 내려오지 못한 채 파일이 끝난다.
+# EOF의 마지막 두 패킷이 각각 최고량보다 충분히 낮다. 0 도달 여부와 무관하게 확정된다.
 SLOW_TAIL_BREATH = [(0, 0), (10, 12), (30, 35), (50, 52), (48, 50), (44, 46)]
 
 
 class TestTrailingBreathFlushVentOnly(TestCase):
-    """EOF에서 하강 중인 마지막 호흡을 세는지 고정한다 (ventilation_only 한정).
+    """The historical tail is confirmed normally; D42 adds no EOF inference.
 
-    앱은 피크에서 30mL 떨어진 순간 호흡을 세고 0.35초 뒤 녹화를 끊지만, 폐가 수 초에 걸쳐
-    수축하는 마네킹은 그 안에 볼륨<10에 도달하지 못한다(실측 2.1~2.6초). 원본 저장소의
-    실세션 replay에서 vent-only 128건 중 60건이 이 경로로 11회로 세어져 있었고 전부
-    '12회 미만' 오판 가능 케이스였다. 플러시 후 12→13 전이는 2건뿐이며(EOF 잔여 440mL =
-    실제 호흡) 관대한 방향이라 안전하다.
+    Its packet maxima are raw52→50→46, or520→500→460mL. Both final
+    packets are at least10mL below the same peak, independent of file length.
     """
 
     def _with_slow_tail(self, full_breaths: int) -> list[bytes]:
@@ -196,23 +167,23 @@ class TestTrailingBreathFlushVentOnly(TestCase):
             timestamp += 50
         return packets
 
-    @unittest.expectedFailure  # 원본 미구현(미커밋 수정) — 모듈 docstring [이식 주의] 참조
     def test_trailing_breath_still_descending_at_eof_is_counted(self):
         # 완결 호흡 11 + 하강 중 호흡 1 → 12. 수정 전에는 11로 세어져 정책 경계가 섰다.
         self.assertEqual((0, 12), _count_actions(self._with_slow_tail(11), "ventilation_only"))
 
     def test_fully_deflated_last_breath_is_not_double_counted(self):
-        # BREATH_SHAPE는 0으로 스냅해 끝난다 → last_vent_vol == 0 → 플러시 없음. 12는 12.
+        # Two zero packets confirm each breath once; EOF never adds another.
         self.assertEqual((0, 12), _count_actions(_breaths(12), "ventilation_only"))
 
     def test_trailing_noise_below_minimum_is_not_flushed(self):
-        # EOF 잔여가 임계(10mL=raw 1) 미만이면 호흡 진행으로 보지 않는다.
+        # A later zero packet does not create a new candidate.
         packets = _breaths(12) + [_packet(0, (0, 0), 99000)]
         self.assertEqual((0, 12), _count_actions(packets, "ventilation_only"))
 
-    def test_flush_is_scoped_to_ventilation_only(self):
-        # cpr에서는 플러시하지 않는다(사이클·채점 영향을 차단).
-        self.assertEqual(11, _count_actions(self._with_slow_tail(11), "cpr")[1])
+    def test_same_confirmed_tail_is_counted_in_cpr(self):
+        # D38/D39: the former11 expectation only reflected the old detector.
+        # This input already has two confirmations, so this is not EOF recovery.
+        self.assertEqual(12, _count_actions(self._with_slow_tail(11), "cpr")[1])
 
     def test_compression_only_never_flushes_vent(self):
         # cco에서 환기 검출 자체가 꺼져 있으므로(EOF 노이즈 포함) 플러시도 없다.

@@ -223,6 +223,31 @@ class JourneyStorage:
     def planned_calculation(self, binding):
         return self._artifact(binding, "calculation")
 
+    def put_course_blob(self, body):
+        """Persist an immutable private course snapshot using existing storage limits."""
+        if type(body) is not bytes or len(body) > self.artifact_limit:
+            raise _invalid()
+        checksum = _hash(body)
+        planned = self._planned(self.prefix + "_course/" + checksum + ".json")
+        binding = {"kind": "course-blob-v1", "sha256": checksum}
+        existing = self._read(planned, complete=False, binding=binding, optional=True)
+        if existing is not None:
+            if existing != body:
+                raise _invalid()
+        else:
+            self._put(planned, body, binding)
+        return checksum
+
+    def get_course_blob(self, checksum):
+        if type(checksum) is not str or not _SHA.fullmatch(checksum):
+            raise _invalid()
+        planned = self._planned(self.prefix + "_course/" + checksum + ".json")
+        body = self._read(planned, complete=False,
+                          binding={"kind": "course-blob-v1", "sha256": checksum}, optional=True)
+        if body is not None and _hash(body) != checksum:
+            raise _invalid()
+        return body
+
     def save_calculation(self, planned_ref, raw_bytes, binding):
         self._binding(binding, call=True)
         self._call_ref(planned_ref, binding, "calculation", complete=False)

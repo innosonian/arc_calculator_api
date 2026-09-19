@@ -1,7 +1,8 @@
 """Approved training definitions shared by explicit runtime composition.
 
 No clients, operating limits, credentials, or runtime activation live here.
-Version strings intentionally remain unchanged for already accepted jobs.
+New definitions select the current detector. Already accepted definitions are
+immutable in storage; retained candidates keep their original version.
 """
 
 PROJECTION_VERSION = "arc-local-projection-v1"
@@ -30,4 +31,3 @@ def execution_catalog():
     # Existing response/document projection remains strict. No new arbitrary
     # metric fields, completion formula, partner events or AED timing is added.
     return ExecutionCatalog(definitions, {PROJECTION_VERSION: ProjectionSchema(PROJECTION_VERSION, {})})
-

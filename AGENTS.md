@@ -8,7 +8,7 @@
 2. `docs/DECISIONS.md`: 유지해야 할 결정, 정정된 과거 방침, 미정 질문.
 3. 변경 대상에 맞는 `docs/ARCHITECTURE.md`, `docs/ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md`, `docs/LOCAL_RUN.md`, `docs/DEPLOY_GUIDE.md`, `docs/VALIDATION.md`.
 
-앱팀용 요약은 `docs/APP_API.md`다. 요약에서 생략한 사항은 상세 API 계약을 확인한다. 코드와 결정이 다르면 차이를 보고하고, 정책을 임의로 코드에 맞추지 않는다.
+앱팀용 요청·응답 명세는 `docs/APP_API.md` 한 곳에 Markdown으로 유지한다. 계산 파서·계산 JSON과 기존 API는 상세 API 계약을 확인한다. 코드와 결정이 다르면 차이를 보고하고, 정책을 임의로 코드에 맞추지 않는다.
 
 ## 보존할 경계
 
@@ -25,8 +25,8 @@
 ## 문서를 다시 늘리지 않는 방법
 
 - 핵심 Markdown 9개를 갱신한다. 새 단계별 계획·개인 리뷰·CTO 리뷰 파일을 계속 추가하지 않는다. 결과는 검증 요약에 모으고 결정은 결정 문서 한 곳에 반영한다.
-- 상세 실행 기록·JSON·patch·원본 사본은 `.documentation-backup/` 아래에 보관한다. 이 경로는 Git 제외 대상이며 배포 산출물에도 넣지 않는다.
-- 로컬 원본은 역사 자료다. 현재 지침의 기본 출처로 읽거나 옛 결정을 복원하는 근거로 삼지 않는다. 출처 확인이 필요할 때만 파일 목록·해시로 찾아 읽는다.
+- 2026-09-18 정리 지시에 따라 과거 작업 사본·진행 기록·중복 문서를 제거했다. 최신 결과는 검증 요약에 남긴다. 필요한 임시 실행 증거만 `.documentation-backup/` 등에 두고 작업 종료 시 불필요한 기록을 정리하며 Git·배포물에 넣지 않는다.
+- 2026-09-19 사용자 지시에 따라 앱 전달 계약은 YAML 대신 `docs/APP_API.md`에 유지한다. API를 변경하면 코드와 Markdown의 경로·필수값·자료형·null·요청/응답 예시를 함께 갱신한다.
 - 코드/테스트가 읽는 계약·배포 파일과 회귀 fixture는 개발 진행 기록과 구별한다. `docs/local_server/DYNAMODB_DISTRIBUTION_MANIFEST.json`, `docs/implementation_execution/P4C_ROUTE_ROLE_MANIFEST.json`, `tests/fixtures/`, `tests/dataset/`의 필요한 자료를 기록물이라는 이유로 제외하지 않는다.
 - DB 저장 대상은 앱의 훈련 진도·결과·운용 로그다. N03~N06에 따라 기존 DB 참조+비공개 파일 구조, 주요/정제된 상세 진단, 로그 장애와 훈련의 분리, 기간 확정 전 자동 삭제 없음을 유지한다. 개발 기록 JSON·patch를 DB 적재 대상으로 바꾸지 않는다. 로컬 기록기 구현을 AWS 로그 전달 완료로 해석하지 않는다.
 

@@ -1,0 +1,2565 @@
+{
+  "contract_version": "vcc-internal-v1",
+  "synthetic": true,
+  "clock": "2026-09-18T00:00:00Z",
+  "definition_hash_501": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+  "definition_hash_502": "da1e663229bcdcde015fb6f0980538ad38e15ac1dd9c9c4c1bc9a57c77c569fd",
+  "envelope": {
+    "success": {
+      "success": true,
+      "data": "<D2>",
+      "message": "OK",
+      "timestamp": "<Utc>"
+    },
+    "error": {
+      "success": false,
+      "error": {
+        "code": "<code>",
+        "message": "<fixed-en>",
+        "details": null
+      },
+      "timestamp": "<Utc>"
+    },
+    "no_content": {
+      "http": 204,
+      "body": ""
+    }
+  },
+  "digest_exclusions": [
+    "accessToken",
+    "expiresAt",
+    "resumeCredential",
+    "timestamp",
+    "url"
+  ],
+  "trailing_slash": "required; other slash is 404 without redirect",
+  "auth": "Bearer opaque token except login",
+  "json_rules": [
+    "application/json UTF-8",
+    "duplicate keys rejected",
+    "NaN/Infinity rejected",
+    "unknown keys rejected",
+    "required missing rejected",
+    "null on non-nullable rejected",
+    "bool/string are not Ids"
+  ],
+  "query_rules": [
+    "allowlist only",
+    "duplicate/multi/empty rejected",
+    "page/pageSize/enrollmentId are query strings of positive decimal integers"
+  ],
+  "item_type_wire": {
+    "video": {
+      "summary_item_type": "video",
+      "course_item_type": "content",
+      "content_type": "video",
+      "detail_item_type": "content"
+    },
+    "document": {
+      "summary_item_type": "pdf",
+      "course_item_type": "content",
+      "content_type": "pdf",
+      "detail_item_type": "content"
+    },
+    "training": {
+      "summary_item_type": "training",
+      "course_item_type": "training",
+      "content_type": null,
+      "detail_item_type": "training"
+    },
+    "assessment": {
+      "summary_item_type": "assessment",
+      "course_item_type": "assessment",
+      "content_type": null,
+      "detail_item_type": "assessment"
+    }
+  },
+  "cancel_reason_map": {
+    "user_cancelled": "user_stopped",
+    "connection_lost": "manikin_disconnected"
+  },
+  "availability": {
+    "ready_empty_assignments": {
+      "state": "ready",
+      "reason": null
+    },
+    "waiting_progress": {
+      "state": "waiting",
+      "reason": "arc_progress_unavailable"
+    },
+    "waiting_contract": {
+      "state": "waiting",
+      "reason": "contract_pending"
+    },
+    "reconciliation": {
+      "state": "reconciliation_required",
+      "reason": "progress_reconciliation_required"
+    },
+    "aggregate": "inventory not ready wins; else any reconciliation_required; else any waiting; else ready"
+  },
+  "submit_arc": {
+    "disabled": {
+      "status": "disabled",
+      "ok": false,
+      "error": "arc_contract_pending",
+      "exclusionReasons": []
+    },
+    "excluded_dummy": {
+      "status": "excluded",
+      "ok": false,
+      "error": null,
+      "exclusionReasons": [
+        "dummy"
+      ]
+    },
+    "excluded_non_arc": {
+      "status": "excluded",
+      "ok": false,
+      "error": null,
+      "exclusionReasons": [
+        "non_arc_guideline"
+      ]
+    },
+    "excluded_reset": {
+      "status": "excluded",
+      "ok": false,
+      "error": null,
+      "exclusionReasons": [
+        "progress_reset_before_result"
+      ]
+    },
+    "priority_display_order": [
+      "dummy",
+      "non_arc_guideline",
+      "progress_reset_before_result"
+    ],
+    "launch_statuses_only": [
+      "disabled",
+      "excluded"
+    ],
+    "no_ok_true": true,
+    "no_receipt": true
+  },
+  "legacy_attempt": {
+    "null_fields": [
+      "courseId",
+      "enrollmentId",
+      "courseItemLinkId",
+      "definitionHash",
+      "role"
+    ],
+    "condition_still_present": true,
+    "new_attempt_nulls_forbidden": true
+  },
+  "historical_only_nulls": [
+    "isCompleted",
+    "isPassed",
+    "courseStatus"
+  ],
+  "undetermined": {
+    "goal_pending_policy": "calculation 200 with evaluation.goal.status=pending_policy",
+    "no_fake_fail": true,
+    "no_fake_pass": true,
+    "no_transmission_success": true
+  },
+  "idempotency": {
+    "same_session_same_id_same_body": "return stored data; HTTP 200 on replay after first 201",
+    "same_id_different_body": "409 IDEMPOTENCY_CONFLICT",
+    "other_session_same_id": "separate request; do not share starts or results",
+    "progress_same_digest": "return stored receipt, even if later reports completed the item"
+  },
+  "c3_c4_required_fields": {
+    "course_list_row": [
+      "courseId",
+      "courseName",
+      "status",
+      "summary",
+      "certificationType",
+      "enrollmentId",
+      "progressId",
+      "learningAvailability"
+    ],
+    "course_item": [
+      "id",
+      "courseItemLinkId",
+      "step",
+      "title",
+      "iconType",
+      "itemType",
+      "contentType",
+      "description",
+      "isCompleted",
+      "isPassed"
+    ],
+    "enrollment": [
+      "id",
+      "status",
+      "courseTitle",
+      "courseId",
+      "loginAt",
+      "finishedAt",
+      "elapsedSeconds",
+      "centerName",
+      "enrollStatusCode"
+    ],
+    "item_detail_outer": [
+      "id",
+      "title",
+      "itemType",
+      "displayOrder",
+      "courseItemLinkId",
+      "usage",
+      "logicalId",
+      "description",
+      "detail"
+    ]
+  },
+  "fixed_errors": {
+    "METHOD_NOT_ALLOWED": {
+      "http": 405,
+      "message": "Method not allowed."
+    },
+    "NOT_FOUND": {
+      "http": 404,
+      "message": "Not found."
+    },
+    "INVALID_REQUEST": {
+      "http": 400,
+      "message": "Invalid request."
+    },
+    "LOGIN_FAILED": {
+      "http": 401,
+      "message": "Login failed."
+    },
+    "SESSION_REQUIRED": {
+      "http": 401,
+      "message": "A valid session is required."
+    },
+    "CONTRACT_PENDING": {
+      "http": 503,
+      "message": "The integration contract is not available."
+    },
+    "UPSTREAM_CONTRACT_MISMATCH": {
+      "http": 503,
+      "message": "The upstream data contract is not verified."
+    },
+    "ARC_PROGRESS_UNAVAILABLE": {
+      "http": 503,
+      "message": "Learning is waiting for ARC progress."
+    },
+    "PROGRESS_RECONCILIATION_REQUIRED": {
+      "http": 409,
+      "message": "Progress reconciliation is required."
+    },
+    "DEFINITION_CHANGED": {
+      "http": 409,
+      "message": "The course definition has changed."
+    },
+    "EXECUTION_DEFINITION_MISSING": {
+      "http": 409,
+      "message": "The execution definition is missing."
+    },
+    "EXECUTION_DEFINITION_UNSUPPORTED": {
+      "http": 422,
+      "message": "The execution definition is not supported."
+    },
+    "ITEM_ALREADY_COMPLETED": {
+      "http": 409,
+      "message": "The learning item is already completed."
+    },
+    "PREREQUISITES_NOT_COMPLETED": {
+      "http": 409,
+      "message": "Prerequisite items are not completed."
+    },
+    "FINAL_ASSESSMENT_ACTIVE": {
+      "http": 409,
+      "message": "A final assessment is already active."
+    },
+    "FINAL_ASSESSMENT_RECOVERY_REQUIRED": {
+      "http": 409,
+      "message": "The final assessment requires recovery."
+    },
+    "COMPLETION_POLICY_PENDING": {
+      "http": 409,
+      "message": "The completion policy is not available."
+    },
+    "ASSESSMENT_ALREADY_PASSED": {
+      "http": 409,
+      "message": "The final assessment has already passed."
+    },
+    "PROGRESS_CAPACITY_EXCEEDED": {
+      "http": 413,
+      "message": "The progress evidence limit is exceeded."
+    },
+    "CONTENT_VERSION_MISMATCH": {
+      "http": 409,
+      "message": "The content version does not match the learning start."
+    },
+    "IDEMPOTENCY_CONFLICT": {
+      "http": 409,
+      "message": "The request identifier has different input."
+    },
+    "INVALID_STATE": {
+      "http": 409,
+      "message": "The operation is not allowed in this state."
+    },
+    "PAYLOAD_TOO_LARGE": {
+      "http": 413,
+      "message": "The request exceeds the verified payload limit."
+    },
+    "TEMPORARILY_UNAVAILABLE": {
+      "http": 503,
+      "message": "The service is temporarily unavailable."
+    },
+    "CALCULATION_OUTCOME_UNKNOWN": {
+      "http": 503,
+      "message": "The calculator outcome is unknown."
+    }
+  },
+  "routes": [
+    {
+      "id": "login",
+      "method": "POST",
+      "path": "/api/v2/sessions/",
+      "auth": false,
+      "query": [],
+      "body": {
+        "required": [
+          "loginId",
+          "password"
+        ],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "dummy_login_waiting_progress",
+          "http": 201,
+          "request": {
+            "loginId": "test@test.com",
+            "password": "2222"
+          },
+          "data": {
+            "sessionId": "60000000-0000-4000-8000-000000000001",
+            "expiresAt": "2026-09-19T00:00:00Z",
+            "learningAvailability": {
+              "state": "waiting",
+              "reason": "arc_progress_unavailable"
+            },
+            "accessToken": "<session-token>",
+            "tokenType": "Bearer"
+          },
+          "note": "Session succeeds. Availability waiting. Token only here."
+        }
+      ],
+      "errors": [
+        {
+          "id": "missing_slash",
+          "path": "/api/v2/sessions",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "wrong_method_get",
+          "method": "GET",
+          "expect": {
+            "http": 405,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "METHOD_NOT_ALLOWED",
+                "message": "Method not allowed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "unknown_key",
+          "request": {
+            "loginId": "test@test.com",
+            "password": "2222",
+            "extra": true
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "null_password",
+          "request": {
+            "loginId": "test@test.com",
+            "password": null
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "missing_loginId",
+          "request": {
+            "password": "2222"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "login_failed",
+          "request": {
+            "loginId": "test@test.com",
+            "password": "0000"
+          },
+          "expect": {
+            "http": 401,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "LOGIN_FAILED",
+                "message": "Login failed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "real_student_contract_pending",
+          "request": {
+            "loginId": "student@example.test",
+            "password": "unused"
+          },
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "CONTRACT_PENDING",
+                "message": "The integration contract is not available.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "method": "GET",
+      "path": "/api/v2/session/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "current_session",
+          "http": 200,
+          "data": {
+            "sessionId": "60000000-0000-4000-8000-000000000001",
+            "expiresAt": "2026-09-19T00:00:00Z",
+            "learningAvailability": {
+              "state": "ready",
+              "reason": null
+            }
+          },
+          "forbidden_fields": [
+            "accessToken",
+            "resumeCredential"
+          ]
+        }
+      ],
+      "errors": [
+        {
+          "id": "missing_slash",
+          "path": "/api/v2/session",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "get_with_body",
+          "body": {},
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "no_auth",
+          "auth": false,
+          "expect": {
+            "http": 401,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "SESSION_REQUIRED",
+                "message": "A valid session is required.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "session_refresh",
+      "method": "POST",
+      "path": "/api/v2/session/refresh/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": [],
+        "exact": {}
+      },
+      "success": [
+        {
+          "id": "refresh_ready",
+          "http": 200,
+          "request": {},
+          "data": {
+            "sessionId": "60000000-0000-4000-8000-000000000001",
+            "expiresAt": "2026-09-19T00:00:00Z",
+            "learningAvailability": {
+              "state": "ready",
+              "reason": null
+            }
+          }
+        },
+        {
+          "id": "refresh_waiting_keeps_session",
+          "http": 200,
+          "request": {},
+          "data": {
+            "sessionId": "60000000-0000-4000-8000-000000000001",
+            "expiresAt": "2026-09-19T00:00:00Z",
+            "learningAvailability": {
+              "state": "waiting",
+              "reason": "arc_progress_unavailable"
+            }
+          },
+          "note": "Existing session remains. New learning waits."
+        }
+      ],
+      "errors": [
+        {
+          "id": "unknown_key",
+          "request": {
+            "force": true
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "logout",
+      "method": "DELETE",
+      "path": "/api/v2/session/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "real_student_preserves_progress",
+          "http": 204,
+          "body": "",
+          "progress_preserved": true
+        },
+        {
+          "id": "dummy_existing_reset",
+          "http": 204,
+          "body": "",
+          "dummy_epoch_reset": true
+        }
+      ],
+      "errors": [
+        {
+          "id": "wrong_method_put",
+          "method": "PUT",
+          "expect": {
+            "http": 405,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "METHOD_NOT_ALLOWED",
+                "message": "Method not allowed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_list",
+      "method": "GET",
+      "path": "/api/v2/courses/progress/",
+      "auth": true,
+      "query": [
+        "page",
+        "pageSize"
+      ],
+      "query_defaults": {
+        "page": 1,
+        "pageSize": 100,
+        "pageSizeMax": 1000
+      },
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "two_enrollments_same_course",
+          "http": 200,
+          "data": {
+            "results": [
+              {
+                "courseId": 101,
+                "courseName": "VCC Fixture Course",
+                "status": "NOT_STARTED",
+                "summary": [
+                  {
+                    "id": 201,
+                    "itemType": "video",
+                    "title": "Orientation Video",
+                    "displayOrder": 1
+                  },
+                  {
+                    "id": 202,
+                    "itemType": "pdf",
+                    "title": "Safety Document",
+                    "displayOrder": 2
+                  },
+                  {
+                    "id": 203,
+                    "itemType": "training",
+                    "title": "Compression Practice A",
+                    "displayOrder": 3
+                  },
+                  {
+                    "id": 204,
+                    "itemType": "training",
+                    "title": "Compression Practice B",
+                    "displayOrder": 4
+                  },
+                  {
+                    "id": 205,
+                    "itemType": "assessment",
+                    "title": "Final Ventilation Assessment",
+                    "displayOrder": 5
+                  }
+                ],
+                "certificationType": null,
+                "enrollmentId": 501,
+                "progressId": 601,
+                "learningAvailability": {
+                  "state": "ready",
+                  "reason": null
+                }
+              },
+              {
+                "courseId": 101,
+                "courseName": "VCC Fixture Course",
+                "status": "NOT_STARTED",
+                "summary": [
+                  {
+                    "id": 201,
+                    "itemType": "video",
+                    "title": "Orientation Video",
+                    "displayOrder": 1
+                  },
+                  {
+                    "id": 202,
+                    "itemType": "pdf",
+                    "title": "Safety Document",
+                    "displayOrder": 2
+                  },
+                  {
+                    "id": 203,
+                    "itemType": "training",
+                    "title": "Compression Practice A",
+                    "displayOrder": 3
+                  },
+                  {
+                    "id": 204,
+                    "itemType": "training",
+                    "title": "Compression Practice B",
+                    "displayOrder": 4
+                  },
+                  {
+                    "id": 205,
+                    "itemType": "assessment",
+                    "title": "Final Ventilation Assessment",
+                    "displayOrder": 5
+                  }
+                ],
+                "certificationType": null,
+                "enrollmentId": 502,
+                "progressId": 602,
+                "learningAvailability": {
+                  "state": "ready",
+                  "reason": null
+                }
+              }
+            ],
+            "count": 2,
+            "next": null,
+            "previous": null
+          },
+          "sort": [
+            "courseId",
+            "enrollmentId"
+          ],
+          "note": "Assigned enrollments only. Same courseId with two enrollmentId values."
+        }
+      ],
+      "errors": [
+        {
+          "id": "inventory_not_ready",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ARC_PROGRESS_UNAVAILABLE",
+                "message": "Learning is waiting for ARC progress.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "unknown_query",
+          "query": {
+            "studentId": "1"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "multi_query",
+          "query_multi": {
+            "page": [
+              "1",
+              "2"
+            ]
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "empty_query",
+          "query": {
+            "page": ""
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "bool_page",
+          "query": {
+            "page": "true"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "oversize_page_size",
+          "query": {
+            "pageSize": "1001"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "course_detail",
+      "method": "GET",
+      "path": "/api/v2/courses/{courseId}/progress/",
+      "auth": true,
+      "query": [
+        "enrollmentId"
+      ],
+      "query_required": [
+        "enrollmentId"
+      ],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "enrollment_501",
+          "http": 200,
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "courseItems": [
+              {
+                "id": 201,
+                "courseItemLinkId": 1001,
+                "step": 1,
+                "title": "Orientation Video",
+                "iconType": "video",
+                "itemType": "content",
+                "contentType": "video",
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 202,
+                "courseItemLinkId": 1002,
+                "step": 2,
+                "title": "Safety Document",
+                "iconType": "pdf",
+                "itemType": "content",
+                "contentType": "pdf",
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 203,
+                "courseItemLinkId": 1003,
+                "step": 3,
+                "title": "Compression Practice A",
+                "iconType": "training",
+                "itemType": "training",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 204,
+                "courseItemLinkId": 1004,
+                "step": 4,
+                "title": "Compression Practice B",
+                "iconType": "training",
+                "itemType": "training",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 205,
+                "courseItemLinkId": 1005,
+                "step": 5,
+                "title": "Final Ventilation Assessment",
+                "iconType": "assessment",
+                "itemType": "assessment",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              }
+            ],
+            "enrollment": {
+              "id": 501,
+              "status": "ENROLLED",
+              "courseTitle": "VCC Fixture Course",
+              "courseId": 101,
+              "loginAt": null,
+              "finishedAt": null,
+              "elapsedSeconds": null,
+              "centerName": null,
+              "enrollStatusCode": null
+            },
+            "progressId": 601,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "learningAvailability": {
+              "state": "ready",
+              "reason": null
+            }
+          }
+        },
+        {
+          "id": "waiting_with_stored_bundle",
+          "http": 200,
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "courseItems": [
+              {
+                "id": 201,
+                "courseItemLinkId": 1001,
+                "step": 1,
+                "title": "Orientation Video",
+                "iconType": "video",
+                "itemType": "content",
+                "contentType": "video",
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 202,
+                "courseItemLinkId": 1002,
+                "step": 2,
+                "title": "Safety Document",
+                "iconType": "pdf",
+                "itemType": "content",
+                "contentType": "pdf",
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 203,
+                "courseItemLinkId": 1003,
+                "step": 3,
+                "title": "Compression Practice A",
+                "iconType": "training",
+                "itemType": "training",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 204,
+                "courseItemLinkId": 1004,
+                "step": 4,
+                "title": "Compression Practice B",
+                "iconType": "training",
+                "itemType": "training",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              },
+              {
+                "id": 205,
+                "courseItemLinkId": 1005,
+                "step": 5,
+                "title": "Final Ventilation Assessment",
+                "iconType": "assessment",
+                "itemType": "assessment",
+                "contentType": null,
+                "description": null,
+                "isCompleted": false,
+                "isPassed": null
+              }
+            ],
+            "enrollment": {
+              "id": 501,
+              "status": "ENROLLED",
+              "courseTitle": "VCC Fixture Course",
+              "courseId": 101,
+              "loginAt": null,
+              "finishedAt": null,
+              "elapsedSeconds": null,
+              "centerName": null,
+              "enrollStatusCode": null
+            },
+            "progressId": 601,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "learningAvailability": {
+              "state": "waiting",
+              "reason": "arc_progress_unavailable"
+            }
+          }
+        }
+      ],
+      "errors": [
+        {
+          "id": "missing_enrollmentId",
+          "query": {},
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "string_coercion_rejected_in_json_id_context",
+          "note": "query enrollmentId is a positive decimal string; JSON Ids still reject string/bool."
+        },
+        {
+          "id": "never_verified_bundle",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ARC_PROGRESS_UNAVAILABLE",
+                "message": "Learning is waiting for ARC progress.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "confirmed_not_assigned",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "put_is_content_report_not_unknown",
+          "note": "PUT on this path is content_report."
+        }
+      ]
+    },
+    {
+      "id": "item_detail",
+      "method": "GET",
+      "path": "/api/v2/courses/{courseId}/items/{courseItemLinkId}/",
+      "auth": true,
+      "query": [
+        "enrollmentId"
+      ],
+      "query_required": [
+        "enrollmentId"
+      ],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "video_file_detail",
+          "http": 200,
+          "path_params": {
+            "courseId": 101,
+            "courseItemLinkId": 1001
+          },
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "id": 201,
+            "title": "Orientation Video",
+            "itemType": "content",
+            "displayOrder": 1,
+            "courseItemLinkId": 1001,
+            "usage": "OWNED",
+            "logicalId": "70000000-0000-4000-8000-000000000001",
+            "description": null,
+            "detail": {
+              "id": 301,
+              "fileName": "orientation.mp4",
+              "order": 1,
+              "url": "https://fixture.invalid/video/orientation.mp4?sig=display-only",
+              "contentUrl": "https://fixture.invalid/video/orientation-content.mp4"
+            }
+          }
+        },
+        {
+          "id": "document_file_detail",
+          "http": 200,
+          "path_params": {
+            "courseId": 101,
+            "courseItemLinkId": 1002
+          },
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "id": 202,
+            "title": "Safety Document",
+            "itemType": "content",
+            "displayOrder": 2,
+            "courseItemLinkId": 1002,
+            "usage": "OWNED",
+            "logicalId": "71000000-0000-4000-8000-000000000001",
+            "description": null,
+            "detail": {
+              "id": 302,
+              "fileName": "safety.pdf",
+              "order": 1,
+              "url": "https://fixture.invalid/docs/safety.pdf?sig=display-only",
+              "contentUrl": "https://fixture.invalid/docs/safety-content.pdf"
+            }
+          }
+        },
+        {
+          "id": "training_detail",
+          "http": 200,
+          "path_params": {
+            "courseId": 101,
+            "courseItemLinkId": 1003
+          },
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "id": 203,
+            "title": "Compression Practice A",
+            "itemType": "training",
+            "displayOrder": 3,
+            "courseItemLinkId": 1003,
+            "usage": "OWNED",
+            "logicalId": "72000000-0000-4000-8000-000000000001",
+            "description": null,
+            "detail": {
+              "id": 401,
+              "title": "Chest Compression Only",
+              "trainingType": "chest compression only",
+              "feedbackType": "standard",
+              "trainingMode": "practice",
+              "training": {
+                "manikinType": "adult",
+                "duration": null,
+                "compressionLimit": null,
+                "ventilationLimit": null,
+                "cycleLimit": null,
+                "compressionVentilationRatio": null,
+                "aed": null,
+                "cprGuideline": null,
+                "twoRescuers": null
+              },
+              "assessment": {
+                "passThreshold": {
+                  "cpr": null,
+                  "aed": null
+                }
+              },
+              "content": []
+            }
+          }
+        },
+        {
+          "id": "assessment_detail",
+          "http": 200,
+          "path_params": {
+            "courseId": 101,
+            "courseItemLinkId": 1005
+          },
+          "query": {
+            "enrollmentId": "501"
+          },
+          "data": {
+            "id": 205,
+            "title": "Final Ventilation Assessment",
+            "itemType": "assessment",
+            "displayOrder": 5,
+            "courseItemLinkId": 1005,
+            "usage": "OWNED",
+            "logicalId": "74000000-0000-4000-8000-000000000001",
+            "description": null,
+            "detail": {
+              "id": 402,
+              "title": "Ventilation Only",
+              "trainingType": "ventilation only",
+              "feedbackType": "standard",
+              "trainingMode": "practice",
+              "training": {
+                "manikinType": "adult",
+                "duration": null,
+                "compressionLimit": null,
+                "ventilationLimit": null,
+                "cycleLimit": null,
+                "compressionVentilationRatio": null,
+                "aed": null,
+                "cprGuideline": null,
+                "twoRescuers": null
+              },
+              "assessment": {
+                "passThreshold": {
+                  "cpr": null,
+                  "aed": null
+                }
+              },
+              "content": []
+            }
+          }
+        },
+        {
+          "id": "detail_null_still_200",
+          "http": 200,
+          "data": {
+            "id": 203,
+            "title": "Compression Practice A",
+            "itemType": "training",
+            "displayOrder": 3,
+            "courseItemLinkId": 1003,
+            "usage": "OWNED",
+            "logicalId": "72000000-0000-4000-8000-000000000001",
+            "description": null,
+            "detail": null
+          },
+          "note": "GET remains 200. Start is EXECUTION_DEFINITION_MISSING."
+        }
+      ],
+      "errors": [
+        {
+          "id": "unsupported_kind",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "UPSTREAM_CONTRACT_MISMATCH",
+                "message": "The upstream data contract is not verified.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "quiz_not_modeled",
+          "note": "No quiz route or DTO is created."
+        }
+      ]
+    },
+    {
+      "id": "learning_start",
+      "method": "POST",
+      "path": "/api/v2/learning-starts/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [
+          "clientRequestId",
+          "courseId",
+          "enrollmentId",
+          "courseItemLinkId",
+          "definitionHash"
+        ],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "first_video_start",
+          "http": 201,
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "contentVersion": "video-v1",
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          }
+        },
+        {
+          "id": "idempotent_replay",
+          "http": 200,
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "contentVersion": "video-v1",
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "same_start_id": true
+        }
+      ],
+      "errors": [
+        {
+          "id": "training_kind_not_allowed",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "definition_changed",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "DEFINITION_CHANGED",
+                "message": "The course definition has changed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "other_body_same_id",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "IDEMPOTENCY_CONFLICT",
+                "message": "The request identifier has different input.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "gate_waiting_new_start",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ARC_PROGRESS_UNAVAILABLE",
+                "message": "Learning is waiting for ARC progress.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "bool_courseId",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": true,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "string_courseId",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": "101",
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "content_report",
+      "method": "PUT",
+      "path": "/api/v2/courses/{courseId}/progress/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [
+          "enrollmentId",
+          "courseItemLinkId",
+          "startId",
+          "reportId",
+          "contentVersion",
+          "event"
+        ],
+        "forbidden": [
+          "isCompleted",
+          "isPassed"
+        ]
+      },
+      "success": [
+        {
+          "id": "video_complete",
+          "http": 200,
+          "request": {
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "contentVersion": "video-v1",
+            "event": {
+              "type": "video_segments",
+              "intervalsMs": [
+                [
+                  0,
+                  10000
+                ],
+                [
+                  10000,
+                  20000
+                ]
+              ]
+            }
+          },
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1001,
+            "isCompleted": true,
+            "isPassed": null,
+            "courseStatus": "IN_PROGRESS",
+            "application": "applied"
+          }
+        },
+        {
+          "id": "document_display",
+          "http": 200,
+          "request": {
+            "enrollmentId": 501,
+            "courseItemLinkId": 1002,
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "20000000-0000-4000-8000-000000000001",
+            "contentVersion": "document-v1",
+            "event": {
+              "type": "document_displayed"
+            }
+          },
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1002,
+            "isCompleted": false,
+            "isPassed": null,
+            "courseStatus": "IN_PROGRESS",
+            "application": "applied"
+          }
+        },
+        {
+          "id": "document_confirm",
+          "http": 200,
+          "request": {
+            "enrollmentId": 501,
+            "courseItemLinkId": 1002,
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "contentVersion": "document-v1",
+            "event": {
+              "type": "document_confirmed",
+              "displayReportId": "20000000-0000-4000-8000-000000000001"
+            }
+          },
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1002,
+            "isCompleted": true,
+            "isPassed": null,
+            "courseStatus": "IN_PROGRESS",
+            "application": "applied"
+          }
+        },
+        {
+          "id": "confirm_before_display",
+          "http": 200,
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1002,
+            "isCompleted": false,
+            "isPassed": null,
+            "courseStatus": "IN_PROGRESS",
+            "application": "pending_evidence"
+          }
+        },
+        {
+          "id": "historical_only",
+          "http": 200,
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1001,
+            "isCompleted": null,
+            "isPassed": null,
+            "courseStatus": null,
+            "application": "historical_only"
+          },
+          "note": "Only this variant returns isCompleted/isPassed/courseStatus all null."
+        },
+        {
+          "id": "same_digest_replay",
+          "http": 200,
+          "data": {
+            "startId": "40000000-0000-4000-8000-000000000001",
+            "reportId": "30000000-0000-4000-8000-000000000001",
+            "courseItemLinkId": 1001,
+            "isCompleted": false,
+            "isPassed": null,
+            "courseStatus": "IN_PROGRESS",
+            "application": "applied"
+          },
+          "note": "Stored receipt is unchanged even if a later report completed the item."
+        }
+      ],
+      "errors": [
+        {
+          "id": "client_flags_forbidden",
+          "request_has": [
+            "isCompleted"
+          ],
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "empty_intervals",
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "content_version_mismatch",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "CONTENT_VERSION_MISMATCH",
+                "message": "The content version does not match the learning start.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "other_digest_same_report",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "IDEMPOTENCY_CONFLICT",
+                "message": "The request identifier has different input.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "capacity",
+          "expect": {
+            "http": 413,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "PROGRESS_CAPACITY_EXCEEDED",
+                "message": "The progress evidence limit is exceeded.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "other_session",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "attempt_create",
+      "method": "POST",
+      "path": "/api/v2/attempts/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [
+          "clientRequestId",
+          "courseId",
+          "enrollmentId",
+          "courseItemLinkId",
+          "definitionHash"
+        ],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "first_training",
+          "http": 201,
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "state": "created",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "createdAt": "2026-09-18T00:00:00Z",
+            "role": "training",
+            "condition": {
+              "mode": "training",
+              "target": "adult",
+              "training_type": "compression_only",
+              "guideline": "ARC2025",
+              "cpr_cycle_type": "302",
+              "is_2rescuers": false
+            },
+            "resumeCredential": "<resume-credential>"
+          },
+          "note": "resumeCredential is response-only, never stored in StartReceipt.response_json."
+        },
+        {
+          "id": "idempotent_replay",
+          "http": 200,
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "state": "created",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "createdAt": "2026-09-18T00:00:00Z",
+            "role": "training",
+            "condition": {
+              "mode": "training",
+              "target": "adult",
+              "training_type": "compression_only",
+              "guideline": "ARC2025",
+              "cpr_cycle_type": "302",
+              "is_2rescuers": false
+            },
+            "resumeCredential": "<resume-credential>"
+          }
+        }
+      ],
+      "errors": [
+        {
+          "id": "video_kind_not_allowed",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1001,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "already_completed_training",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ITEM_ALREADY_COMPLETED",
+                "message": "The learning item is already completed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "prerequisites",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1005,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "PREREQUISITES_NOT_COMPLETED",
+                "message": "Prerequisite items are not completed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "final_active",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1005,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "FINAL_ASSESSMENT_ACTIVE",
+                "message": "A final assessment is already active.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "final_recovery",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1005,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "FINAL_ASSESSMENT_RECOVERY_REQUIRED",
+                "message": "The final assessment requires recovery.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "policy_pending",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1005,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "COMPLETION_POLICY_PENDING",
+                "message": "The completion policy is not available.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "already_passed",
+          "request": {
+            "clientRequestId": "10000000-0000-4000-8000-000000000001",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1005,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+          },
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ASSESSMENT_ALREADY_PASSED",
+                "message": "The final assessment has already passed.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "execution_missing",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "EXECUTION_DEFINITION_MISSING",
+                "message": "The execution definition is missing.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "execution_unsupported",
+          "expect": {
+            "http": 422,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "EXECUTION_DEFINITION_UNSUPPORTED",
+                "message": "The execution definition is not supported.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "waiting_new_start",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "ARC_PROGRESS_UNAVAILABLE",
+                "message": "Learning is waiting for ARC progress.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "reconciliation",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "PROGRESS_RECONCILIATION_REQUIRED",
+                "message": "Progress reconciliation is required.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "attempt_get",
+      "method": "GET",
+      "path": "/api/v2/attempts/{attemptId}/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "new_attempt",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "state": "created",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "createdAt": "2026-09-18T00:00:00Z",
+            "role": "training",
+            "condition": {
+              "mode": "training",
+              "target": "adult",
+              "training_type": "compression_only",
+              "guideline": "ARC2025",
+              "cpr_cycle_type": "302",
+              "is_2rescuers": false
+            }
+          },
+          "forbidden_fields": [
+            "resumeCredential",
+            "accessToken"
+          ]
+        },
+        {
+          "id": "legacy_attempt_null_course_fields",
+          "http": 200,
+          "data": {
+            "attemptId": "90000000-0000-4000-8000-000000000001",
+            "state": "created",
+            "courseId": null,
+            "enrollmentId": null,
+            "courseItemLinkId": null,
+            "definitionHash": null,
+            "createdAt": "2026-09-18T00:00:00Z",
+            "role": null,
+            "condition": {
+              "mode": "training",
+              "target": "adult",
+              "training_type": "compression_only",
+              "guideline": "ARC2025",
+              "cpr_cycle_type": "302",
+              "is_2rescuers": false
+            }
+          },
+          "note": "Legacy nulls apply only to attempts started without course binding."
+        }
+      ],
+      "errors": [
+        {
+          "id": "other_session",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "attempt_reauthorize",
+      "method": "POST",
+      "path": "/api/v2/attempts/{attemptId}/reauthorize/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [
+          "resumeCredential"
+        ],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "rebind_session",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "state": "created",
+            "courseId": 101,
+            "enrollmentId": 501,
+            "courseItemLinkId": 1003,
+            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+            "createdAt": "2026-09-18T00:00:00Z",
+            "role": "training",
+            "condition": {
+              "mode": "training",
+              "target": "adult",
+              "training_type": "compression_only",
+              "guideline": "ARC2025",
+              "cpr_cycle_type": "302",
+              "is_2rescuers": false
+            },
+            "resumeCredential": "<new-resume-credential>"
+          }
+        }
+      ],
+      "errors": [
+        {
+          "id": "missing_credential",
+          "request": {},
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "unknown_key",
+          "request": {
+            "resumeCredential": "x",
+            "extra": 1
+          },
+          "expect": {
+            "http": 400,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid request.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "attempt_cancel",
+      "method": "POST",
+      "path": "/api/v2/attempts/{attemptId}/cancel/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [
+          "reason"
+        ],
+        "enum": [
+          "user_cancelled",
+          "connection_lost"
+        ]
+      },
+      "internal_reason_map": {
+        "user_cancelled": "user_stopped",
+        "connection_lost": "manikin_disconnected"
+      },
+      "success": [
+        {
+          "id": "cancel_before_accept",
+          "http": 204,
+          "body": ""
+        }
+      ],
+      "errors": [
+        {
+          "id": "after_accept",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_STATE",
+                "message": "The operation is not allowed in this state.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "network_failure_is_not_connection_lost",
+          "note": "connection_lost is manikin measurement disconnect only."
+        }
+      ]
+    },
+    {
+      "id": "calculation_post",
+      "method": "POST",
+      "path": "/api/v2/attempts/{attemptId}/calculation/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "kind": "existing_measurement_upload"
+      },
+      "success": [
+        {
+          "id": "accepted",
+          "http": 202,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "pending",
+            "calculation": null,
+            "evaluation": null,
+            "progressApplication": null,
+            "submit_arc": {
+              "status": "disabled",
+              "ok": false,
+              "error": "arc_contract_pending",
+              "exclusionReasons": []
+            }
+          }
+        },
+        {
+          "id": "same_input_already_final",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "succeeded",
+            "calculation": {
+              "preserved": true
+            },
+            "evaluation": {
+              "goal": {
+                "status": "evaluated",
+                "program_completed": false
+              }
+            },
+            "progressApplication": {
+              "applied": true
+            },
+            "submit_arc": {
+              "status": "disabled",
+              "ok": false,
+              "error": "arc_contract_pending",
+              "exclusionReasons": []
+            }
+          }
+        }
+      ],
+      "errors": [
+        {
+          "id": "created_or_cancelled",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_STATE",
+                "message": "The operation is not allowed in this state.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "not_persisted_no_202",
+          "note": "HTTP 202 requires durable input/job/outbox evidence."
+        }
+      ]
+    },
+    {
+      "id": "calculation_get",
+      "method": "GET",
+      "path": "/api/v2/attempts/{attemptId}/calculation/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "pending",
+          "http": 202,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "pending",
+            "calculation": null,
+            "evaluation": null,
+            "progressApplication": null,
+            "submit_arc": {
+              "status": "disabled",
+              "ok": false,
+              "error": "arc_contract_pending",
+              "exclusionReasons": []
+            }
+          }
+        },
+        {
+          "id": "succeeded_disabled",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "succeeded",
+            "calculation": {
+              "preserved": true
+            },
+            "evaluation": {
+              "goal": {
+                "status": "evaluated",
+                "program_completed": false
+              }
+            },
+            "progressApplication": {
+              "applied": true
+            },
+            "submit_arc": {
+              "status": "disabled",
+              "ok": false,
+              "error": "arc_contract_pending",
+              "exclusionReasons": []
+            }
+          }
+        },
+        {
+          "id": "succeeded_excluded_dummy",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "succeeded",
+            "calculation": {
+              "preserved": true
+            },
+            "evaluation": {
+              "goal": {
+                "status": "evaluated",
+                "program_completed": true
+              }
+            },
+            "progressApplication": {
+              "applied": true
+            },
+            "submit_arc": {
+              "status": "excluded",
+              "ok": false,
+              "error": null,
+              "exclusionReasons": [
+                "dummy"
+              ]
+            }
+          }
+        },
+        {
+          "id": "pending_policy_is_200",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "succeeded",
+            "calculation": {
+              "preserved": true
+            },
+            "evaluation": {
+              "goal": {
+                "status": "pending_policy"
+              }
+            },
+            "progressApplication": {
+              "applied": true
+            },
+            "submit_arc": {
+              "status": "disabled",
+              "ok": false,
+              "error": "arc_contract_pending",
+              "exclusionReasons": []
+            }
+          },
+          "note": "Undetermined CPR completion is not a calculation HTTP error."
+        }
+      ],
+      "errors": [
+        {
+          "id": "created_or_cancelled",
+          "expect": {
+            "http": 409,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "INVALID_STATE",
+                "message": "The operation is not allowed in this state.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "failed",
+          "http": 503,
+          "code": "CALCULATION_FAILED"
+        },
+        {
+          "id": "outcome_unknown",
+          "expect": {
+            "http": 503,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "CALCULATION_OUTCOME_UNKNOWN",
+                "message": "The calculator outcome is unknown.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        },
+        {
+          "id": "get_does_not_execute",
+          "note": "GET must not run calculation or submission."
+        }
+      ]
+    },
+    {
+      "id": "chart_link",
+      "method": "GET",
+      "path": "/api/v2/attempts/{attemptId}/chart-link/",
+      "auth": true,
+      "query": [],
+      "body": {
+        "required": [],
+        "nullable": []
+      },
+      "success": [
+        {
+          "id": "signed_link",
+          "http": 200,
+          "data": {
+            "url": "<signed-chart-url>",
+            "expiresAt": "2026-09-18T00:00:00Z"
+          },
+          "ttl_seconds": 300,
+          "note": "Issued only here. Not stored on StartReceipt or CalculationView."
+        }
+      ],
+      "errors": [
+        {
+          "id": "unauthorized",
+          "expect": {
+            "http": 404,
+            "body": {
+              "success": false,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Not found.",
+                "details": null
+              },
+              "timestamp": "2026-09-18T00:00:00Z"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "unknown_path": {
+    "path": "/api/v2/missing/",
+    "expect": {
+      "http": 404,
+      "body": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Not found.",
+          "details": null
+        },
+        "timestamp": "2026-09-18T00:00:00Z"
+      }
+    }
+  },
+  "payload_too_large": {
+    "http": 413,
+    "body": {
+      "success": false,
+      "error": {
+        "code": "PAYLOAD_TOO_LARGE",
+        "message": "The request exceeds the verified payload limit.",
+        "details": null
+      },
+      "timestamp": "2026-09-18T00:00:00Z"
+    }
+  }
+}

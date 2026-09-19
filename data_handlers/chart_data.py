@@ -80,17 +80,20 @@ def make_chart_data(
         if action.get("cycle_cnt") and calculated_cycle_key not in except_cycles:
             continue
 
+        run_key = (comp_run[0]["part_num"], comp_run[0].get("cycle_cnt")) if comp_run else None
+        if run_key is not None and run_key != (action["part_num"], action.get("cycle_cnt")):
+            flush_comp_run()
         if action["action_type"] == ACTION_TYPE_COMP:
-            run_key = (comp_run[0]["part_num"], comp_run[0].get("cycle_cnt")) if comp_run else None
-            if run_key is not None and run_key != (action["part_num"], action.get("cycle_cnt")):
-                flush_comp_run()
             comp_run.append(action)
             continue
-
-        flush_comp_run()
+        # A simultaneous/intervening breath does not cut a same-cycle pressure
+        # waveform into separate compression runs.
         cpr_data_set.append(_action_chart_data(action))
 
     flush_comp_run()
+    # Bars and breaths were assembled separately; this only orders chart marks,
+    # never source packets or detection events.
+    cpr_data_set.sort(key=lambda mark: mark["timestamp"])
 
     aed_data_set = [
         {
@@ -149,7 +152,9 @@ def _compression_event_bars(actions: list[dict]) -> list[ChartData]:
     for action in actions:
         depths = action["compression_depth"]
         for i in range(0, len(depths), 10):
-            packets.append((depths[i : i + 10], action["first_timestamp"] + (i // 10) * PACKET_MS, action))
+            source_times = action.get("_source_timestamps")
+            timestamp = source_times[i // 10] if source_times is not None else action["first_timestamp"] + (i // 10) * PACKET_MS
+            packets.append((depths[i : i + 10], timestamp, action))
     events = segment_compressions([p[0] for p in packets])
 
     # 신호 있는 액션들의 다수 actor로 가상파트너 여부를 정한다(꼬리·마커 윈도우의 actor 오염 방지).

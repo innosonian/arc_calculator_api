@@ -25,6 +25,9 @@ from mock_journey.state import DynamoStateRepository
 from mock_journey.storage import JourneyStorage
 from mock_journey import typed
 from mock_journey.worker import JourneyWorker
+from mock_journey.course_wiring import assemble_course
+from mock_journey.course_storage import CourseBlobStore
+from mock_journey.course_submission import CourseCompletionPlan
 
 
 def _invalid():
@@ -143,7 +146,7 @@ def build_application(settings, *, dynamodb_client, s3_client, legacy_bindings, 
         auth = AuthManager(None, settings.environment, resume_keys, current_key_version, clock=clock)
         state = _state(settings.state, dynamodb_client, clock)
         storage = _storage(settings.storage, s3_client, legacy_bindings)
-        jobs = DynamoJobRepository(state)
+        jobs = DynamoJobRepository(state, course_blobs=CourseBlobStore(storage))
         calculation = CalculationService(state, jobs, storage, execution.schemas,
                                          payload_limit=settings.payload_limit, clock=clock)
         auth.state = state
@@ -152,8 +155,31 @@ def build_application(settings, *, dynamodb_client, s3_client, legacy_bindings, 
         raise _invalid() from None
 
 
+def build_course_application(settings, *, dynamodb_client, s3_client, legacy_bindings, resume_keys,
+                             current_key_version, execution, provider, course_settings,
+                             clock=time.time, operations=None, uuid_factory=None,
+                             mapping_document=None, dummy_learner=None, blob_store=None):
+    """API role with explicit course_v2 HTTP. Existing 15-definition catalog is retained."""
+    import uuid as uuid_module
+    try:
+        journey = build_application(
+            settings, dynamodb_client=dynamodb_client, s3_client=s3_client,
+            legacy_bindings=legacy_bindings, resume_keys=resume_keys,
+            current_key_version=current_key_version, execution=execution,
+            clock=clock, operations=operations,
+        )
+        return assemble_course(
+            journey, provider=provider, course_settings=course_settings, clock=clock,
+            uuid_factory=uuid_factory or uuid_module.uuid4, mapping_document=mapping_document,
+            dummy_learner=dummy_learner, blob_store=blob_store,
+        )
+    except Exception:
+        raise _invalid() from None
+
+
 def build_worker(settings, *, dynamodb_client, s3_client, legacy_bindings, adapters,
-                 required_bindings, clock=time.time, lease_guard_factory=None, operations=None):
+                 required_bindings, clock=time.time, lease_guard_factory=None, operations=None,
+                 completion_plan=None):
     """Worker role: explicitly retain every supplied current/old binding.
 
     Pass execution.required_bindings plus the verified retained-job bindings.
@@ -177,21 +203,35 @@ def build_worker(settings, *, dynamodb_client, s3_client, legacy_bindings, adapt
             registry.resolve(version, projection)
         state = _state(settings.state, dynamodb_client, clock)
         storage = _storage(settings.storage, s3_client, legacy_bindings)
-        return JourneyWorker(DynamoJobRepository(state), storage, registry,
+        return JourneyWorker(DynamoJobRepository(state, course_blobs=CourseBlobStore(storage)), storage, registry,
                              lease_seconds=settings.lease_seconds, retry_seconds=settings.retry_seconds,
-                             clock=clock, lease_guard_factory=lease_guard_factory, operations=operations)
+                             clock=clock, lease_guard_factory=lease_guard_factory, operations=operations,
+                             completion_plan=completion_plan if completion_plan is not None else CourseCompletionPlan())
     except Exception:
         raise _invalid() from None
 
 
-def build_relay(settings, *, dynamodb_client, sqs_client, clock=time.time):
+def build_relay(settings, *, dynamodb_client, sqs_client, clock=time.time, progress_scope=None):
     """Relay role only: no user keys, S3 binding, profile or calculator."""
     try:
         if type(settings) is not RelaySettings or sqs_client is None:
             raise _invalid()
+        if progress_scope is not None:
+            if (type(progress_scope) is not dict
+                    or set(progress_scope) != {"environment", "partition", "account_id", "region"}):
+                raise _invalid()
+            from mock_journey.relay_progress import DynamoRelayProgress, RelayGuardedClient
+            if dynamodb_client is None:
+                raise _invalid()
+            dynamodb_client = RelayGuardedClient(dynamodb_client)
+            sqs_client = RelayGuardedClient(sqs_client)
         state = _state(settings.state, dynamodb_client, clock)
+        progress = None
+        if progress_scope is not None:
+            progress = DynamoRelayProgress(state, queue_url=settings.queue_url, **progress_scope)
         return OutboxRelay(DynamoJobRepository(state), QueueSender(sqs_client, settings.queue_url),
                            lease_seconds=settings.lease_seconds, retry_seconds=settings.retry_seconds,
-                           page_size=settings.page_size, max_pages=settings.max_pages, clock=clock)
+                           page_size=settings.page_size, max_pages=settings.max_pages, clock=clock,
+                           progress=progress)
     except Exception:
         raise _invalid() from None

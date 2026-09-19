@@ -1,187 +1,208 @@
-# 현재 구조와 보안 경계
+# 현재 구조와 변경 원칙
 
-2026-09-11 소스 재점검 기준. 사용자 정책은 [결정 문서](DECISIONS.md), HTTP·계산 필드는 [상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 명령은 [로컬 실행](LOCAL_RUN.md)과 [AWS 후속 안내](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조를 설명하며 미구현 ARC/AWS 연결을 완료로 취급하지 않는다.
+기준: 2026-09-18 VCC 고도화 완료 코드. 사용자 정책의 원본은 [DECISIONS](DECISIONS.md), 앱 요청·응답은 [APP_API](APP_API.md)와 [상세 API 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 실행은 [LOCAL_RUN](LOCAL_RUN.md), AWS는 [DEPLOY_GUIDE](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조와 변경할 때 보존할 조건을 설명한다.
 
-## 기술과 실행 경계
+## 1. 현재 구현과 실행 범위
 
-이 저장소는 Python 백엔드다. iPad/Android 화면과 마네킨 연결 코드는 포함하지 않으며, 앱이 모은 실제 측정 binary를 받는다. 웹 프런트엔드 빌드나 Node 패키지 구성은 없다.
+- Python 3.12 백엔드이며 iOS/Android 화면·마네킨 연결 코드는 포함하지 않는다. 앱이 수집한 실제 누적 CPR/AED 바이너리를 기존 내부 계산기로 처리한다.
+- 기본 로컬 서버는 `/mock/v1` Journey다. `build_course_application`으로 명시 조립하는 `course_v2`와 `/api/v2`는 별도로 구현·검증됐다. 기본 CLI를 실행한다고 VCC로 전환되지 않는다.
+- VCC는 합성 공급자와 실제 내부 계산을 연결한 로컬 내부 인수를 통과했다. 공식 ARC/MuleSoft 공급자, 실물 앱, AWS 운영 인수는 별도다.
+- 계산 성공, 프로그램 완료, 현재 공유 진도 반영, ARC 제출 상태는 서로 독립적이다. ARC/HSTM 실제 전송은 비활성이다.
+- 직접 의존성은 `requirements.txt`, 배포 간접 의존성은 `constraints-lambda.txt`, 로컬 실행과 시험은 `requirements-local.txt`·`requirements-ci.txt`를 사용한다.
 
-| 폴더·진입점 | 역할·의존 방향 |
+## 2. 코드 지도와 의존 방향
+
+| 위치 | 책임 |
 |---|---|
-| `scripts/serve_local.py` → `local_server/cli.py` | Python 3.12 + Waitress 3.0.2 HTTP 서버, Java/Javac + DynamoDB Local 3.3.1 실행 감독 |
-| `lambda_handler.run` → `mock_journey/handler.py` | AWS REST proxy 요청의 공개 인증 진입점. HTTP API v2 이벤트는 계약 밖 |
-| `mock_journey/` | 인증·훈련 상태·계산 접수·저장·Worker·Relay. `assembly.py`가 외부 client를 주입 |
-| `mock_journey/execution_definitions.py` | 승인된 15개 실행 정의. 로컬 감독기에서 분리해 ZIP에서도 재사용 가능. 자원·키·운영 한도는 포함하지 않음 |
-| `main.py`, `services/`, `data_handlers/` | 파싱된 입력 → 준비·계산·직렬화·기존 코칭, 오류 정제와 로그 |
-| `calculators/`, `transformers/`, `models/`, `config/` | 계산 수식, 측정 구간 분리, 데이터 모델, guideline·점수 기준 |
-| `resources/prompt_books/`, `util/` | 기존 코칭 문구와 업로드 규격. 런타임 문맥으로 로컬/Worker의 저장 부작용을 분리 |
-| `tests/` 및 별도 통합 시험 폴더 | 회귀·참고 출력·보안·실제 loopback HTTP/DB 검사. 기본 pytest는 `tests scripts`만 수집 |
-| `scripts/build_mock_artifact.py`, `deployment_preflight.py` | 네트워크 없는 ZIP 생성·설정 검사. 배포 shell은 사용자가 나중에 직접 실행 |
+| `scripts/serve_local.py` → `local_server/cli.py` | Waitress HTTP·소유 DynamoDB Local·별도 Python Worker의 준비/종료 감독 |
+| `lambda_handler.run` → `mock_journey/handler.py` | 공개 인증 진입점. REST proxy 이벤트 계약을 사용 |
+| `mock_journey/assembly.py`, `settings.py` | API·Worker·Relay에 client, 저장소, 실행 정의, 한도를 명시 주입 |
+| `mock_journey/auth.py`, `service.py`, `catalog.py` | 세션·소유권·재인가·기존 프로그램/시도 제어 |
+| `mock_journey/calculation.py`, `projection.py`, `typed.py` | 소비 입력 검증, 입력 식별, 자료형을 보존하는 직렬화·접수·결과 조회 |
+| `mock_journey/state.py`, `jobs.py` | 조건부 DB 거래, epoch, 멱등성, owner·lease·fence, 결과 확정 |
+| `mock_journey/storage.py`, `internal_calculator.py` | 비공개 파일·검증된 참조, 기존 계산기 호출과 후보 결과 |
+| `mock_journey/worker.py`, `dispatch.py` | 작업 실행·복구·최종 확정, Outbox 전달·due 작업 재조정 |
+| `main.py`, `services/`, `data_handlers/` | 파싱된 입력의 준비·독립 동작 검출·계산·직렬화·기존 코칭 |
+| `calculators/`, `transformers/`, `models/`, `config/` | 계산식·구간 분리·자료형·가이드라인·점수 기준 |
+| `mock_journey/aws_*.py` | 사용자 제공 AWS 설정 검증과 역할별 SDK·저장·로그·lease 연결 |
+| `submit_arc.py` | 기존 ARC 제출의 비활성 경계. 현재 네트워크 요청 없음 |
 
-핵심 SDK는 boto3 1.34.140, Sentry SDK 2.22.0이다. 직접 의존성은 `requirements.txt`, 이미 검증한 배포 간접 의존성 버전은 `constraints-lambda.txt`, 로컬 서버 의존성은 `requirements-local.txt`에 둔다. 새 프레임워크·컨테이너·DB 스키마는 도입하지 않았다.
+VCC 전용 모듈은 모두 `mock_journey/` 안에 있다. HTTP → service → provider/policy/repository 방향으로 호출하며, 계산은 bridge → 기존 CalculationService/Worker로 연결한다.
 
-```mermaid
-flowchart TD
-    App["외부 iPad / Android 앱"] --> HTTP["로컬 Waitress / 공개 인증 Handler"]
-    HTTP --> Auth["세션·소유권·입력 검증"]
-    Auth --> Accept["CalculationService: 입력 접수"]
-    Accept --> Files["비공개 원본·입력·결과·차트 파일"]
-    Accept --> DB["DynamoDB Local: 상태·Job·Outbox·공유 진도"]
-    DB --> Worker["별도 Python Worker: lease / fence"]
-    Worker --> Core["기존 파서·내부 계산기·코칭"]
-    Core --> Worker
-    Worker --> Files
-    Worker --> DB
-    HTTP --> Result["결과·평가·현재 진도·차트 링크 조회"]
-    Result --> DB
-    Result --> Files
-    HTTP --> Log["유한 비동기 운용 로그 기록기"]
-    Worker --> Log
-    Log --> DB
-    Worker --> Submit["ARC 제출: disabled"]
-```
-
-실선은 현재 로컬 동작이다. AWS에서는 DynamoDB/S3/SQS client를 같은 공용 구성에 연결할 수 있으나, 기본 AWS runtime의 계산 접수·Worker·Relay·운용 로그 연결은 아직 없다. 다이어그램의 전체 경로가 AWS에 배포됐다는 뜻이 아니다.
-
-## 요청부터 결과까지
-
-```text
-앱 로그인 → 프로그램/연령 선택 → attempt 생성
- → Bearer + X-Attempt-ID + /cpr-analysis (또는 attempt 계산 경로)
- → 인증·소유권 → 기존 multipart/base64 파서·검증 → 허용 입력 projection
- → 원본/입력 문서 저장 확인 → DB에 입력 참조·Job·Outbox 접수
- → 처리 중202 또는 이미 완료된200
-
-별도 실행기 → 동일 내부 계산기 → 점수·통계·코칭·차트
- → 후보 결과 저장/확인 → 별도 목표+Pass 평가 → 최종 DB 거래
-
-GET calculation → 저장 계산 결과 + submit_arc: disabled
-GET attempt → 평가·현재 진도 반영 사유
-GET programs → 현재 공유 진도
-GET chart-link → 새300초 차트 URL → 실제 차트 JSON GET
-```
-
-HTTP 요청 수명, 계산 작업 수명, 앱의30초 대기를 분리한다. 새 접수는 영속 보관을 확인한 뒤202로 알리며 GET이 계산을 다시 수행하지 않는다. 계산 성공·완료 평가·현재 epoch 진도 적용·외부 제출은 같은 값이 아니다.
-
-## 공용 코드와 역할
-
-| 구성 | 책임 |
+| 모듈 | 책임·금지 경계 |
 |---|---|
-| `lambda_handler.run` → `mock_journey.handler.run` | 공개 인증 입구. 비공개 `_run_trusted_calculation`은 회귀 helper |
-| `mock_journey/service.py`, `auth.py`, `catalog.py` | 세션·재인가·프로그램·시도 제어 |
-| `mock_journey/calculation.py`, `projection.py`, `typed.py` | 소비되는 입력과 자료형·고정 정의 확인, 입력 식별/접수/조회 |
-| `mock_journey/state.py`, `jobs.py` | DB 거래, 입력 중복, 세션/시도 귀속, 공유 epoch, 작업 소유권·최종 확정 |
-| `mock_journey/storage.py` | 기존 raw/chart 규격 연결, 참조의 namespace·binding·크기/hash·읽기 검증 |
-| `mock_journey/internal_calculator.py` | 내부 계산 호출·검증된 관측량/후보 생성. 계산 코어 복제 없음 |
-| `mock_journey/worker.py` | Job 수행/후보 복구·차트 게시·평가·최종 저장 |
-| `mock_journey/dispatch.py` | Outbox 전달과 독립 due 재조정. Queue에는 job_id만 전달 |
-| `mock_journey/assembly.py`, `settings.py` | client·키·저장 binding·정의·버전·한도를 명시적으로 조립 |
-| `submit_arc.py` | 별도 제출 경계. 현재는 계약 대기 disabled, 네트워크 요청 없음 |
+| `course_contracts.py`, `course_schema.py` | 공통 frozen DTO·Protocol·route·exact schema. 별도 동명 DTO를 만들지 않음 |
+| `course_errors.py`, `course_settings.py` | 고정 오류 코드와 명시 한도. 운영값을 fixture에서 추론하지 않음 |
+| `course_provider.py`, `course_fixture.py` | 외부 경계·합성 공급자·전체 정의 검증. DB/HTTP 응답 작성은 하지 않음 |
+| `course_policy.py` | 시작 가능 여부·콘텐츠 완료·과정 집계·제출 분류의 순수 판정 |
+| `course_state.py` | inventory/refresh/start/report의 읽기 snapshot과 원자적 저장 |
+| `course_service.py` | 검증된 명령과 조회를 조정. 외부 원문 dict를 공개하지 않음 |
+| `course_http.py`, `course_response.py` | route별 입력 검증·camelCase 응답·정제 오류 |
+| `course_calculation.py` | 시작 당시 실행 정의를 기존 계산 입력으로 고정 |
+| `course_submission.py` | `CourseCompletionPlan`과 비활성 ARC gateway. 단독 DB commit/실제 전송 없음 |
+| `course_recovery.py`, `course_runtime_recovery.py` | 복구 순수 판정과 실제 DB·입력·후보·adapter 검증 |
+| `course_storage.py`, `course_wiring.py` | 기존 비공개 저장소의 과정 blob adapter와 명시적 조립 |
 
-API는 세션/입력·결과 저장 권한, Worker는 작업/파일·계산 권한, Relay는 due/Outbox·큐 전달 권한을 필요로 한다. Worker/Relay에 앱 Bearer/resume keyring을 넘기지 않는다. 논리 역할의 구분이며 실제 AWS 함수 배치는 아직 연결 설계 대상이다.
+<a id="vcc-응답을-사용하는-과정-모델-변경-설계--2026-09-17-초안"></a>
+<a id="vcc-구현-착수-기술계획-v1--2026-09-18"></a>
 
-## 입력·계산 호환성
+## 3. 과정 모델과 요청 흐름
 
-- 기존 parser와 Calculator를 사용한다. 인증 뒤 attempt 고정 condition/calculation_profile, 허용 response context, VP와 원본 bytes를 보관한다.
-- 정수·실수·bool·null·누락·빈 객체를 구별하는 typed 직렬화/해시를 유지한다. 입력 필드 순서 같은 비소비 차이와 실제 값 차이를 구별한다.
-- HSTM credential, Authorization 및 원래 event 전체를 저장 입력에 넣지 않는다. 문서 필드가 parser에 있다는 사실이 모든 leaf의 projection 허용을 뜻하지 않는다.
-- 현재 로컬 projection의 `metric_fields={}`는 ResultByCriteria 세부 수치 입력 전체를 지원한다는 선언이 아니다. 새 leaf는 실제 소비 코드 근거·명시 schema·회귀로 추가한다.
-- HSTM 호환 문서는 메모리에서 기존 생성 경로를 따르며 새 앱 응답 필드나 ARC 제출 자료로 자동 노출하지 않는다.
-- 임의 URL 중계·HSTM token refresh·외부 Scoring 호출을 되살리지 않는다.
+과정은 `Course → CourseItem[]`이며 영상·문서·training·assessment가 같은 위계다. 퀴즈는 없다. 같은 item이 여러 배치에 나타날 수 있으므로 **배치 ID**로 시작·진도를 구분한다. 실제 마지막 assessment만 `final_assessment` 역할이며 앞쪽 assessment는 일반 수행 역할이다.
 
-## 점수와 완료의 버전 경계
+1. 로그인/명시 갱신은 learner inventory 세대를 먼저 예약하고 공급자에서 배정 목록·정의·진도를 받는다. 전체 결과 검증 후 현재 세대에만 적용한다. 오래된 성공·실패는 무시한다.
+2. 과정 목록·상세·세션 GET은 저장된 검증 결과를 조회한다. GET마다 외부 조회를 시작하지 않는다. 한 과정이라도 대기이면 해당 저장 gate를 일관되게 노출한다.
+3. 영상·문서는 콘텐츠 시작 receipt를 받고 관측 근거를 보고한다. training·assessment는 attempt/resume receipt를 받은 뒤 측정을 시작한다.
+4. 계산 입력은 인증·소유권·고정 실행 정의·자료형 검증 후 원본과 입력 파일을 저장하고, DB에 Job/Outbox 참조를 접수한다. 처리 중 `202`, 확정 결과 `200`을 반환한다.
+5. Worker는 lease/fence를 얻고 기존 계산기로 후보를 생성·검증한다. 결과, 평가, 진도, 마지막 평가 역할, 제출 제외 근거를 **하나의 DB 거래**에서 확정한다.
+6. 앱은 결과/시도/과정 진도를 조회한다. 같은 호출의 상태와 본문을 묶어 반환하며 나중 상태 재조회로 `202` 본문을 `200` 결과처럼 승격하지 않는다.
 
-기존 v1 후보는 `arc-internal-calculation-v1`이며 상태 필드 없는 기존 평가를 보존한다. v1 CPR resolver가 없으면 여전히 구성 오류다.
+앱 대기 최대 30초는 업로드 시작부터다. 이 시간은 서버 작업 취소·파일 삭제·lease 만료 기준이 아니다. 이미 접수한 작업은 계속 처리·보관하며 조회가 재계산을 시작하지 않는다.
 
-현재 로컬은 `arc-local-calculator-pending-v2` adapter, `tester-goal-pending-v2` profile, `arc-local-projection-v1`을 명시하고 `allow_pending_cycle_goal=True`로 조립한다. 후보는 `arc-internal-calculation-v2`다. 예약 버전에 반대 flag를 넣거나 pending flag와 cycle resolver를 함께 넣는 조합은 거절한다. 저장된 v1 작업을 v2로 몰래 바꾸지 않는다.
+### 식별자와 시작 당시 정의
 
-| 구분 | 실제 점수 | 목표 평가 | 완료 |
-|---|---|---|---|
-| Only | 기존 tester Pass/Fail | 관측 정수 횟수와 required 비교, status=evaluated | 목표와 Pass 모두 충족할 때 true |
-| CPR 계열 | 같은 내부 계산·기존 tester Pass/Fail | status=pending_policy, observed/met=null | false; GOAL_POLICY_UNRESOLVED |
+- `CourseScope`는 provider·tenant·learner·등록·과정의 원래 ID로 구성한다. 공개 정수 ID와 실제 source ID의 자료형·귀속은 별도다.
+- `scope_key = typed.digest([provider, tenant_id, learner_id, enrollment_id, course_id])`, `placement_key = typed.digest([scope_key, source_placement_id])`다. 제목·배열 위치·프로그램 ID를 저장 키 대신 쓰지 않는다.
+- `CourseBundle`은 검증된 전체 정의다. JSON bytes를 소유한 DTO와 typed digest로 호출자의 mutable dict 변경 및 int/bool 혼동을 막는다.
+- START/ATTEMPT는 원래 scope·epoch·배치·내용 버전·정의 hash·`content_identity_hash`를 고정한다. 동일한 버전 문자열이라도 자산/프로그램이 다르면 다른 내용이다.
+- 신규 시작은 inventory/HEAD의 동일 snapshot, source/kind/역할, template binding 전체와 7-key 실행 정의를 대조한다. 공개 link가 다른 항목으로 바뀌면 `DEFINITION_CHANGED`, 부분 생성은 0이다.
+- 새 정체성 필드가 없는 과거 course 행은 전체 정의 hash가 같을 때만 동일성을 입증한다. 변경 정의의 완료 근거를 추측하지 않는다.
 
-pending 결과도 정상 저장되면 계산 HTTP200이며 active count는 한 번 해제한다. 점수가 Fail이면 SCORE_NOT_PASS도 별도로 기록한다. 미정 목표를0으로 만들어 GOAL_NOT_MET/Fail로 치환하지 않는다.
+## 4. 저장과 경합 방지
 
-## DB·재시도·공유 진도
+상태·참조는 기존 DynamoDB PK/SK 테이블, 큰 정의·입력·계산 결과는 기존 비공개 파일 저장소에 둔다. 실제 조립은 `CourseBlobStore`를 사용하며 메모리 blob으로 자동 대체하지 않는다. API/Worker가 같은 저장 binding과 hash를 검증한다.
 
-- 같은 세션의 `client_request_id`+동일 생성 입력은 기존 attempt를 돌려준다. 응답의 attempt/resume을 받은 후 측정을 시작한다. 세션 간 생성 요청 복구는 별도 미정이다.
-- 같은 attempt+동일 소비 입력은 같은 Job/확정 결과를 사용한다. 다른 입력은409이며 기존 결과를 덮지 않는다.
-- PK/SK 상태 행과 GSI1(`GSI1PK:S`, `GSI1SK:N`, Projection ALL)로 due 작업을 조회한다. 조회한 행의 실제 due/lease를 다시 확인한다.
-- 작업 owner·lease·fence와 call/candidate를 검증한다. 파일 저장과 DB 거래를 하나의 transaction으로 주장하지 않는다. 후보·최종 참조를 검증한 뒤 기존 최종 거래로 평가/상태/진도를 한 번 반영한다.
-- Outbox 전송 후 확인 전 장애는 중복 wake를 만들 수 있다. Stream·Queue의 정확히 한 번 전송을 가정하지 않는다. sent Outbox/DLQ가 있어도 미완료 due Job의 재조정이 필요하다.
-- 한 세션 logout이 전체 사용자 progress_epoch를 바꾼다. 이전 epoch 결과는 저장하되 PROGRESS_RESET으로 새 완료·active count·revision에 반영하지 않는다.
-- 프로그램 목록이 현재 공유 진도의 기준이다. 이미 완료된 슬롯의 동시 후발 실패/대기 결과로 완료를 지우지 않는다.
-- 만료/폐기된 bound session만 새 세션으로 재인가 가능하다. 현재 활성인 다른 세션의 시도를 빼앗지 않는다. cancelled는 재인가 불가다.
+| 행 | 역할 |
+|---|---|
+| `COURSE_LEARNER#… / EPOCH#…#HEAD` | 전체 배정 집합·inventory generation/revision·가용 상태 |
+| `COURSE#… / EPOCH#…#HEAD` | 정의 참조·refresh generation/revision·gate·완료 집합·과정 집계 |
+| 같은 PK의 `EPOCH#…#ITEM#…` | 배치별 완료/통과와 원래 근거 |
+| 같은 PK의 `EPOCH#…#FINAL` | 같은 등록/epoch의 마지막 평가 하나: 자기 attempt 참조와 합격 근거 |
+| 같은 PK의 `EPOCH#…#START#…`, `EPOCH#…#REPORT#…` | 콘텐츠 시작과 immutable 보고 receipt·요청 digest |
+| `COURSE_START#… / META` | 콘텐츠 시작의 원래 scope/epoch/세션 locator |
+| `SESSION#… / COURSE_CREATE#…` | 같은 세션의 시작 요청 멱등 receipt |
+| `SUBMISSION#… / RESULT#…` | 결과별 비실행 제출 의도·제외 근거 |
+| 기존 USER/SESSION/ATTEMPT/JOB/OUTBOX | epoch·인증·계산 상태·작업 전달. course binding은 선택 필드 |
 
-## 기본 로컬 실행 구성
+현재 epoch의 권위는 USER다. `COURSE#`·`COURSE_LEARNER#`의 진도 제어 SK는 epoch를 포함한다. locator와 세션별 멱등 receipt는 원래 epoch를 값에 고정하며 키에 추가하지 않는다. 새 HEAD/FINAL은 USER·세션 조건 아래 같이 생성하며 한쪽만 존재하면 무결성 오류다. ITEM은 첫 시작/쓰기에서 조건부 생성한다.
 
-`scripts/serve_local.py`는 기본 Journey 모드다. Waitress HTTP, 소유한 Java DynamoDB Local, 별도 Python spawn Worker, private 파일 저장/차트를 연결한다. `--control-only`는 과거 제어 API 구성이다.
+HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEAD 집계, FINAL을 각각 다른 코드에서 독립 저장하지 않는다. `course_response`만 내부 placement hash/`completed/passed`를 공개 link ID/`isCompleted/isPassed`로 변환한다.
 
-- 설치 잠금·0700 디렉터리·0600 키·UID·sentinel·배포 파일 hash를 확인한다. DB는127.0.0.1 전용이며 자식 nonce handshake로 자신이 실행한 DB인지 확인한다.
-- 정확한 기존 PK/SK-only 설치에만 GSI1을 추가한다. 키·세션·진도 행을 초기화하지 않는다. GSI ACTIVE 전 ready를 선언하지 않고, 낯선 인덱스/설치나 혼합 키는 거절한다.
-- 부모만 설치 초기화/이행을 수행한다. Worker의 `initialize=False`는 기존 설치/테이블 읽기 확인이며 키·테이블을 생성하지 않는다.
-- spawn 자식은 client를 별도 생성한다. fork로 client/socket/lock을 복제하지 않고 비밀값을 argv/환경/로그로 전달하지 않는다.
-- CLI는 AWS/BOTO/ARC/Sentry/프록시 환경을 격리하고 Python outbound를 소유 loopback DB로 제한한다. 외부 자격 증명 탐색·AWS·ARC 호출을 하지 않는다.
-- Worker의 주기 lease 갱신은 실패를 보존하고 마지막 DB fence 이전까지 확인한다. 갱신 callback/정리의 시간 경계를 유지하며 로컬60초 lease를 앱30초 취소 시간으로 사용하지 않는다.
+| 작업 | commit까지 보존할 조건과 결과 |
+|---|---|
+| refresh 예약 | USER epoch/revision·부모 inventory generation·HEAD revision. generation과 HEAD revision을 함께 증가 |
+| refresh 적용 | 예약 당시 epoch·부모/자식 generation·revision. 검증한 전체 bundle만 ready, 실패는 waiting, 의미 불명 진도는 reconciliation_required |
+| 신규 시작 | 유효 세션·USER·현재 배정 scope·inventory·HEAD·ITEM/FINAL의 판정 snapshot. receipt와 START/ATTEMPT·필요 ITEM·HEAD/FINAL을 함께 생성 |
+| 콘텐츠 보고 | bound session·kind/version·범위/한도·요청 digest·USER/HEAD/ITEM/START revision. REPORT/근거/완료/집계를 한 거래로 반영 |
+| 계산 finalize | 기존 owner/fence/lease·candidate·attempt binding·USER와 course 행 revision. 기존 Job 결과 확정에 course write-set을 합침 |
+| 접수 전 취소 | created·미접수·FINAL 자기 참조. 자기 역할만 free로 변경하며 새 attempt 역할은 건드리지 않음 |
+| 재인가 | 기존 resume 증표와 동일 principal·attempt revision. 세션 귀속만 바꾸며 원래 정의/epoch/역할 유지 |
+| Dummy 로그아웃 | USER epoch를 변경. 과정 행을 무제한 삭제/초기화하지 않음. 실제 ARC 학생 진도는 유지 |
 
-DB·Worker·HTTP 준비/생존을 감독한다. 필수 실행기가 사라지면 계속202를 접수하지 않고 실패 종료하여 같은 설치 재시작으로 복구한다. `/healthz`는 비밀 경로 없이 mode·가용성·미정 완료 정책을 표시한다.
+같은 세션/request ID와 같은 body는 원래 receipt를 반환한다. 다른 body는 `409`다. 이미 완료된 일반 훈련은 새로 시작하지 못하지만 먼저 시작한 동시 시도는 보존한다. 늦은 Fail이 기존 완료를 지우지 않는다.
 
-정상 종료는 접수 중단→HTTP drain→Worker 중단/제한된 회수→저장/DB 정리 순서다. 이미 죽은 자식의 공유 Condition 응답을 기다리는 방식을 쓰지 않고 one-way pipe로 중단 신호를 준다. 정리되지 않은 요청이 잠금을 보유할 경우 부모가 공유 객체 정리에서 무제한 기다리지 않도록 실패 종료한다. 자신이 소유한 프로세스만 회수한다. 부모 SIGKILL 후 기존 Java DB orphan 가능성은 남아 있으며 알 수 없는 PID를 자동 종료하지 않는다.
+이전 epoch 보고는 원래 START/REPORT 근거만 보관하고 현재 HEAD/ITEM/FINAL을 변경하지 않는다. 늦은 계산도 원래 결과를 보관하되 `PROGRESS_RESET`과 제출 제외를 기록한다. 이미 확정된 결과를 이후 reset 때문에 소급 분류하지 않는다.
 
-## 비공개 파일·차트
+조건 충돌 시 일부만 쓰거나 새로운 revision만 끼워 넣지 않는다. 모든 의존 행을 다시 읽어 판정한다. fixture 기준 최대 4회 후 `503 TEMPORARILY_UNAVAILABLE`이다. 동일 키의 중복 transaction action은 허용하지 않는다.
 
-파일 저장소는 namespace/key의 hash를 파일명으로 사용한다. 버전 magic+제한된 JSON header+원본 bytes의 단일 envelope에 설치·bucket·key·size·SHA-256·허용 metadata를 검증한다.
+### 평가 교체와 미확인 외부 진도
 
-- 열어 둔 private directory fd와 `O_NOFOLLOW`/`fstat`로 상대 파일을 검증한다. symlink·hardlink 복수·device/FIFO·경로 이탈·다른 UID/권한을 허용하지 않는다.
-- 프로세스 간 flock과 인스턴스 RLock 안에서 쓰기·quota를 제어한다. 동일 key/내용/metadata는 재사용하고 다른 내용으로 덮지 않는다.
-- 임시 파일 fsync→atomic replace→디렉터리 fsync, 이후 읽기 검증을 통과해야 저장 성공이다. crash 잔여 파일도 quota에 포함하며 자동 원본 삭제는 하지 않는다.
-- quota 초과·disk full·권한/무결성 오류는 정제된 오류다. 기존 결과 읽기·같은 입력 재전송을 위해 파일을 임의 삭제하지 않는다.
-- 원본 CPR/AED와 meta/request/candidate는 HTTP 공개 경로가 없다. org/date/stem의 검증된 chart JSON만 서명한다.
-- 차트 HMAC은 설치·지정 host/port·GET 경로·발급/만료·객체/본문 hash에 결합된다. TTL300초, 정규 표현·일정 시간 서명 비교를 유지한다. resume 키와 차트 키는 별도다.
-- `GET /local/v1/charts/{opaque}`는 세션 Bearer 대신 해당 차트 읽기 capability를 사용한다. 추가 query·경로 변형·다른 method를 허용하지 않는다. `application/json`, no-store, nosniff로 실제 bytes를 반환한다.
-- logout은 기존 차트 URL/키/파일을 지우지 않는다. 같은 설치/host/port로 재시작하면 남은 TTL을 유지한다. 계산 snapshot의 만료 URL은 그대로이고 인증된 chart-link가 새 링크를 발급한다.
+마지막 평가의 원래 합격 결과와 재응시 금지는 유지한다. 배치·내용·실행 정의 교체를 새 평가의 Pass로 복제하지 않는다. `assessment_reconciliation_required`를 HEAD와 집계에 유지하고 `PROGRESS_RECONCILIATION_REQUIRED`로 적용을 보류한다. A→B→A 또는 반복 refresh만으로 해제하지 않는다.
 
-원본 경로는 기존 `directory/stage/org/UTC날짜/stem` 규칙을 유지한다. meta에 허용된 조직/이름 문맥이 있을 수 있어 접근 보호와 로그 정제가 모두 필요하다. 차트 만료는 파일 retention이 아니며 OS 관리자/같은 UID 악성 프로세스까지 방어하는 독립 보안 격리를 주장하지 않는다.
+내용 비교는 파싱한 JSON의 typed digest를 사용한다. 단순 key 순서 변경과 실제 교체를 구별한다. 일반 항목의 기존 완료 인정(D88)과 교체된 최종 평가의 판정은 다르다. ARC 진도의 빈 객체/null을 임의로 ready·미진행으로 해석하지 않으며 합성 공급자의 명시적 계약만 별도로 허용한다.
 
-## HTTP 보호·로그·현재 제한
+<a id="점수와-완료의-버전-경계"></a>
 
-기존 정확한 peer IP/Host·Origin/Fetch Metadata·raw URI/query·HTTP framing·헤더/본문 한도를 유지한다. 제어16 KiB, 계산 본문과 결과는 별도 명시 상한이다. Waitress의 출력 버퍼를 결과/차트 상한과 맞춰 허용된 응답이 공개 임시 경로로 spill하지 않게 한다. 연결/스레드 수가 만드는 메모리 한도도 함께 검증한다.
+## 5. 계산·완료·버전 보존
 
-LAN은 정확한 private Mac IP와 클라이언트 IP, 명시적 비암호화 허용이 필요하다. 개인 팀 접근과 동일한 인증이 아니며 실제 ARC 개인정보를 입력하지 않는다. 운영 HTTPS·개인 권한·Gateway 데이터 로그는 별도 설정/검증 대상이다.
+기존 parser·projection·자료형·null·코칭·승인된 ARC 최소량 정책을 사용한다. 소비하지 않는 요청 필드를 저장 입력에 무조건 포함하거나 현재 결과로 골든 정답을 재생성하지 않는다. HSTM 호환 문서는 ARC 제출 payload가 아니다.
 
-기존 오류 allowlist·Sentry body/locals/attachment 차단·정제된 관측 로그를 유지한다. raw body·비밀번호·Bearer·복구 증표·차트 token/URL·upstream 응답을 로그에 남기지 않는다. 내부 진단 uploader의 best-effort 저장과 authenticated attempt의 영속 접수/결과 보존을 구별한다.
+| 구분 | 현재 판정 |
+|---|---|
+| 압박/호흡 Only | 실제 정수 관측 횟수로 목표 충족 + 기존 tester Pass 모두 필요 |
+| CPR/2인/AED의 미정 완료 기준 | 계산·점수는 제공, 목표 `pending_policy`, `GOAL_POLICY_UNRESOLVED` 유지 |
+| 과정 완료 | 선행 모든 항목 완료 + 마지막 assessment의 `program_completed=true` |
+| 영상·문서 | 승인된 전체 재생/표시·읽음 확인 정책을 보고 근거로 판정. 상세는 DECISIONS·API 계약 |
 
-## AWS의 미완성 연결
+현재 adapter는 `arc-internal-detection-pending-v3`, profile은 `tester-goal-pending-v2`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v2`다. 형식이 같아도 adapter의 검출 의미는 다르다.
 
-현재 `mock_journey/runtime.py:get_application`은 제어 서비스만 기본 조립하며 get_worker/get_relay는 미구성 오류다. 로컬 코드가 실행되었다고 AWS 전체 경로·큐·트리거·개인 접근·S3 권한이 구성되었다고 보지 않는다. 공용 API/Worker/Relay를 실제 승인 자원에 연결하는 후속 범위는 배포 안내에 있다.
+구버전 `arc-local-calculator-pending-v2`는 저장 후보 검증·결과 복구용이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
 
-신규 DB 요구는 앱의 훈련 진도·계산 결과·운용 로그이며 이번 로컬 구현·검증까지 승인됐다. 개발 과정의 JSON·patch는 로컬 보관을 유지한다. 현재 진도/상태·결과 파일 참조는 DB에 저장하며 결과 본문은 비공개 객체 저장소에서 읽는다. [N03~N06](DECISIONS.md)은 기존 저장 구조 재사용, 주요/상세 진단 기록, 로그 장애로 훈련 차단 금지, 보관기간 확정 전 자동 삭제 없음으로 확정됐다.
+현재 검출은 압박/호흡 독립, 첫 압박 패킷 기준선, 최고 호흡량 대비 두 연속 패킷의 감소 확인을 사용한다. 성인·소아 10mL, 영아 5mL 잠정값과 EOF·동시 동작 시간/cycle 정책은 DECISIONS D38~D46을 따른다. 미정 교육 완료 공식을 검출 규칙에서 추론하지 않는다.
 
-## 운용 로그 DB — 로컬 구현
+## 6. 마지막 평가와 복구
 
-훈련 상태와 결과 파일 참조의 기존 DB 거래, 비공개 결과/바이너리/차트 저장은 그대로 재사용한다. 로그 기록은 거래에 넣지 않는다. 새 로그 기능의 오류로 정상 훈련 응답이나 확정 결과를 바꾸지 않는다.
+`FINAL.phase`와 attempt/JOB/call 상태는 다르다. 앱의 30초, 프로세스 종료, active count 감소, lease 만료만으로 평가 잠금을 풀지 않는다.
 
-- API 요청과 Worker 실행 각각에 ContextVar로 기록 대상을 묶고, 반환·예외 때 해제한다. 세션 토큰·요청 본문을 기록 문맥에 넣지 않는다. 주요 이벤트는 실제 상태 변경 성공 후 기록하며 생성/업로드 재전송을 별도 식별한다.
-- 기존 진단의 허용 목록·오류 정제를 재사용한다. 주요 이벤트에는 코드가 정한 이름과 UUID·고정 enum·숫자·bool만 허용한다. 직렬화된 작은 사본만 대기열에 넣고 exception·body·사용자 객체 참조는 넘기지 않는다.
-- API/Worker 프로세스마다 유한한 메모리 대기열과 daemon 기록 스레드를 둔다. 요청·계산은 DB 쓰기나 로그 출력 완료를 기다리지 않는다. 저장용 SDK client는 업무용 client와 분리하며 timeout·SDK 재시도 제한을 적용한다. 로그 client 생성 실패도 업무 연결 실패로 바꾸지 않는다.
-- 기본 대기열256개·로그1개16KiB는 메모리 보호를 위한 구현 한도이며 훈련 정책이 아니다. 초과/종료 후 접수는 누락으로 집계한다. DB 쓰기 응답 실패는 실제 저장 여부를 확정할 수 없으므로 unconfirmed로 집계한다. 로그를 무조건 저장했다고 보고하지 않는다.
-- 영속 저장은 기존 테이블의 별도 OPS namespace와 UTC 날짜별 partition·시각/UUID sort key를 사용한다. GSI due 필드는 넣지 않아 계산 전달 작업과 섞이지 않는다. 조건부 추가로 기존 행을 덮지 않고 로그를 훈련 재실행 근거로 사용하지 않는다.
-- 자동 TTL·삭제·과거 stdout 가져오기는 추가하지 않는다. 로그는 켠 시점부터 기록한다. RAM 대기 중 강제 종료·과부하·로그 저장 장애에서는 기록이 누락될 수 있으며, 훈련을 차단하지 않는 승인 정책과 무손실 감사 저장을 혼동하지 않는다.
-- DB 쓰기 스레드에서 오류를 고정된 비밀 없는 경고로 알리고, 기록기에는 접수/저장확인/미확정/누락 수를 보관한다. 정상 종료에서만 제한된 시간 동안 배출하며 로그 때문에 종료를 무제한 기다리지 않는다.
-- `/healthz`의 `operational_logs`는 API 프로세스의 카운터만 표시한다. Worker 합계나 영구 감사 통계가 아니며 재시작하면 카운터는 초기화된다. 저장된 DB 행은 유지된다. 로그 장애만으로 HTTP readiness를 실패로 바꾸지 않는다.
-- 관리자 로컬 CLI에서 검증된 기존 설치·loopback DB에 읽기만 연결해 날짜별 로그를 조회한다. 앱 공개 로그 API·별도 관리 인증을 새로 만들지 않는다. 조회도 크기/건수·cursor 범위와 레코드 정제를 확인한다.
-- AWS용 공용 조립에는 기록기를 명시적으로 주입할 수 있게 한다. Lambda에서 로컬 daemon 수명과 같은 보장을 가정하지 않으며 실제 전달/배출 방식·권한·부하 격리는 AWS 연결 시 검증한다. 이번에 원격 로그 수집이 완성됐다고 보고하지 않는다.
+| FINAL phase | 의미·다음 시작 |
+|---|---|
+| `free` | 시작 조건을 다시 검사. 완료 기준이 평가됐으나 불합격이면 횟수 제한 없이 재응시 |
+| `active` | 생성/접수/계산 중인 자기 attempt. 다른 마지막 평가 시작 차단 |
+| `recovery_required` | 계산 결과·저장·구성이 불확실. 기존 증거 보존·복구 필요 |
+| `policy_pending` | 목표 완료 규칙 미정. 가짜 Fail 또는 시간 경과 unlock 금지 |
+| `passed` | `goal.status=evaluated`이고 `program_completed=true`. 같은 등록의 재응시 금지 |
 
-구현 위치는 `services/operational_logs.py`의 비동기 기록/정제, `mock_journey/log_storage.py`의 조건부 DB 추가/조회, `local_server/database.py`의 전용 client 조립이다. API·Worker에 선택적으로 주입하며 기존 계산·진도 거래에는 넣지 않는다. `scripts/read_local_logs.py`는 기존 설치를 확인하는 로컬 전용 읽기 도구다.
+`CourseCompletionPlan`은 `jobs.finalize`의 하나의 거래에 들어갈 write-set만 만든다. course 작업에서 이 계획이나 실제 복구 reader가 없으면 fail-closed하며 기존 Mock 완료 분기로 빠지지 않는다. binding 없는 기존 작업은 기존 경로를 유지한다.
 
-설계 자체 반증 점검: DB 쓰기를 요청 스레드에 넣으면 로그 지연이 훈련을 막으므로 거절한다. 업무와 같은 client/transaction 사용, raw stdout 수집, 무제한 메모리/종료 대기, 로그 실패를 계산 Fail로 변경, 전역 요청 ID 공유도 거절한다. 검사 결과는 [검증 문서](VALIDATION.md)에 모은다. 별도 사람 또는 독립 AI CTO 승인으로 표현하지 않는 자기 점검이다.
+`CourseRecoveryReader`는 실제 JOB/ATTEMPT/USER/원래 epoch HEAD/FINAL, 원래 입력·후보 파일, adapter·response를 검증한다. `RecoveryEvidence.snapshot_json`은 revision·epoch·정의·call·참조를 고정한다. typed 증거라도 close/reopen 직전 다시 읽고 대조한다.
 
-동일한 로컬 DB와 디스크를 쓰므로 물리 자원은 공유한다. 기록기 장애 격리는 전체 DB 고장·디스크 고갈에도 훈련이 된다는 보장이 아니다. 객체 파일의1GiB quota는 DB 로그에 적용되지 않는다. 로그 용량과 빈 공간을 확인해야 하며, 원격 환경의 용량·부하 격리와 알림은 AWS 연결 시 검증한다. 자동 보관기간을 임의로 정하지 않는다.
+- **후보 재개:** 유효한 원래 candidate가 있으면 재계산 0회로 차트·최종 결과·완료를 확정한다.
+- **안전한 동일 작업 재호출:** 저장소 조회가 성공해 미확정 후보 부재를 확인했고 정확한 adapter가 계산 가능할 때만 새 fence/call/path를 사용한다. committed 후보 유실이나 I/O 오류는 후보 부재가 아니다.
+- **구성/무결성 대기:** 잘못된 hash·없어진 확정 후보·부재 adapter는 보류한다. 파일 교체·다른 adapter·가짜 교육 Fail로 해결하지 않는다.
+- **기술 종료:** 실제 calculate 호출의 확정 오류, 정확한 call/input, 현재 owner/fence/lease, 후보 조사와 결과 부재가 입증될 때만 terminal seal 거래를 쓴다. JOB/ATTEMPT 종료와 자기 FINAL 해제가 원자적이며 evaluation은 null이다.
+- **과거 failed 후보:** seal 없는 course 작업의 유효한 candidate만 별도 CAS로 reopen한다. 다음 claim은 더 큰 fence를 얻으며 sealed 작업·기존 Mock failed에는 적용하지 않는다.
 
-조건부 추가·조회는 AWS의 [PutItem](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_PutItem.html), [Query](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Query.html) 계약을 따른다. 실제 AWS 자원 호출 없이 문서와 로컬 호환 DB로 검증한다.
+`CALCULATION_OUTCOME_UNKNOWN`은 후속 일시 오류로 덮지 않는다. 반복 전달이 재계산·Pass·역할 해제로 이어지지 않아야 한다. 같은 원래 call/input의 검증된 후보가 뒤늦게 도착하면 재계산 없이 확정할 수 있다.
 
-## 이번 구조 점검의 결론과 남은 맥락
+## 7. 파일·보안·운용 로그
 
-로컬 실행기가 소유하던 제품 실행 정의를 공용 모듈로 이동했다. `local_server.runtime.execution_catalog`와 버전 문자열은 유지하여 기존 호출부·저장 작업을 바꾸지 않는다. 순환 의존을 이유로 임의의 계층 재작성은 하지 않았다. `legacy_bridge`가 호환 handler의 파서 helper를 import하는 역방향 참조는 유지보수 후보이며, 당장 import 오류를 일으키는 순환으로 단정하지 않는다.
+- 원본/입력/후보/결과는 공개 경로가 없는 비공개 저장소에 두고 namespace·binding·크기·SHA-256을 확인한다. 파일 저장과 DB를 하나의 transaction이라고 표현하지 않는다.
+- 로컬은 0700 디렉터리·0600 키, 소유 UID, `O_NOFOLLOW`/fstat, 단일 hardlink, 제한된 envelope, flock, fsync→atomic replace→재읽기 검증을 사용한다. 기존 객체를 다른 내용으로 덮거나 실패 해결용으로 삭제하지 않는다.
+- 차트만 검증된 경로로 서명한다. HMAC은 설치·host/port·GET·시간·객체/본문 hash에 결합하며 TTL 300초다. 만료 URL은 인증된 chart-link로 재발급한다. no-chart가 확인된 경우에만 URL/만료가 함께 null이다.
+- Bearer·resume·차트 키를 구분한다. 다른 활성 세션의 attempt를 공유 진도라는 이유로 공개하지 않는다. 재인가는 기존 bound session 만료/폐기와 증표 검증 규칙을 따른다.
+- exact peer IP/Host·Origin/Fetch Metadata·raw URI/query·HTTP framing·헤더/본문·응답 한도와 오류/Sentry 정제를 유지한다. LAN 평문은 명시적 시험 설정이며 운영 HTTPS/개인 권한을 대신하지 않는다.
+- 비밀번호·토큰·복구 증표·raw body·바이너리·서명 URL·상류 원문을 로그에 넣지 않는다. 운용 로그는 `services/operational_logs.py` → `mock_journey/log_storage.py`의 유한 비동기 기록 경로다.
+- 로그는 업무 transaction/client와 분리한다. 장애·포화는 누락/미확정으로 집계하고 정상 훈련을 차단하지 않는다. RAM 대기 중 강제 종료까지 무손실을 보장하지 않으며 자동 TTL/삭제는 없다.
+- 로컬 로그 조회는 `scripts/read_local_logs.py`다. `/healthz` 로그 수치는 API 프로세스 카운터이며 영구 감사 통계나 Worker 합계가 아니다.
 
-미확인은 실제 AWS 자원·개인 접근 보호·운영 한도, Lambda 로그 배출 방식, 실물 앱 요청 크기와 Q22 CPR 완료 규칙이다. 코드에서 추측해 새 기본값을 정하지 않았다. 구체적인 우선순위·수정 전후·성능 측정은 [검증 문서의 리팩터링 기록](VALIDATION.md#8-코드-품질과-배포-준비--2026-09-11)에 모았다.
+## 8. 한도와 coding convention
+
+`CourseSettings`는 호출자가 모두 명시한다. 아래는 시험 fixture 값이며 운영 정책이 아니다.
+
+| 설정 | fixture 값 | 거절 원칙 |
+|---|---:|---|
+| 과정 항목 / 배정 수 | 64 / 100 | 전체 공급 응답을 거절. 일부만 ready로 만들지 않음 |
+| bundle / 제어 요청 bytes | 262144 / 16384 | 공급 계약 오류 / 요청 413 |
+| 보고당 / 누적 재생 구간 | 128 / 512 | 보고 전체 거절, 기존 근거 보존 |
+| START당 보고 수 | 4096 | 기존 동일 receipt replay는 가능 |
+| 거래 action / 충돌 재판정 | 20 / 4 | 부분 commit 없이 정제 오류 |
+
+START의 canonical bytes는 보고 commit 전 400KiB 기술 상한으로 보수적으로 제한한다. 건수 한도보다 먼저 도달할 수 있으며 `413 PROGRESS_CAPACITY_EXCEEDED`로 REPORT/START/ITEM/HEAD를 모두 보존한다. DynamoDB 실측 byte 수와 정확히 같은 계산이라고 주장하지 않는다.
+
+변경자는 다음 공통 규칙을 따른다.
+
+1. 내부 snake_case, class PascalCase, constant UPPER_SNAKE_CASE, 4-space와 기존 import 배치를 사용한다. wire 변환은 응답 모듈에 모으며 `submit_arc`·기존 계산 JSON의 호환 이름은 유지한다.
+2. 공용 경계는 DTO/Protocol과 자료형을 먼저 바꾼다. 외부 값은 exact type으로 검사하며 bool→int·문자열→숫자·null→0을 암묵 변환하지 않는다.
+3. clock·UUID를 주입한다. 내부 UTC epoch 초, wire RFC3339 UTC, 영상 정수 ms를 구분한다. 경합 시험은 임의 sleep 대신 제어된 commit 경계를 사용한다.
+4. 업무 오류는 고정 `CourseError`로 표현하고 SDK/JSON 오류는 경계에서 원문 없이 정제한다. 넓은 예외 처리로 테스트 실패를 숨기지 않는다.
+5. import 시 client/socket/thread/파일 부작용을 만들지 않는다. 업무 정책에서 HTTP/SDK를 직접 부르지 않고 assembly가 의존성을 연결한다.
+6. 판정에 사용한 snapshot과 쓰기 조건을 일치시킨다. 멱등 receipt, 기존 결과, epoch/lease/fence/귀속을 편의 때문에 완화하지 않는다.
+7. 실제 필요 경계에 회귀를 추가한다. 독립 기대값·음성 사례·부분 쓰기 0을 검증하며 함수 호출 자체나 자기 비교를 성공 근거로 삼지 않는다.
+8. 병렬 작업은 파일 소유자를 나누고 `state.py`, `jobs.py`, `worker.py`, `assembly.py` 공유 변경은 한 통합 담당자가 조정한다. 공용 계약·소비자·테스트를 함께 전달한다.
+
+## 9. 운영 전환과 남은 확인
+
+로컬 감독기는 자신이 띄운 DB/Worker만 소유·종료한다. 자식 준비 실패 시 계속 접수하지 않으며 같은 설치 재시작으로 복구한다. 부모 SIGKILL 뒤 Java orphan 가능성, OS/SDK의 강제 hard deadline은 해결된 것으로 주장하지 않는다.
+
+AWS API/Worker/Relay runtime은 명시 설정으로 기존 조립에 연결한다. 역할별 IAM·자원·trigger·partial batch·due schedule·DLQ·로그 전달·Linux 패키지·용량은 실환경 인수가 필요하다. Relay의 환경별 진행 행은 create-only 초기화와 revision/owner/fence/lease를 사용하며 런타임이 손상/부재 행을 자동 생성하지 않는다.
+
+| 확인 경계 | 해소 전 동작 |
+|---|---|
+| G-ARC: 공식 인증·배정·정의·진도·제출 계약 | Unavailable provider/Disabled gateway. 빈 성공·가짜 ID·외부 송신 없음 |
+| G-CONTENT: 실제 앱 관측·콘텐츠 접근 계약 | 내부 보고 계약만 시험. 실물 앱 연결 별도 |
+| G-GOAL: CPR/2인/AED 교육 완료 규칙 | 실제 점수 + pending_policy 유지 |
+| G-REVISION: 평가 교체·ARC 진도 정정 의미 | 원래 결과·재응시 금지 보존, 새 완료 적용 보류 |
+| G-DELIVERY: 제출 멱등·응답 유실·초기화 후 전달 | 비활성/제외만 기록. 실행 가능한 ARC 전송 queue 없음 |
+| G-RELEASE: 자원·용량·retention·앱 전환 | 로컬 내부 PASS만 인정. commit/push/배포는 사용자 결정 |
+
+전환 전에는 기존 queued/running/candidate와 private 참조의 호환 reader/worker를 검증하고 앱 전체 흐름·접수 중단·재시작을 확인한다. 새 행을 접수한 뒤 이를 못 읽는 이전 binary로 단순 rollback하지 않는다. 신규 접수를 중단하더라도 기존 결과 조회와 호환 worker를 유지하며 데이터/키 삭제로 복구하지 않는다. 현재 검증 범위는 [VALIDATION](VALIDATION.md)을 따른다.

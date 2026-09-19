@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from integration_tests.conftest import dynamodb_endpoint, dynamodb_client
+from integration_tests.conftest import dynamodb_endpoint, dynamodb_client, dynamodb_table
 
 
 @pytest.fixture(autouse=True)

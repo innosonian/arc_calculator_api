@@ -1,0 +1,105 @@
+{
+  "contract_version": "vcc-internal-v1",
+  "mapping_version": "vcc-fixture-mapping-v1",
+  "catalog_version": "vcc-fixture-catalog-v1",
+  "synthetic": true,
+  "source": "synthetic-test-assembly",
+  "note": "Not an ARC course. program_id classifies existing PROGRAMS; it is not a course or placement id. Scores come from the existing calculator and binary fixtures, not this file.",
+  "units": {
+    "duration": "ms",
+    "goal.required": "observed-count",
+    "intervals": "[start,end) ms"
+  },
+  "null_policy": "detail=null and training_program_id=null are stored as null. Empty asset_ids is [].",
+  "five_key_rejected": true,
+  "mappings": {
+    "src-place-1003": {
+      "program_id": "mock-compression-only",
+      "target": "adult",
+      "binary_fixture": "tests/dataset/cco_1.bin",
+      "result_oracle": "tests/dataset/result_cco_1.json",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "compression_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "compressions",
+          "required": 60
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      },
+      "source_placement_id": "src-place-1003",
+      "public_link_id": 1003,
+      "kind": "training"
+    },
+    "src-place-1004": {
+      "program_id": "mock-compression-only",
+      "target": "adult",
+      "binary_fixture": "tests/dataset/cco_1.bin",
+      "result_oracle": "tests/dataset/result_cco_1.json",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "compression_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "compressions",
+          "required": 60
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      },
+      "source_placement_id": "src-place-1004",
+      "public_link_id": 1004,
+      "kind": "training"
+    },
+    "src-place-1005": {
+      "source_placement_id": "src-place-1005",
+      "public_link_id": 1005,
+      "kind": "assessment",
+      "program_id": "mock-ventilation-only",
+      "target": "adult",
+      "binary_fixture": "tests/dataset/adult_vo_1.bin",
+      "result_oracle": "tests/dataset/result_adult_vo_1.json",
+      "execution": {
+        "condition": {
+          "mode": "training",
+          "target": "adult",
+          "training_type": "ventilation_only",
+          "guideline": "ARC2025",
+          "cpr_cycle_type": "302",
+          "is_2rescuers": false
+        },
+        "calculation_profile": {},
+        "profile_version": "tester-goal-pending-v2",
+        "adapter_version": "arc-internal-detection-pending-v3",
+        "projection_version": "arc-local-projection-v1",
+        "goal": {
+          "kind": "ventilations",
+          "required": 8
+        },
+        "catalog_version": "vcc-fixture-catalog-v1"
+      }
+    }
+  },
+  "no_execution": [
+    "src-place-1001",
+    "src-place-1002"
+  ]
+}

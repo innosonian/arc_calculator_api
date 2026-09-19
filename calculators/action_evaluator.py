@@ -63,7 +63,9 @@ class ActionEvaluator:
         return ActionWithScore(action_type=ACTION_TYPE_COMP, action_data=action, score=evaluation, actor=actor)
 
     def _evaluate_vent(self, action: dict, border: BaseBorder, actor: str) -> ActionWithScore:
-        total_action_ms = action["total_action_ms"]
+        # Rate retains the full event interval even when aggregate elapsed time
+        # overlaps a compression and is counted only once in the timeline.
+        total_action_ms = action.get("_rate_duration_ms", action["total_action_ms"])
         # make digit
         vent_vol_digit = int(max(action["ventilation_volume"], default=0))
 

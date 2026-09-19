@@ -1,6 +1,6 @@
 # 로컬 Journey 서버 실행 안내
 
-2026-09-10 기준. 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
+2026-09-18 기준. 기본 실행은 기존 `/mock/v1`이다. 새 `/api/v2`는 `build_course_application`의 명시적 공급자 조립이 필요하며 CLI에서 자동 활성화하지 않는다. 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
 
 ## 1. Mac에서 실행
 
@@ -25,7 +25,7 @@ ARC local journey API ready: http://127.0.0.1:8000
 
 ## 2. 실제 앱의 연결 순서
 
-앱 개발자에게 [간단한 API 명세](APP_API.md)를 전달한다. 명세에는 서버 주소를 넣지 않았으므로 실제 실행 위치는 별도로 전달한다.
+앱 개발자에게 [최신 과정 API와 기존 경로 구분](APP_API.md)를 전달한다. 명세에는 서버 주소를 넣지 않았으므로 실제 실행 위치는 별도로 전달한다.
 
 1. `test@test.com` / 문자열 `2222`로 로그인한다.
 2. 프로그램·연령을 선택하고 훈련 시도를 생성한다.
@@ -62,7 +62,7 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 | Compression Only / Ventilation Only | 실제 횟수와 기존 tester Pass를 모두 충족하면 완료 |
 | CPR 계열 | 결과를 제공하되 완전한 cycle 완료 규칙이 미정이므로 `pending_policy`. 완료를 임의로 만들지 않음 |
 | ARC 제출 | `submit_arc.status=disabled`, `ok=false`, `error=arc_contract_pending` |
-| 대기 | 앱은 최대30초 대기 후에도 같은 시도의 결과를 조회 가능. 작업을 자동 취소하는 시간이 아님 |
+| 대기 | D54에 따라 앱의 파일 업로드 시작부터 최대30초. 이후에도 같은 시도의 결과를 조회 가능. 이미 접수된 작업을 자동 취소하는 시간이 아님 |
 | 차트 | 실제 로컬 JSON 파일을 서명 URL로 제공. 발급부터300초; 만료 시 인증된 API로 새 링크 발급 |
 
 계산 성공이 프로그램 완료나 ARC 제출 성공을 뜻하지 않는다. 로그인한 다른 기기들은 공유 진도를 볼 수 있지만 서로의 훈련 결과를 자동으로 조회할 권한은 없다.
@@ -173,3 +173,41 @@ python scripts/console_viewer.py <bin과meta가있는폴더> --passing 80
 ```
 
 `run_local.py`의 기본 stage는 `prod`이고 기존 원본 업로더에 연결되므로 부작용 없는 코어 확인에는 위처럼 `--stage test`를 명시한다. 이것은 서버의 로그인·영속 접수·결과 조회를 검증하는 명령이 아니다. `STAGE=test`를 실제 Journey의 저장 환경으로 무작정 지정하면 저장 확인이 실패할 수 있다. `console_viewer.py`는 기존 저장 자료를 보는 도구다.
+
+## 8. 서버와 분리된 전체 검증 환경
+
+2026-09-11 준비성 감사에서 새 Python 3.12.1 환경으로 확인했다. 서버용 `requirements-local.txt`만으로는 pytest·PyYAML이 설치되지 않는다. 전체 검증에는 **`requirements-local.txt`와 `requirements-ci.txt` 둘 다** 필요하다. 현재 고정 검증 도구는 pytest 9.1.1, PyYAML 6.0.3이며, 감사에서 사용한 Java/Javac는 22.0.1, OpenSSL은 3.5.0이다. 다른 Python/JDK 조합의 지원을 보장하는 버전 표는 없다.
+
+저장소 루트에서 실행한다. 아래 `var/validation-python`은 아직 없는 새 경로일 때만 사용하고, 기존 환경이 있으면 다른 이름을 선택해 이후 명령에도 같은 경로를 사용한다. 다운로드에는 인터넷 접근이 필요하지만 AWS 계정은 필요 없다.
+
+```sh
+python3.12 -m venv var/validation-python
+var/validation-python/bin/python -m pip install --only-binary=:all: -r requirements-local.txt -r requirements-ci.txt
+var/validation-python/bin/python -m pip check
+STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 var/validation-python/bin/python scripts/validate_local_integration.py --dynamodb-home var/dynamodb-local-3.3.1 --suite all
+```
+
+DynamoDB 배포물은 7절의 manifest와 전체 파일이 일치해야 한다. 새 PC에서는 관리자가 검증된 **프로그램 배포 파일만** 제공하거나 출처를 확인해 준비한다. 사용자 DB·키 폴더를 복사하지 않는다. manifest의 출처 설명에는 재현 가능한 다운로드 URL·설치 명령이 없으므로 배포물 확보가 안 되면 준비 단계는 차단 상태다. 임의 파일로 hash를 갱신하지 않는다.
+
+| 설정 | 용도·예시 |
+|---|---|
+| `STAGE=test` | 위 검증 프로세스의 기본 외부 업로드 방지. 평소 서버 시작 명령에 추가하는 설정은 아님 |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` | 우연히 설치된 pytest 확장 기능의 자동 로딩 방지. 기존 시험을 제외하지 않음 |
+| `--dynamodb-home` | 검증할 DynamoDB 프로그램 폴더. 저장된 사용자 DB 경로가 아님 |
+| `ARC_TEST_DYNAMODB_ENDPOINT`, `ARC_TEST_DYNAMODB_HOME` | 실행기가 시험 전용 loopback DB 주소·검증한 배포 경로를 자식에 전달. 수동으로 기존 서버 주소를 넣지 않음 |
+| `ARC_LOCAL_TEST_PYTHON`, `ARC_LOCAL_TEST_DYNAMODB_HOME` | 실행기가 현재 Python·검증한 배포 경로를 실제 CLI 시험에 전달. 주변 환경의 값은 초기화 후 다시 설정 |
+| `ARC_TEST_HTTPS_HOST`, `ARC_TEST_HTTPS_PORT` | 실행기가 `127.0.0.1`, `0`으로 지정해 임시 TLS 시험 포트 사용 |
+
+실행기는 새 임시 DB·포트를 소유하고 각 시험은 임시 테이블·파일과 저장소의 `tests/dataset/`, `tests/fixtures/`를 사용한다. fixture·golden 파일을 재생성하거나 사용자 자료를 삭제하지 않는다. 정상 종료 시 시험 소유 DB 프로세스를 종료하고 실행기가 만든 DB 폴더를 정리한다. 각 pytest 임시 결과 파일은 실행 후에도 pytest의 보관 정책에 따라 남을 수 있다. 강제 종료에서는 자식이 남을 가능성이 있으므로 포트/소유 관계를 확인하며 임의 프로세스를 종료하지 않는다.
+
+정상 판단은 종료 코드와 `failed/error/skipped/xfailed`를 함께 읽는다. 최신 전체 로컬 검증은 **3251개 + 하위 시험 9개 통과**이며 과거 경계 예상 실패는 수정됐다. `python -m pytest` 기본 명령은 `tests scripts`만 수집하므로 전체 시험 대신 사용하지 않는다. 실제 실행 범위와 날짜는 [검증 요약](VALIDATION.md)을 따른다. 시험을 제외하거나 fixture·기대값을 임의 교체해 통과시키지 않는다.
+
+| 자주 발생하는 문제 | 확인·대응 |
+|---|---|
+| `No module named pytest/yaml` | 서버 환경과 검증 환경 구분, 위 두 requirements 설치 여부 확인 |
+| loopback `PermissionError` | 실행 도구의 로컬 포트 권한 문제. 허용된 터미널/실행 권한에서 같은 시험 재실행; 제품 실패로 합산하지 않음 |
+| DB manifest 오류 | 지정 경로와 전체 배포 파일 hash 대조. 저장된 DB나 manifest 교체로 우회 금지 |
+| 설치 DNS/다운로드 실패 | 네트워크 권한 확인. 패키지 버전이 존재하지 않는다고 즉시 단정하지 않음 |
+| 시험 중 timeout·종료 실패 | 정제된 로그·소유 프로세스 확인. 제한 시간을 늘리거나 실패 시험을 제외해 숨기지 않음 |
+
+실제 AWS IAM·Gateway·S3·Queue·Lambda/Linux 동작, 운영 로그 전달·복구, 실물 앱·마네킨, ARC 제출은 이 명령으로 확인되지 않는다. 세부 결과와 재심사 조건은 검증 문서의 최신 감사를 따른다.

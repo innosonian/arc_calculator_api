@@ -131,6 +131,7 @@ if action == 'get-caller-identity': print('000000000000')
 elif action == 'get-role': print(role)
 elif action == 'get-function' and query == 'Configuration.Role': print(role)
 elif action == 'get-function' and query == 'Configuration.Handler': print(os.environ['FIXTURE_HANDLER'])
+elif action == 'get-function' and query == 'Configuration.LoggingConfig.LogGroup': print('null')
 elif action == 'get-function-configuration' and query == 'Handler': print(os.environ['FIXTURE_HANDLER'])
 elif action in ('get-function', 'get-function-configuration'):
     print(json.dumps({{'Configuration': {{'Role': role, 'Handler': os.environ['FIXTURE_HANDLER']}},

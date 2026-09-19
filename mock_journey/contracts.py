@@ -10,7 +10,9 @@ from mock_journey.projection import LoadedInput, ProjectedInput
 from mock_journey.typed import canonical_bytes
 
 
-PENDING_GOAL_ADAPTER_VERSION = "arc-local-calculator-pending-v2"
+RETAINED_PENDING_GOAL_ADAPTER_VERSION = "arc-local-calculator-pending-v2"
+PENDING_GOAL_ADAPTER_VERSION = "arc-internal-detection-pending-v3"
+PENDING_GOAL_ADAPTER_VERSIONS = frozenset({PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION})
 PENDING_GOAL_PROFILE_VERSION = "tester-goal-pending-v2"
 
 

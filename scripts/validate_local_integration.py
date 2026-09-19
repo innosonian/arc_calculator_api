@@ -40,6 +40,8 @@ def main(argv=None):
         try:
             env = dict(os.environ, ARC_TEST_DYNAMODB_ENDPOINT=f"http://127.0.0.1:{port}",
                        ARC_TEST_DYNAMODB_HOME=str(home),
+                       ARC_LOCAL_TEST_PYTHON=sys.executable,
+                       ARC_LOCAL_TEST_DYNAMODB_HOME=str(home),
                        ARC_TEST_HTTPS_HOST="127.0.0.1", ARC_TEST_HTTPS_PORT="0")
             paths = {
                 "integration": ["integration_tests", "http_pipeline_tests"],

@@ -23,7 +23,7 @@ EVENTS = frozenset({
     "attempt_created", "attempt_create_replayed", "attempt_cancelled", "attempt_reauthorized",
     "calculation_accepted", "calculation_replayed", "calculation_started",
     "calculation_completed", "calculation_failed", "calculation_deferred", "progress_application",
-    "request_rejected",
+    "request_rejected", "relay_reconciled",
 })
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\Z")
@@ -52,10 +52,10 @@ def _operation_fields(fields):
             clean[key] = fields[key]
     if type(fields.get("error_code")) is str and fields["error_code"] in _ERRORS:
         clean["error_code"] = fields["error_code"]
-    for key in ("replayed", "applied", "program_completed"):
+    for key in ("replayed", "applied", "program_completed", "scan_exhausted", "progress_busy", "continuation"):
         if type(fields.get(key)) is bool:
             clean[key] = fields[key]
-    for key in ("http_status", "elapsed_ms"):
+    for key in ("http_status", "elapsed_ms", "outbox_wakes", "job_wakes", "failures", "passes_completed", "query_steps"):
         value = fields.get(key)
         if type(value) is int and 0 <= value < 2**63:
             clean[key] = value

@@ -153,9 +153,14 @@ action = args[1] if len(args) > 1 else ''
 print('SECRET-MARKER', file=sys.stderr)
 if action == os.environ.get('FAIL_AWS_ACTION'):
     print('SECRET-MARKER'); sys.exit(1)
+query = args[args.index('--query') + 1] if '--query' in args else ''
+if query and query == os.environ.get('FAIL_AWS_QUERY'):
+    print('SECRET-MARKER'); sys.exit(1)
 if args[:2] == ['sts', 'get-caller-identity']: print(os.environ.get('FAKE_ACCOUNT', '000000000000'))
 elif action == 'get-function' and '--query' in args and args[args.index('--query') + 1] == 'Configuration.Handler':
     print(os.environ.get('FAKE_HANDLER', 'lambda_handler.run'))
+elif action == 'get-function' and query == 'Configuration.LoggingConfig.LogGroup':
+    print(os.environ.get('FAKE_LOG_GROUP_JSON', 'null'))
 elif args[:2] == ['iam', 'get-role'] or (action == 'get-function' and '--query' in args):
     print(os.environ.get('FAKE_ROLE', 'arn:aws:iam::000000000000:role/FixtureRole'))
 elif action == 'get-resources': print('fixtureresource')
@@ -287,6 +292,44 @@ def test_null_retention_never_changes_or_removes_existing_policy(tmp_path):
                              calculator_changes={"log_retention_days": None})
     assert result.returncode == 0, result.stderr
     assert not any(call[:2] == ["aws", "logs"] for call in calls)
+    assert not any("Configuration.LoggingConfig.LogGroup" in call for call in calls)
+
+
+@pytest.mark.parametrize("configured_group,expected", [
+    ("null", "/aws/lambda/FixtureCalc"),
+    ('"/shared/arc-journey"', "/shared/arc-journey"),
+    ('"None"', "None"),
+    ('"-group.with_#valid/chars"', "-group.with_#valid/chars"),
+])
+def test_retention_uses_actual_logging_destination_before_first_mutation(tmp_path, configured_group, expected):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             changes={"FAKE_LOG_GROUP_JSON": configured_group})
+    assert result.returncode == 0, result.stderr
+    lookup = next(i for i, call in enumerate(calls) if "Configuration.LoggingConfig.LogGroup" in call)
+    mutation = next(i for i, call in enumerate(calls) if call[:3] == ["aws", "lambda", "update-function-code"])
+    assert lookup < mutation
+    policies = [call for call in calls if call[:3] == ["aws", "logs", "put-retention-policy"]]
+    assert len(policies) == 1 and "--log-group-name=" + expected in policies[0]
+    assert "SECRET-MARKER" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("group", ['""', '"a b"', '"SECRET-MARKER\\nPRIVATE"', '{}', 'None', '"' + 'a' * 513 + '"'])
+def test_invalid_log_destination_stops_before_aws_mutation(tmp_path, group):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             changes={"FAKE_LOG_GROUP_JSON": group})
+    assert result.returncode != 0 and "EXISTING_LOG_GROUP_INVALID" in result.stderr
+    assert not any(call[0] == "aws" and call[2].startswith(("update-", "put-", "publish-", "create-", "delete-"))
+                   for call in calls)
+    assert "SECRET-MARKER" not in result.stdout + result.stderr
+
+
+def test_log_destination_lookup_failure_stops_before_aws_mutation(tmp_path):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True,
+                             changes={"FAIL_AWS_QUERY": "Configuration.LoggingConfig.LogGroup"})
+    assert result.returncode != 0 and "AWS_READ_FAILED" in result.stderr
+    assert not any(call[0] == "aws" and call[2].startswith(("update-", "put-", "publish-", "create-", "delete-"))
+                   for call in calls)
+    assert "SECRET-MARKER" not in result.stdout + result.stderr
 
 
 def test_explicit_service_role_path_is_used_without_changing_identity(tmp_path):

@@ -103,7 +103,7 @@ def build_api(database, material, options, host, port):
 
 def build_local_worker(database, material, options, host, port, *, object_material):
     from mock_journey.assembly import build_worker
-    from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION
+    from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
     from mock_journey.internal_calculator import InternalCalculator
     from local_server.execution import LocalJobRunner
     from local_server.lease import LocalLeaseGuardFactory
@@ -114,13 +114,16 @@ def build_local_worker(database, material, options, host, port, *, object_materi
         adapter = InternalCalculator(version=PENDING_GOAL_ADAPTER_VERSION,
                                      projection_version=PROJECTION_VERSION, stage=STORAGE_STAGE,
                                      allow_pending_cycle_goal=True)
+        retained = InternalCalculator(version=RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+                                      projection_version=PROJECTION_VERSION, stage=STORAGE_STAGE,
+                                      allow_pending_cycle_goal=True)
         guard = LocalLeaseGuardFactory(
             lease_seconds=options.worker_lease_seconds,
             interval_seconds=options.worker_lease_seconds / 4,
             renewal_timeout_seconds=min(15, options.worker_lease_seconds / 4),
         )
         worker = build_worker(worker_settings, dynamodb_client=database.client, s3_client=objects,
-                              legacy_bindings=legacy, adapters=[adapter],
+                              legacy_bindings=legacy, adapters=[adapter, retained],
                               required_bindings=execution_catalog().required_bindings,
                               lease_guard_factory=guard, operations=getattr(database, "operations", None))
         runner = LocalJobRunner(worker.jobs, worker, lease_seconds=options.worker_lease_seconds,

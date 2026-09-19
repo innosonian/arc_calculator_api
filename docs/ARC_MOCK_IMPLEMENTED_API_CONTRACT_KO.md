@@ -1,10 +1,10 @@
-# ARC API 상세 계약 — 인증·훈련·파서·계산 응답
+# 계산 입력·응답 및 기존 Mock API 상세 계약
 
-갱신일: 2026-09-10. 현재 소스의 HTTP·로그인·훈련·계산 계약을 기록한다. 앱 변경 사항과 재전송 식별자 관리는 [앱 전달 명세](APP_API.md)를 함께 사용한다.
+갱신일: 2026-09-19. 새 `/api/v2`의 현재 요청·응답·오류 계약은 [앱 API Markdown 명세](APP_API.md)에 모았다. 이 문서는 기존 `/mock/v1` 및 공용 측정 파서·계산 JSON의 상세 계약이다. 두 버전의 경로·필드 이름·envelope를 혼용하지 않는다. 과거 VCC 설계 초안과 중복 DTO 표는 제거했다.
 
-**현재 구현 계약이며 모든 환경의 사용 가능 선언은 아니다.** 기본 `scripts/serve_local.py`는 실제 로컬 DB·파일·계산 실행기와 15개 프로그램/연령 정의를 연결한다. 저장소의 기록된 실측 바이너리로 로그인→생성→업로드→계산 결과·실차트까지 검증했다. Only 완료는 실제 횟수+tester Pass, CPR은 점수와 별도로 `pending_policy`다. 실제 앱·마네킨 현장 인수, AWS 실행 연결, ARC 제출은 별도다. [로컬 실행](LOCAL_RUN.md), [검증 범위](VALIDATION.md), [미정 정책](DECISIONS.md)을 따른다.
+**현재 구현 계약이며 모든 환경의 사용 가능 선언은 아니다.** 기본 `scripts/serve_local.py`는 실제 로컬 DB·파일·계산 실행기와 15개 프로그램/연령 정의를 연결한다. 저장소의 기록된 실측 바이너리로 로그인→생성→업로드→계산 결과·실차트까지 검증했다. Only 완료는 실제 횟수+tester Pass, CPR은 점수와 별도로 `pending_policy`다. 실제 앱·마네킨 현장 인수, AWS 실자원 인수, ARC 제출은 별도다. [로컬 실행](LOCAL_RUN.md), [검증 범위](VALIDATION.md), [미정 정책](DECISIONS.md)을 따른다.
 
-앞부분은 공개 API·진도 계약이며, 뒤의 **B부**는 기존 파서·계산 응답·호환 문서의 상세 계약이다. 내부 파서가 받는 입력 전체가 현재 Mock의 고정 condition 또는 입력 projection을 통과한다는 뜻은 아니다. 예전 실행 정의로 저장된 v1 결과와 현재 로컬 v2의 완료 근거를 구별한다.
+앞부분은 공개 API·진도 계약이며, 뒤의 **B부**는 기존 파서·계산 응답·호환 문서의 상세 계약이다. 내부 파서가 받는 입력 전체가 현재 Mock의 고정 condition 또는 입력 projection을 통과한다는 뜻은 아니다. 예전 실행 정의로 저장된 v1 결과와 현재 v3 adapter의 완료 근거를 구별한다.
 
 근거 파일은 `mock_journey/handler.py`, `service.py`, `calculation.py`, `auth.py`, `catalog.py`, `state.py`, `jobs.py`, `worker.py`, `storage.py`다. 기계 대조용 인벤토리는 [P4C_ROUTE_ROLE_MANIFEST.json](implementation_execution/P4C_ROUTE_ROLE_MANIFEST.json), 시험은 `tests/test_mock_route_contract.py`다. 아래 URL은 호스트가 없는 경로 계약이며 서버 주소를 뜻하지 않는다.
 
@@ -135,7 +135,7 @@
 {"attempt_id":"<attempt-id>","state":"queued","wait_expired":false,"status_path":"/mock/v1/attempts/<attempt-id>"}
 ```
 
-**현재 구현은 요청 안에서 30초 동안 기다리지 않는다.** 입력·outbox 접수 후 이미 결과가 있으면 200, 없으면 일찍 202를 반환한다. 따라서 `wait_expired`는 false다. 사용자가 정한 계산+ARC 제출 30초는 최대 대기 정책이며 업로드 시작/수신 완료 중 기산점은 Q23 미정이다. 실제 Gateway timeout과 처리 시간 상한은 배포 인수에서 맞춰야 한다. 이 코드만으로 모든 네트워크 요청이 30초 안에 끝난다고 주장하지 않는다. `GET /mock/v1/attempts/{attempt_id}/calculation`으로 계산 JSON, `GET /mock/v1/attempts/{attempt_id}`로 처리 상태·완료 여부를 다시 조회한다. Retry-After나 별도 poll 간격은 현재 응답 계약에 없다.
+**현재 구현은 요청 안에서 30초 동안 기다리지 않는다.** 입력·outbox 접수 후 이미 결과가 있으면 200, 없으면 일찍 202를 반환한다. 따라서 `wait_expired`는 false다. 사용자가 정한 계산+ARC 제출 대기는 D54에 따라 **앱의 파일 업로드 시작부터 최대 30초**다. 앱이 관리하는 대기 정책이며 서버가 업로드 시작 시각이나 경과 여부를 판정한다는 뜻은 아니다. 실제 Gateway timeout과 처리 시간 상한은 배포 인수에서 맞춰야 한다. 이 코드만으로 모든 네트워크 요청이 30초 안에 끝난다고 주장하지 않는다. `GET /mock/v1/attempts/{attempt_id}/calculation`으로 계산 JSON, `GET /mock/v1/attempts/{attempt_id}`로 처리 상태·완료 여부를 다시 조회한다. Retry-After나 별도 poll 간격은 현재 응답 계약에 없다.
 
 200 계산 body는 저장된 계산 필드의 값·자료형·null을 유지하고 현재 제출 상태를 응답에서 합성한다. 저장 snapshot 자체는 바꾸지 않지만 응답 전체 JSON bytes는 같지 않을 수 있다. 점수·지표·통계·평균·코칭·차트 등은 기존 결과와 `services/legacy_response.py` 후처리의 계약을 따른다. 조회 때 점수 또는 누락 필드를 다시 계산하거나 새 envelope로 감싸지 않는다. `certification`은 기존 규칙의 object다. 최상위 `submit_hstm`은 제거하고 `submit_arc: {"status":"disabled","ok":false,"error":"arc_contract_pending"}`를 붙인다. 실제 ARC 제출은 수행하지 않는다.
 
@@ -152,7 +152,7 @@
 }
 ```
 
-현재 v2의 Only는 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR은 완전한 cycle의 정의가 미정이므로 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
+현재 v3 검출 adapter도 v2에서 도입한 목표 평가 형식을 유지한다. Only는 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR은 완전한 cycle의 정의가 미정이므로 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
 
 목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. 목표 사유가 점수 사유보다 앞선다. 목표를 판단해 충족했고 점수도 Pass인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
 
@@ -162,7 +162,7 @@
 |---|---|
 | `APPLIED` | 목표·Pass 만족, 현재 epoch의 미완료 조합을 완료로 변경. applied=true |
 | `REQUIREMENTS_NOT_MET` | 판단된 목표 또는 Pass 미충족. applied=false |
-| `GOAL_POLICY_UNRESOLVED` | 현재 v2에서 목표 정책 미확정. applied=false |
+| `GOAL_POLICY_UNRESOLVED` | 현재 pending 목표 평가에서 정책 미확정. applied=false |
 | `ALREADY_COMPLETED` | 먼저 끝난 동시 attempt가 이미 완료시킴. 결과는 보관, applied=false |
 | `PROGRESS_RESET` | 로그아웃으로 epoch가 바뀜. 예전 결과는 보관, 새 진도에는 반영하지 않음 |
 
@@ -230,7 +230,7 @@ epoch가 이미 바뀌었다면 `PROGRESS_RESET`이 우선하며 과거 완료 �
 
 로컬 조립에는 `mock_journey.assembly.build_application`, `build_worker`, `build_relay`를 사용할 수 있다. 호출자가 client·legacy binding·설정·keyring·실행 정의·버전을 명시하며, 각 함수는 해당 역할의 기존 구성 요소를 연결한다. 필요한 client나 legacy binding이 `None`이면 조립 단계에서 거절한다. SDK 연결을 시도하거나 실제 접근 권한을 검사하는 기능은 아니다.
 
-`ExecutionCatalog`는 프로그램·연령의 실행 정의, projection 자료형과 버전 연결을 검사한다. 카탈로그 생성만으로 CPR 완료 정책이나 모든 실행 구성이 검증된 것은 아니다. `InternalCalculatorAdapter`와 필요한 완료 근거 resolver를 명시적으로 조립한다. 현재 기본 로컬 CLI는 승인된 15개 정의를 등록하되 CPR 목표를 `pending_policy`로 명시한다. 미정 조건을 자동으로 채우지 않는다. AWS의 기본 runtime에는 아직 동일 실행 구성이 연결되지 않았다.
+`ExecutionCatalog`는 프로그램·연령의 실행 정의, projection 자료형과 버전 연결을 검사한다. 카탈로그 생성만으로 CPR 완료 정책이나 모든 실행 구성이 검증된 것은 아니다. 현재 로컬 CLI와 명시적 AWS 역할 설정은 승인된 15개 정의와 v3 검출 adapter를 조립하되 CPR 목표를 `pending_policy`로 명시한다. 이전 v2는 저장 후보 복구용이며 새 core로 재계산하지 않는다. [버전 보존 경계](ARCHITECTURE.md#점수와-완료의-버전-경계)를 따른다. 실제 AWS 자원·권한·trigger 검증은 별도다.
 
 SDK 호출 목록은 manifest에 기록한다. 이는 IAM 정책이나 배포 ARN이 아니다. SQS 수신·삭제, Stream 읽기, trigger partial-batch/DLQ/retry, schedule 연결은 플랫폼 설정으로 따로 검증해야 한다. 실제 역할별 리소스 범위·암호화·credentials·네트워크 제한·실행 시간은 이 문서에서 만들어내지 않는다.
 
@@ -309,6 +309,30 @@ HTTP 왕복 테스트는 `urlsafe_b64encode(quote(urlencode(fields), safe="").en
 `condition`이 정상 객체인지, 필수 키가 있는지 등의 실패 동작에는 P1의 기존 ARC 보호 예외가 적용된다.
 `parse_body_as_action` 같은 라이브러리 함수의 존재가 이 POST API에 JSON action 입력 경로를 추가한다는
 뜻은 아니다.
+
+### 2.3 패킷 검출과 앱 기록 계약
+
+2026-09-11 사용자 확정 D38~D46을 AHA2020/ARC2020/ARC2025/ERC2020/STD2015 모두에 적용한다. guideline별 점수식·최소량과 Mock attempt의 ARC2025 고정 조건은 별개다.
+
+- 첫 패킷은 압박 카운터 기준선이다. 앱은 첫 압박 전에 기준선 패킷을 넣는다. 이후 이전 값과 다른 양수 카운터를1회로 인정하며, 증가 폭으로 유실된 압박을 추정 복원하지 않는다.0은 새 기준선이며 사건을 만들지 않는다.
+- 패킷의 두 호흡량 중 최대값을 사용하고 후보별 최고값을 추적한다. 성인·소아 최고값 대비10mL 이상 하강한 두 연속 패킷에서1회 확정한다. 원본 보정계수10이므로 raw50→49→49가1회다. 영아는 보정계수1, 감소5mL 잠정값이다. 공식 의학·기기 기준으로 확정한 수치가 아니다.
+- 100→90→89,100→90→90,100→89→90,100→0→0은 모두1회다. 중간 패킷이 감소 조건을 벗어나거나 최고값이 갱신되면 연속 확인을 처음부터 다시 한다. 새로운 최고값을 이전 호흡에서 가져오지 않는다.
+- 확정 후에는 대표량0 또는 패킷별 최대 압박 깊이의 상승 시작으로 재준비한다. 이후 새 호흡량 상승부터 후보를 시작하며 재준비한 패킷을 새 후보에 재사용하지 않는다. 아직 확인 중인 호흡을 압박 시작 때문에 취소하지 않는다. 깊이에 새 잡음 임계값을 추가하지 않는다.
+- 파일 끝은 추가 관측이 아니다. 두 패킷을 확인하지 못한 마지막 호흡은 길이에 관계없이 추가하지 않는다. 이미 확정한 마지막 호흡을 중복 추가하지 않는다.
+- 압박·호흡 사건과 측정 증거를 각각 보존한다. 겹친 전체 시간은 합집합으로 한 번만 합산하고 호흡률 분모와 구별한다. 같은 패킷에서 확정된 두 사건은 같은 계산 cycle에 넣으며 직전 동작이 호흡이면 둘 다 다음 cycle로 이동한다. 이 cycle 규칙은 CPR 프로그램 완료 규칙 Q22를 대신하지 않는다.
+
+앱팀 검증 기록은 **시험 자료와 백엔드 검출 결과를 대조하기 위한 제안**이다. 이 저장소 밖의 앱에 로그를 설치하거나 실제 기기를 검증한 것은 아니다. 실물 시험 전에 앱 저장소/빌드 식별자, 마네킨 모델·펌웨어, binary codec 버전, 기록 시작/종료 절차를 확보한다. 시험 담당자가 동일한 누적 binary와 아래 진단을 비공개로 보관하고 정상·경계·유실·반등·압박 동시 진행 사례의 인정 시점을 패킷 단위로 대조한다.
+
+| 기록 필드 | 단위·용도 |
+|---|---|
+| 시험용 임의 식별자, 앱/기기 버전 | 사람·로그인·시도 복구 증표와 연결하지 않는 재현 식별 |
+| 원본 파일의 패킷 index·sequence·timestamp | 입력 순서를 보존하고 누락/중복/시간 역행을 확인. 임의 정렬·보간하지 않음 |
+| 두 원본 volume·보정계수·mL 두 값·대표 최대값 | 성인·소아 raw1=10mL, 영아 raw1=1mL 변환을 분리해 확인 |
+| 압박 counter·원본 깊이 배열·보정 깊이 최대값 | 카운터 기준선/변화와 깊이 상승 시작을 따로 확인 |
+| 후보 시작·최고값/위치·감소 threshold·연속 확인0/1/2 | 최고값 기준 하강과 미확정 EOF를 재현 |
+| 확정 packet index·재준비 사유·다음 후보 시작 | 같은 하강 중복, 동시 두 사건·cycle·측정 구간을 대조 |
+
+인증정보·개인정보·원문 HTTP 요청·서명 URL은 이 진단에 넣지 않는다. 원본 binary는 기존 비공개 파일 보관을 사용한다. 패킷 진단 전체를 일반 stdout/Sentry/운용 DB 로그에 자동 전송하는 새 계약은 추가하지 않는다. 보관기간과 접근 권한은 실제 시험 전에 사용자가 정한다.
 
 ## 3. 조건·호환 필드
 
@@ -508,3 +532,10 @@ P1에 따라 기존 ARC의 입력 검증·오류 정제·Sentry 보호를 유지
 요청 최대 크기는 Gateway·Lambda의 전체 페이로드와 multipart/URL/base64 오버헤드에 좌우된다.
 원격 환경에서 검증한 최대 바이너리 크기·세션 길이는 아직 없다. 단위 테스트 결과만으로
 모바일 codec, AWS 권한, 실제 앱 Journey 또는 ARC 연동이 검증되었다고 표시하지 않는다.
+
+
+<a id="d-vcc-구현-착수용-내부앱-계약-v1--미구현"></a>
+
+## 새 과정 API 계약의 위치
+
+`/api/v2`는 [APP_API Markdown 명세](APP_API.md)를 따른다. 내부 DTO·저장 거래·복구 불변조건은 [ARCHITECTURE](ARCHITECTURE.md), 확정 정책과 외부 계약 대기는 [DECISIONS](DECISIONS.md)에 둔다. 이 문서의 snake_case 응답과 취소 사유를 v2 camelCase 제어 API에 그대로 사용하지 않는다. `calculation` 안의 기존 계산 JSON은 원래 자료형·null·키를 유지한다.

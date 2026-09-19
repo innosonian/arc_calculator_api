@@ -1,15 +1,19 @@
-"""Offline typed regression against reference observations and the approved ARC exception.
+"""Offline typed regression with independently derived D38-D46 detection inputs.
 
-CI reads checked-in observations, never the external reference directory. The
-current calculator runs in an isolated worker with side-effect guards.
+The original reference observations and ARC exceptions remain unchanged. The
+candidate runs in an isolated worker with side-effect guards; its output never
+supplies expected values. Reused historical scoring sources are hash-pinned.
 """
 
 import json
+import base64
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from scripts import verify_reference_parity as parity
+from tests.detection_oracle import run_expected
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +38,22 @@ def current_results(input_cases):
     assert all(value == "blocked" for value in reply["guard_self_test"].values())
     assert len(reply["cases"]) == len(input_cases)
     return {case["id"]: case for case in reply["cases"]}
+
+
+@pytest.fixture(scope="module")
+def detection_expectations(input_cases):
+    # User-approved D38-D46 change events and their measurement periods.
+    # Do not copy the current worker output or overwrite the old JSON oracle.
+    import lambda_handler
+
+    expected = {}
+    for case in input_cases:
+        core, _chart = run_expected(base64.b64decode(case["cpr_b64"]), base64.b64decode(case["aed_b64"]),
+                                    case["condition"], case["vp_event_list"])
+        converted = lambda_handler._convert_result_to_legacy(deepcopy(core), deepcopy(case["condition"]))
+        expected[case["id"]] = json.loads(json.dumps({"id": case["id"], "status": "ok",
+                                                     "main_result": core, "http_calculation_result": converted}))
+    return expected
 
 
 def test_oracle_coverage_and_input_identity(input_cases):
@@ -72,12 +92,17 @@ def test_approved_expectations_retain_independently_checked_arithmetic(input_cas
 
 
 @pytest.mark.parametrize("case_id", list(REFERENCE_BY_ID))
-def test_calculator_matches_reference_or_explicit_arc_exception(case_id, current_results):
-    expected = APPROVED_BY_ID.get(case_id, {}).get("expected_record", REFERENCE_BY_ID[case_id])
+def test_calculator_matches_independent_detection_expectation(case_id, current_results, detection_expectations):
+    historical = APPROVED_BY_ID.get(case_id, {}).get("expected_record", REFERENCE_BY_ID[case_id])
+    expected = detection_expectations[case_id]
     current = current_results[case_id]
     assert current["status"] == "ok", (case_id, current)
     differences = parity._differences(expected, current)
     assert not differences, (case_id, differences[:10])
+    # On paths for which the independent oracle says the rule makes no change,
+    # the full typed comparison still enforces the original reference value.
+    if not parity._differences(historical, expected):
+        assert not parity._differences(historical, current)
 
 
 @pytest.mark.parametrize("reference,current", [(1, True), (1, 1.0), (None, 0), (-0.0, 0.0), ({}, {"x": None})])

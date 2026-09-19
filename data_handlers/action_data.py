@@ -1,15 +1,15 @@
-# 원본 hstm_v2 data_handlers/action_data.py (V1 패리티 보존)
+# Approved independent detection; existing action measurement types are retained.
+from bisect import bisect_left
 from config.constants import (
     HANDSOFF_DEADTIME_MS,
     ACTION_TYPE_COMP,
     ACTION_TYPE_VENT,
     ACTION_TYPE_LAST,
     PACKET_MS,
-    MINIMUM_VENT_VOLUME,
     MINIMUM_COMP_DEPTH,
-    VENT_TAIL_MIN_PACKETS,
 )
 from config.enums import Actor
+from data_handlers.detection import PacketActionDetector
 from services.config import Config
 
 
@@ -23,82 +23,61 @@ class ActionDataPrepare:
         return self.make_action_list(pre_action_list)
 
     def generate_action_rtdata_list(self, rtdata_list: list) -> list[dict]:
-        # 원본 hstm_v2 action_data.py:24-99
         action_list = []
         if not rtdata_list:
             return action_list
-
-        # 첫 패킷 값을 기준선으로 삼으면, 스트림이 첫 압박 카운트가 오른 직후부터
-        # 시작할 때 그 압박이 액션으로 만들어지지 않는다. 0에서 시작해 복원한다.
-        last_comp_cnt = 0
-        last_vent_vol = 0
-
-        buffer = []
-        ventilation_speed = 0
-        for i, rtdata in enumerate(rtdata_list):
-            is_comp_cnt_changed = rtdata["compression_count"] != last_comp_cnt and rtdata["compression_count"] > 0
-            vent_vol = max(rtdata["ventilation_volume"])
-            vent_vol_min = min(rtdata["ventilation_volume"])
-
-            # F-10: 환기 시작/신호 판정 하한 MINIMUM_VENT_VOLUME(=10) — 기기 스펙 확인 대기.
-            is_vent_started = vent_vol_min < MINIMUM_VENT_VOLUME
-
-            if vent_vol < MINIMUM_VENT_VOLUME:
-                vent_vol = 0
-
-            is_vent_cnt_changed = vent_vol < last_vent_vol and is_vent_started
-
-            if is_comp_cnt_changed or is_vent_cnt_changed:
-                action_type = ACTION_TYPE_VENT if is_vent_cnt_changed else ACTION_TYPE_COMP
-
-                # ventilation speed 새로 구하기
-                ventilation_speed = self._calc_ventilation_speed(buffer, action_type)
-
-                last_comp_cnt = rtdata["compression_count"]
-
-                if self._is_valid_action(action_type):
-                    action_list.append(
-                        {
-                            "action_type": action_type,
-                            # 스트림 첫 패킷에서 바로 확정되는 경우 버퍼가 비어 있다.
-                            "rtdata_list": buffer or [rtdata],
-                            "ventilation_speed": ventilation_speed,
-                        }
-                    )
-
-                buffer = []
-                last_vent_vol = 0
-            else:
-                last_vent_vol = vent_vol
-
-            buffer.append(rtdata)
-
-        # 하강 전에 스트림이 끊긴 마지막 호흡을 액션으로 확정한다.
-        # 직전 액션 이후 관측이 짧으면 새 호흡이 아니라 직전 호흡의 잔여 흔들림이다.
-        if (
-            last_vent_vol >= MINIMUM_VENT_VOLUME
-            and len(buffer) >= VENT_TAIL_MIN_PACKETS
-            and self._is_valid_action(ACTION_TYPE_VENT)
-        ):
+        events = PacketActionDetector(self.config).detect(rtdata_list)
+        compression_intervals = sorted(
+            (rtdata_list[event.evidence_start]["timestamp"], rtdata_list[event.evidence_stop - 1]["timestamp"])
+            for event in events if event.action_type == ACTION_TYPE_COMP
+        )
+        compression_starts, compression_ends = [], []
+        for start, end in compression_intervals:
+            if end <= start:
+                continue
+            compression_starts.append(start)
+            compression_ends.append(max(end, compression_ends[-1]) if compression_ends else end)
+        # A candidate's rate anchor is fixed before its first positive packet.
+        # An intervening compression cannot truncate the candidate or its rate.
+        event_indices = [event.packet_index for event in events]
+        for event in events:
+            prior_position = bisect_left(event_indices, event.evidence_start) - 1
+            prior_boundary = event_indices[prior_position] if prior_position >= 0 else 0
+            source = rtdata_list[event.evidence_start:event.evidence_stop]
+            first_ts, last_ts = source[0]["timestamp"], source[-1]["timestamp"]
+            rate_start = rtdata_list[prior_boundary]["timestamp"] if event.action_type == ACTION_TYPE_VENT else first_ts
+            if event.action_type == ACTION_TYPE_VENT:
+                before_end = bisect_left(compression_starts, last_ts) - 1
+                if before_end >= 0 and compression_ends[before_end] > first_ts:
+                    # A positive-length overlap uses the breath's own observed
+                    # start, not a preceding compression/cadence boundary. The
+                    # whole event list also covers a compression confirmed later.
+                    # Merely touching endpoints preserves ordinary cadence.
+                    rate_start = first_ts
             action_list.append(
                 {
-                    "action_type": ACTION_TYPE_VENT,
-                    "rtdata_list": buffer,
-                    "ventilation_speed": self._calc_ventilation_speed(buffer, ACTION_TYPE_VENT),
+                    "action_type": event.action_type,
+                    "rtdata_list": source,
+                    "ventilation_speed": self._calc_ventilation_speed(source, event.action_type),
+                    "_event_packet": event.packet_index,
+                    "_detected_timestamp": rtdata_list[event.packet_index]["timestamp"],
+                    "_source_packet_indices": list(range(event.evidence_start, event.evidence_stop)),
+                    "_source_timestamps": [packet["timestamp"] for packet in source],
+                    "_elapsed_interval": (rate_start, last_ts),
+                    "_rate_duration_ms": last_ts - rate_start,
+                    "_boundary_compression_rate": event.compression_rate,
                 }
             )
-            # 뒤따르는 LAST 액션이 빈 리스트를 받지 않도록 마지막 패킷 하나를 남긴다.
-            buffer = [rtdata_list[-1]]
-
-        # add last action for get last chest compression action rate
+        # Keep the internal LAST shape for callers, but it no longer infers a
+        # breath or determines the preceding compression's rate.
+        last_index = events[-1].packet_index if events else 0
         action_list.append(
             {
                 "action_type": ACTION_TYPE_LAST,
-                "rtdata_list": buffer,
-                "ventilation_speed": ventilation_speed,
+                "rtdata_list": rtdata_list[last_index:],
+                "ventilation_speed": 0,
             }
         )
-
         return action_list
 
     def _is_valid_action(self, action_type: str) -> bool:
@@ -160,6 +139,17 @@ class ActionDataPrepare:
 
             merged_data["action_type"] = action_rtdata["action_type"]
             merged_data["ventilation_speed"] = action_rtdata["ventilation_speed"]
+            if "_event_packet" in action_rtdata:
+                for key in ("_event_packet", "_detected_timestamp", "_source_packet_indices", "_source_timestamps",
+                            "_elapsed_interval", "_rate_duration_ms", "_boundary_compression_rate"):
+                    merged_data[key] = action_rtdata[key]
+                # Measurement duration includes the fixed preceding boundary;
+                # signal arrays contain only this event's source evidence. In
+                # particular, a prior breath's remaining volume is not a peak
+                # of the next one. A boundary timestamp of0 remains valid.
+                merged_data["first_timestamp"] = action_rtdata["_elapsed_interval"][0]
+                if action_rtdata["action_type"] == ACTION_TYPE_COMP:
+                    merged_data["compression_rate"] = [action_rtdata["_boundary_compression_rate"]]
             # 앱이 vp_event로 VP 구간을 정확히 전달하므로, 액션 actor를 "마지막 패킷"이나
             # "버퍼 전체 다수"가 아니라 "실제 압박/환기가 일어난(신호 있는) 패킷"의 VP 멤버십으로
             # 확정한다. 버퍼가 VP 경계에 걸쳐 idle/전환 패킷이 섞여도 실제 동작 주체로 귀속된다.
@@ -190,12 +180,12 @@ class ActionDataPrepare:
     def _primary_actor(self, packet_signal: list, action_type: str) -> Actor:
         # 액션 종류에 따라 "신호가 있는(실제 압박/환기가 일어난) 패킷"만 골라 그 패킷들의
         # VP 멤버십 다수로 actor를 정한다. 신호 패킷이 없으면 전체 패킷으로 폴백.
-        # F-7: 신호 판정 경계 비대칭(comp는 depth > MINIMUM_COMP_DEPTH strict,
-        #      vent는 vol >= MINIMUM_VENT_VOLUME inclusive) — 기기 스펙 확인 대기.
+        # Approved infant5mL candidates may peak below the old10mL clamp.
+        # Positive samples of this candidate determine its ventilation actor.
         if action_type == ACTION_TYPE_COMP:
             actors = [actor for actor, depth, _ in packet_signal if depth > MINIMUM_COMP_DEPTH]
         elif action_type == ACTION_TYPE_VENT:
-            actors = [actor for actor, _, vol in packet_signal if vol >= MINIMUM_VENT_VOLUME]
+            actors = [actor for actor, _, vol in packet_signal if vol > 0]
         else:
             actors = []
         if not actors:
@@ -206,9 +196,11 @@ class ActionDataPrepare:
         return Actor.VIRTUAL_PARTNER if vp > len(actors) - vp else Actor.REAL_PERSON
 
     def make_action_list(self, pre_action_list: list[dict]) -> list[dict]:
-        # F-2: compression_rate 한 칸 시프트(각 액션의 rate를 다음 액션의 값으로 교체.
-        #      LAST 센티널 덕분에 실제 마지막 comp도 rate를 받는다) — 기기 스펙 확인 대기.
+        # Legacy action-library inputs retain the next-action rate convention.
+        # Packet-generated events already hold their actual boundary rate.
         for i, pre_action in enumerate(pre_action_list):
+            if "_boundary_compression_rate" in pre_action:
+                continue
             try:
                 next_action = pre_action_list[i + 1]
             except IndexError:
@@ -233,8 +225,8 @@ class ActionDataPrepare:
         return pre_action_list
 
     def _calc_handsoff_ms(self, pre_action_list: list[dict]) -> list[dict]:
-        # F-1: comp 액션에만 HANDSOFF_DEADTIME_MS(1000ms) 공제, vent 액션은 전체 시간이
-        #      handsoff — 기기 스펙 확인 대기.
+        # Retain individual measurement fields and the existing1000ms credit.
+        # Cycle/metric aggregates use timeline_totals to count overlaps once.
         for pre_action in pre_action_list:
             total_action_ms = self._get_total_action_ms(pre_action)
             handsoff_ms = total_action_ms - (

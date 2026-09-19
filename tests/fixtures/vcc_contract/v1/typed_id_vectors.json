@@ -1,0 +1,1677 @@
+{
+  "contract_version": "vcc-internal-v1",
+  "hash_algorithm": "typed.digest = SHA-256 of typed.canonical_bytes",
+  "synthetic": true,
+  "baseline_digest": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+  "same_as_baseline": [
+    "display_url_and_title_omitted",
+    "source_revision_session_progress_omitted"
+  ],
+  "different_from_baseline": [
+    "source_id_int_1_vs_str_1",
+    "placement_order_change",
+    "content_version_change",
+    "execution_goal_change",
+    "content_identity_change",
+    "duration_ms_change",
+    "mapping_version_change",
+    "placement_source_id_type_change",
+    "enrollment_502_scope"
+  ],
+  "cases": [
+    {
+      "id": "baseline",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+      "note": "Canonical fixture 501 definition hash."
+    },
+    {
+      "id": "display_url_and_title_omitted",
+      "expect_same_as": "baseline",
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+      "note": "detail_json URL/title/icon are outside definition_identity."
+    },
+    {
+      "id": "source_revision_session_progress_omitted",
+      "expect_same_as": "baseline",
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c",
+      "note": "source_revision, public IDs, principal, session, progress, timestamp excluded."
+    },
+    {
+      "id": "source_id_int_1_vs_str_1",
+      "expect_same_as": null,
+      "left": {
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "digest": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
+      },
+      "right": {
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          "1",
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "digest": "3cfeede1932c120ba47aff6d25d4023975f83a2fa4a45f420cfa78ae92515a61"
+      },
+      "note": "Exact SourceId type is part of the hash."
+    },
+    {
+      "id": "tagged_id_vectors",
+      "values": {
+        "int_1": "196bf27c76e388ef46771aaf1d4046700dc15d24a773835cc702e42d9e3c03cd",
+        "str_1": "5ecbd8a2e115b715ef1cbbc27399a661b5d563d66b9b92786fe977c54d43ddda",
+        "list_int_1": "ed7ab82ef5a2468be0de38d1a6732ca0d48609c9a8adb60c5e43bd4f12f2710b",
+        "list_str_1": "224dc986a5e314220364f6fa6a430122abdf8a2582e134a69172eb944e1c2ee1",
+        "scope_int_learner": "9effd29b37723ec66bf1f784117462f9ebe0217bf552fc3ef968be6c648b8fb4",
+        "scope_str_learner": "ef7f13f066176fd23606151c1dd8f94470de8d4bc0dbe847b05291562882a33e",
+        "learner_key_int": "080359c81b35bfec5a4be0cdedb01066d5ab930b59a3b931e2ab726a598c6485",
+        "learner_key_str": "de35e5814fff252db16ff0de1a295d38061732506cf072b39e221a7cc1f4c7cd"
+      },
+      "note": "typed.digest tags int vs str. tuple inputs are converted to list before digest."
+    },
+    {
+      "id": "tuple_converted_to_list",
+      "list_digest": "9effd29b37723ec66bf1f784117462f9ebe0217bf552fc3ef968be6c648b8fb4",
+      "note": "Callers must pass a list projection; bytes/tuple are not handed to typed.digest."
+    },
+    {
+      "id": "placement_order_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "ab79709ba6bfea86f707f503f8820a1371d65d6e2a953fde0a3db643440279cb"
+    },
+    {
+      "id": "content_version_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v2",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "1bb038a73847afd5db9a4aa038aea473908ff4d37fd4fe0df489666a61c84044"
+    },
+    {
+      "id": "execution_goal_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 61
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "32c85c37579b331918221b86e4067c80c50bc86b13636bb676178743734d6284"
+    },
+    {
+      "id": "content_identity_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video-b"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "d74c69fb488a3ccc76f0c9b1bd73e73d4f346e9ef163af9842337966c2b6a71c"
+    },
+    {
+      "id": "duration_ms_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20001,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "e15c3f212ddeedc0a0c40d28c419fa90fd2c83e08ef1547b4c62b7dcc9d186a7"
+    },
+    {
+      "id": "mapping_version_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v2",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "34e8f5e1408f00f4aaa47620b4469e40201fb867196c0746cc6ad802d462da23"
+    },
+    {
+      "id": "placement_source_id_type_change",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-501",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": 1001,
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "91f5b0288c45ae6a3748c7cca4d93fc0aa73750a06f69f4534231bb319ce3733"
+    },
+    {
+      "id": "enrollment_502_scope",
+      "expect_same_as": null,
+      "projection": {
+        "contract_version": "vcc-internal-v1",
+        "mapping_version": "vcc-fixture-mapping-v1",
+        "scope": [
+          "fixture",
+          "tenant-vcc-fixture",
+          1,
+          "src-enroll-502",
+          "src-course-101"
+        ],
+        "placements": [
+          {
+            "source_id": "src-place-1001",
+            "position": 1,
+            "kind": "video",
+            "content_identity": {
+              "source_item_id": "src-item-video",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-video"
+              ]
+            },
+            "content_version": "video-v1",
+            "duration_ms": 20000,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1002",
+            "position": 2,
+            "kind": "document",
+            "content_identity": {
+              "source_item_id": "src-item-document",
+              "training_program_id": null,
+              "asset_ids": [
+                "src-asset-pdf"
+              ]
+            },
+            "content_version": "document-v1",
+            "duration_ms": null,
+            "execution_status": "absent",
+            "execution": null
+          },
+          {
+            "source_id": "src-place-1003",
+            "position": 3,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1004",
+            "position": 4,
+            "kind": "training",
+            "content_identity": {
+              "source_item_id": "src-item-training-only",
+              "training_program_id": "src-tp-compression-only",
+              "asset_ids": []
+            },
+            "content_version": "training-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "compression_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "compressions",
+                "required": 60
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          },
+          {
+            "source_id": "src-place-1005",
+            "position": 5,
+            "kind": "assessment",
+            "content_identity": {
+              "source_item_id": "src-item-assessment",
+              "training_program_id": "src-tp-ventilation-assessment",
+              "asset_ids": []
+            },
+            "content_version": "assessment-v1",
+            "duration_ms": null,
+            "execution_status": "ready",
+            "execution": {
+              "condition": {
+                "mode": "training",
+                "target": "adult",
+                "training_type": "ventilation_only",
+                "guideline": "ARC2025",
+                "cpr_cycle_type": "302",
+                "is_2rescuers": false
+              },
+              "calculation_profile": {},
+              "profile_version": "tester-goal-pending-v2",
+              "adapter_version": "arc-internal-detection-pending-v3",
+              "projection_version": "arc-local-projection-v1",
+              "goal": {
+                "kind": "ventilations",
+                "required": 8
+              },
+              "catalog_version": "vcc-fixture-catalog-v1"
+            }
+          }
+        ]
+      },
+      "digest": "da1e663229bcdcde015fb6f0980538ad38e15ac1dd9c9c4c1bc9a57c77c569fd",
+      "note": "Same placements under a different enrollment SourceId."
+    }
+  ]
+}

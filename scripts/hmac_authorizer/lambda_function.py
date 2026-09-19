@@ -8,7 +8,7 @@ Canonical String 형식:
 
 서명 알고리즘: HMAC-SHA256 (hex digest, lowercase)
 """
-# 원본: hstm_v2 scripts/hmac_authorizer/lambda_function.py (arc 이식 — 동작 동일, 무수정).
+# 기존 서명·인증 규격을 유지하며 로그에는 허용된 고정 진단만 남긴다.
 
 import hashlib
 import hmac
@@ -33,7 +33,7 @@ def handler(event, context):
         raise Exception("Unauthorized")
 
     if not _is_timestamp_valid(timestamp):
-        _log("warn", "timestamp_expired", timestamp=timestamp)
+        _log("warn", "timestamp_expired")
         raise Exception("Unauthorized")
 
     query_string = _build_sorted_query_string(query)
@@ -50,7 +50,7 @@ def handler(event, context):
         _log("warn", "signature_mismatch")
         raise Exception("Unauthorized")
 
-    _log("info", "auth_success", path=path)
+    _log("info", "auth_success")
     return _build_allow_policy(method_arn)
 
 
@@ -96,5 +96,18 @@ def _build_allow_policy(method_arn: str) -> dict:
 
 
 def _log(level: str, message: str, **fields) -> None:
-    payload = {"level": level, "message": message, **fields}
-    print(json.dumps(payload, default=str))
+    # Neither a request field nor its string representation is a log field.
+    levels = {"missing_headers": "warn", "timestamp_expired": "warn",
+              "signature_mismatch": "warn", "auth_success": "info"}
+    try:
+        if message not in levels or level != levels[message]:
+            return
+        payload = {"level": level, "message": message}
+        if message == "missing_headers":
+            payload.update({name: value for name, value in fields.items()
+                            if name in ("has_timestamp", "has_signature") and type(value) is bool})
+        print(json.dumps(payload))
+    except Exception:
+        # A broken log destination must not turn an Allow into an error or
+        # replace the fixed Unauthorized response with a private exception.
+        pass

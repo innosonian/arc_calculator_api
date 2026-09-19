@@ -15,6 +15,8 @@ import uuid
 from mock_journey import typed
 from mock_journey.contracts import (
     PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    PENDING_GOAL_ADAPTER_VERSIONS,
     PENDING_GOAL_PROFILE_VERSION,
     VerifiedCalculation,
     VerifiedChart,
@@ -76,13 +78,19 @@ class InternalCalculator:
                 or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", stage)
                 or (cycle_goal_resolver is not None and not callable(cycle_goal_resolver))
                 or type(allow_pending_cycle_goal) is not bool
-                or allow_pending_cycle_goal != (version == PENDING_GOAL_ADAPTER_VERSION)
+                or allow_pending_cycle_goal != (version in PENDING_GOAL_ADAPTER_VERSIONS)
                 or (allow_pending_cycle_goal and cycle_goal_resolver is not None)):
             raise ValueError("Invalid internal calculator configuration.")
         self.version, self.projection_version, self.stage = version, projection_version, stage
         self.cycle_goal_resolver = cycle_goal_resolver
         self.allow_pending_cycle_goal = allow_pending_cycle_goal
         self.candidate_schema = _PENDING_SCHEMA if allow_pending_cycle_goal else _SCHEMA
+
+    @property
+    def can_calculate(self):
+        # The retained v2 candidate is still verifiable, but running the current
+        # detector under its old name would silently change accepted-job meaning.
+        return self.version != RETAINED_PENDING_GOAL_ADAPTER_VERSION
 
     def _validate_input(self, projected, binding):
         try:
@@ -142,6 +150,8 @@ class InternalCalculator:
             raise _invalid() from None
 
     def calculate(self, loaded, binding, heartbeat):
+        if not self.can_calculate:
+            raise JourneyError("TEMPORARILY_UNAVAILABLE")
         if type(loaded) is not LoadedInput or not callable(heartbeat):
             raise _invalid()
         projected = loaded.projected

@@ -1,6 +1,5 @@
-# Recorded binary regression: reference output plus the approved ARC CPR
-# minimum-count exception. See fixtures/reference_parity/golden_update_report.json
-# for the source of every updated expected value. Missing fixtures fail the test.
+# Recorded inputs and historical goldens remain unchanged. D38-D46 expectations
+# are derived independently; no current output is copied into a golden file.
 import json
 import os
 
@@ -8,6 +7,7 @@ import pytest
 
 from main import run_calculator
 from scripts.verify_reference_parity import _differences
+from tests.detection_oracle import run_expected
 
 _DATASET_DIR = os.path.join(os.path.dirname(__file__), "dataset")
 
@@ -56,13 +56,20 @@ def test_result_golden(golden_name, cpr_bin, aed_bin, target, training_type):
     assert os.path.exists(golden_path), f"golden missing: {golden_path}"
 
     with open(golden_path, "rb") as file:
-        expect = json.loads(file.read())
+        historical = json.loads(file.read())
+
+    expect, _chart = run_expected(_read(os.path.join(_DATASET_DIR, cpr_bin)),
+                                 _read(os.path.join(_DATASET_DIR, aed_bin)) if aed_bin else b"",
+                                 _condition(target, training_type))
+    expect = json.loads(json.dumps(expect))
 
     result = _run_case(cpr_bin, aed_bin, target, training_type)
 
     # Match the complete JSON tree, retaining int/float/bool/null distinctions.
     differences = _differences(expect, result)
     assert not differences, (golden_name, differences[:10])
+    if not _differences(historical, expect):
+        assert not _differences(historical, result)
 
 
 def test_result_count_values():

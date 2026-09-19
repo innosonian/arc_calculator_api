@@ -1,4 +1,9 @@
-# 원본: hstm_v2 tests/test_action_boundary_recovery.py (ARC 각색 이식 — guideline만 ARC2020으로 교체)
+"""Preserve historical counter/tail inputs, applying approved D39/D41/D42.
+
+Opposing old expectations are corrected explicitly rather than discarding
+their input. A one-zero-packet waveform is still tested as unconfirmed;
+separate two-zero-packet waveforms cover confirmed breaths.
+"""
 from unittest import TestCase
 
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT, VENT_TAIL_MIN_PACKETS
@@ -32,8 +37,12 @@ def _comp_stream(counts):
 
 
 def _breath(n_up=6, vol=40):
-    # 임계 이상으로 올라간 패킷 n_up개 뒤에 임계 아래로 내려오는 패킷 1개(여기서 확정된다).
+    # Historical input: only one low packet, insufficient under D39/D42.
     return [vol] * n_up + [0]
+
+
+def _confirmed_breath(n_up=6, vol=40):
+    return [0] + [vol] * n_up + [0, 0]
 
 
 def _vent_stream(volumes):
@@ -52,7 +61,7 @@ def _config(training_type="cpr"):
 
 
 class TestFirstCompressionRecovery(TestCase):
-    """스트림 첫 패킷에 이미 카운트가 올라가 있으면 그 압박도 액션이 되어야 한다."""
+    """D41 supersedes first-positive-count recovery; input bytes are unchanged."""
 
     def setUp(self):
         self.prep = ActionDataPrepare(_config())
@@ -62,16 +71,18 @@ class TestFirstCompressionRecovery(TestCase):
         actions = self.prep.generate_action_rtdata_list(_comp_stream([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]))
         self.assertEqual(5, _count(actions, ACTION_TYPE_COMP))
 
-    def test_stream_starting_at_one_recovers_first_compression(self):
-        # 첫 패킷이 이미 1이면 0 -> 1 전이가 없어도 압박 5회로 센다
+    def test_stream_starting_at_one_counts_only_four_observed_changes(self):
+        # Original input formerly expected5. Baseline1 has four later changes.
         actions = self.prep.generate_action_rtdata_list(_comp_stream([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]))
-        self.assertEqual(5, _count(actions, ACTION_TYPE_COMP))
+        self.assertEqual(4, _count(actions, ACTION_TYPE_COMP))
 
-    def test_recovered_action_has_packet(self):
-        # 첫 패킷에서 즉시 확정된 액션은 버퍼가 비어 있으므로 그 패킷을 담아야 한다
+    def test_first_observed_action_retains_measurement_packets(self):
+        # Original input formerly produced a synthetic first action at baseline.
+        # One observed change remains, with its actual packet evidence.
         actions = self.prep.generate_action_rtdata_list(_comp_stream([1, 1, 2, 2]))
         first = [a for a in actions if a["action_type"] == ACTION_TYPE_COMP][0]
-        self.assertEqual(1, len(first["rtdata_list"]))
+        self.assertEqual(1, _count(actions, ACTION_TYPE_COMP))
+        self.assertTrue(first["rtdata_list"])
         self.assertEqual(1, first["rtdata_list"][0]["compression_count"])
 
     def test_counter_wraparound_still_counts_every_change(self):
@@ -82,28 +93,37 @@ class TestFirstCompressionRecovery(TestCase):
 
 
 class TestTruncatedLastVentilation(TestCase):
-    """볼륨이 임계 이상인 채로 스트림이 끝나면, 관측이 충분히 길 때만 마지막 호흡을 인정한다."""
+    """D42: duration never substitutes for two consecutive confirmations."""
 
     def setUp(self):
         self.prep = ActionDataPrepare(_config())
 
-    def test_fully_descended_stream_is_unchanged(self):
-        # 정상 하강으로 끝난 호흡 2개는 그대로 2개
+    def test_historical_single_low_packet_breaths_are_unconfirmed(self):
+        # Original input formerly expected2; each has only one confirmation.
         actions = self.prep.generate_action_rtdata_list(_vent_stream(_breath() + _breath()))
+        self.assertEqual(0, _count(actions, ACTION_TYPE_VENT))
+
+    def test_two_confirmations_count_each_complete_breath(self):
+        actions = self.prep.generate_action_rtdata_list(_vent_stream(_confirmed_breath() * 2))
         self.assertEqual(2, _count(actions, ACTION_TYPE_VENT))
 
-    # 버퍼는 직전 호흡을 확정한 하강 패킷 1개로 시작하므로, 꼬리 길이 + 1 이 관측 길이다.
-
-    def test_long_open_tail_is_counted(self):
-        # 완료된 호흡 1개 뒤에 하강 없이 끊긴 호흡(관측 길이가 임계 이상)은 1개 더 센다
+    def test_historical_long_open_tail_does_not_supply_confirmation(self):
+        # Preserve former15-packet length boundary, but neither candidate is
+        # confirmed. The old expected2 was length-based EOF inference.
         tail = [40] * (VENT_TAIL_MIN_PACKETS - 1)
         actions = self.prep.generate_action_rtdata_list(_vent_stream(_breath() + tail))
-        self.assertEqual(2, _count(actions, ACTION_TYPE_VENT))
+        self.assertEqual(0, _count(actions, ACTION_TYPE_VENT))
 
-    def test_short_open_tail_is_ignored(self):
-        # 관측 길이가 임계보다 짧은 꼬리는 직전 호흡의 잔여 흔들림으로 보고 세지 않는다
+    def test_historical_short_open_tail_does_not_supply_confirmation(self):
+        # The unchanged first waveform is also incomplete; old expectation1
+        # incorrectly treats its single zero as a new-policy confirmation.
         tail = [40] * (VENT_TAIL_MIN_PACKETS - 2)
         actions = self.prep.generate_action_rtdata_list(_vent_stream(_breath() + tail))
+        self.assertEqual(0, _count(actions, ACTION_TYPE_VENT))
+
+    def test_confirmed_breath_then_long_open_tail_stays_one(self):
+        volumes = _confirmed_breath() + [40] * (VENT_TAIL_MIN_PACKETS * 2)
+        actions = self.prep.generate_action_rtdata_list(_vent_stream(volumes))
         self.assertEqual(1, _count(actions, ACTION_TYPE_VENT))
 
     def test_compression_only_never_adds_tail_ventilation(self):
@@ -115,23 +135,28 @@ class TestTruncatedLastVentilation(TestCase):
 
 
 class TestAttemptCountThroughPipeline(TestCase):
-    """정책(스펙 §5.3)이 읽는 comp_count / vent_count가 파이프라인 끝에서 복원된 값이어야 한다."""
+    """파이프라인 끝의 횟수도 기준선 제외와 두 패킷 확정 결정을 따른다."""
 
     def _prepared(self, rtdata_list, training_type):
         config = _config(training_type)
         actions, aed = make_pre_action_list(config, ParsedData(rtdata_list=rtdata_list, aed_data_list=[]), [])
         return prepare_data(actions, aed, config)
 
-    def test_sixty_compressions_starting_at_one_count_sixty(self):
-        # 첫 패킷이 1인 60회 압박 스트림은 60으로 집계되어 최소 시도(60)를 충족해야 한다
+    def test_sixty_counter_values_starting_at_one_have_fifty_nine_changes(self):
+        # Same input formerly expected60. D41 counts only59 observed changes;
+        # it cannot satisfy the product goal60 by crediting the baseline.
         counts = [c for c in range(1, 61) for _ in range(10)]
         prepared = self._prepared(_comp_stream(counts), "compression_only")
-        self.assertEqual(60, prepared["comp_count"])
+        self.assertEqual(59, prepared["comp_count"])
 
-    def test_ten_complete_breaths_stay_ten(self):
-        # 실제로 10회만 불고 정상 종료한 세션은 보정 후에도 10이어야 한다
+    def test_ten_historical_single_low_packet_breaths_are_unconfirmed(self):
+        # Keep all original samples; repeated isolated lows are not consecutive.
         volumes = []
         for _ in range(10):
             volumes += _breath()
         prepared = self._prepared(_vent_stream(volumes), "ventilation_only")
+        self.assertEqual(0, prepared["vent_count"])
+
+    def test_ten_separately_confirmed_breaths_count_ten(self):
+        prepared = self._prepared(_vent_stream(_confirmed_breath() * 10), "ventilation_only")
         self.assertEqual(10, prepared["vent_count"])
