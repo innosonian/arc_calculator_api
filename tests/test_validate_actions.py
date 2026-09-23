@@ -360,3 +360,26 @@ def test_installer_preserves_existing_target_without_executing_any_binary(tmp_pa
     with pytest.raises(FileExistsError):
         installer.install(tmp_path)
     assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("change", ["push", "branch", "skip_test", "test_failure_ignored", "echo_only", "after_preflight", "overlap"])
+def test_deployment_requires_manual_restricted_revision_and_passing_regression(documents, change):
+    base, deployment, ci = documents
+    job = deployment["jobs"]["deploy-dev"]
+    regression = next(step for step in job["steps"] if step.get("id") == "deployment_regression")
+    if change == "push":
+        deployment["on"]["push"] = {"branches": ["develop"]}
+    elif change == "branch":
+        job["if"] = "github.event_name == 'workflow_dispatch' && inputs.stage == 'development'"
+    elif change == "skip_test":
+        regression["if"] = "false"
+    elif change == "test_failure_ignored":
+        regression["continue-on-error"] = True
+    elif change == "echo_only":
+        regression["run"] = "echo '" + regression["run"] + "'"
+    elif change == "overlap":
+        job["concurrency"]["cancel-in-progress"] = True
+    else:
+        job["steps"].remove(regression)
+        job["steps"].append(regression)
+    assert_rejected("DEPLOYMENT_GATE_INVALID", validation.validate_workflows, base, deployment, ci)

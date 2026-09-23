@@ -143,6 +143,7 @@ class AwsSettings:
     logs: LogSettings
     execution: tuple | None
     timing: tuple | None
+    course: object | None = None
 
     @property
     def relay_budget(self):
@@ -157,7 +158,8 @@ class AwsSettings:
             if role not in ("api", "worker", "relay"):
                 raise invalid()
             extra = "storage execution " if role != "relay" else ""
-            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role)
+            course_fields = " course" if type(value) is dict and "course" in value and role != "relay" else ""
+            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role + course_fields)
             if type(value["schema"]) is not int or value["schema"] != 1 or value["role"] != role:
                 raise invalid()
             account = _text(value["account_id"], r"[0-9]{12}")
@@ -173,7 +175,7 @@ class AwsSettings:
             _text(value["state"]["table_name"], r"[A-Za-z0-9_.-]{3,255}")
             state = StateSettings(**value["state"])
             sdk, logs = SdkSettings.parse(value["sdk"]), LogSettings.parse(value["logs"])
-            execution = timing = None
+            execution = timing = course = None
             if role != "relay":
                 _object(value["storage"], "stage bucket directory input_bytes artifact_bytes")
                 _text(value["storage"]["bucket"], r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
@@ -194,6 +196,30 @@ class AwsSettings:
                         or any(v != RETAINED_PENDING_GOAL_ADAPTER_VERSION for v in retained)):
                     raise invalid()
                 execution = (supplied["current_adapter_version"], supplied["projection_version"], tuple(retained))
+                if course_fields:
+                    from mock_journey.course_settings import CourseSettings
+                    from mock_journey.dev_course import CATALOG_VERSION, MODE, DummyDevCourseProvider
+                    from mock_journey.execution_definitions import execution_catalog
+                    supplied_course = value["course"]
+                    _object(supplied_course, "mode catalog_version settings")
+                    if (supplied_course["mode"] != MODE or supplied_course["catalog_version"] != CATALOG_VERSION
+                            or storage.stage not in ("dev", "development")):
+                        raise invalid()
+                    _object(supplied_course["settings"], " ".join(CourseSettings.__dataclass_fields__))
+                    course = CourseSettings(**supplied_course["settings"])
+                    # Offline validation proves that explicit limits can hold
+                    # the complete synthetic catalog; no SDK or file I/O.
+                    if course.max_transaction_actions < 7:
+                        raise invalid()
+                    provider = DummyDevCourseProvider(settings=course, execution=execution_catalog())
+                    from mock_journey.course_state import bundle_record
+                    from mock_journey.typed import json_bytes
+                    # CourseSettings bounds the logical bundle fields. Storage
+                    # persists the complete serialized snapshot, including its
+                    # scope/IDs/hash, which must also fit the operator's quota.
+                    if any(len(json_bytes(bundle_record(provider.fetch_bundle(binding)))) > storage.artifact_bytes
+                           for binding in provider.list_assignments(provider.learner)):
+                        raise invalid()
             if role == "api":
                 _object(value[role], "payload_limit")
                 role_settings = ApiSettings(state, storage, environment, **value[role])
@@ -220,7 +246,7 @@ class AwsSettings:
                 role_settings = RelaySettings(state, **{k: v for k, v in options.items() if k != "processing_reserve_ms"})
                 timing = (options["processing_reserve_ms"],)
                 RelayBudget.derive(sdk, state, role_settings, logs, options["processing_reserve_ms"])
-            return cls(role, account, partition, environment, region, state, role_settings, sdk, logs, execution, timing)
+            return cls(role, account, partition, environment, region, state, role_settings, sdk, logs, execution, timing, course)
         except Exception:
             raise invalid() from None
 

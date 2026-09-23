@@ -159,6 +159,8 @@ if query and query == os.environ.get('FAIL_AWS_QUERY'):
 if args[:2] == ['sts', 'get-caller-identity']: print(os.environ.get('FAKE_ACCOUNT', '000000000000'))
 elif action == 'get-function' and '--query' in args and args[args.index('--query') + 1] == 'Configuration.Handler':
     print(os.environ.get('FAKE_HANDLER', 'lambda_handler.run'))
+elif action == 'get-function' and query == 'Configuration.Runtime': print(os.environ.get('FAKE_RUNTIME', 'python3.12'))
+elif action == 'get-function' and query == 'Configuration.PackageType': print(os.environ.get('FAKE_PACKAGE_TYPE', 'Zip'))
 elif action == 'get-function' and query == 'Configuration.LoggingConfig.LogGroup':
     print(os.environ.get('FAKE_LOG_GROUP_JSON', 'null'))
 elif args[:2] == ['iam', 'get-role'] or (action == 'get-function' and '--query' in args):
@@ -498,3 +500,22 @@ sys.exit(73)
     assert not Path(generated.read_text()).exists()
     assert logical.is_symlink() and preserved.read_text() == "keep"
     assert not external.exists()
+
+
+@pytest.mark.parametrize("changes", [{"FAKE_RUNTIME": "python3.11"}, {"FAKE_PACKAGE_TYPE": "Image"},
+                                    {"FAKE_RUNTIME": "None"}, {"FAKE_PACKAGE_TYPE": "SECRET-MARKER"}])
+def test_incompatible_existing_runtime_stops_before_any_mutation(tmp_path, changes):
+    result, calls = run_shell(tmp_path, "deploy_arc_lambda.sh", "beta", configured=True, changes=changes)
+    assert result.returncode != 0 and "EXISTING_PYTHON312_ZIP_REQUIRED" in result.stderr
+    assert not any(call[0] == "aws" and call[2].startswith(("update-", "put-", "publish-", "create-", "delete-"))
+                   for call in calls)
+    assert "SECRET-MARKER" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("region", ["cn-north-1", "cn-northwest-1", "us-gov-east-1", "us-gov-west-1"])
+def test_legacy_scripts_do_not_accept_regions_with_incompatible_hardcoded_arns(region):
+    document = configuration()
+    document["environments"]["beta"]["region"] = region
+    with pytest.raises(preflight.PreflightError, match="DEPLOYMENT_PARTITION_UNSUPPORTED"):
+        preflight.validate_configuration("beta", "gateway", document, variables(),
+                                         storage_contract=preflight.read_storage_contract())

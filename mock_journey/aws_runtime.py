@@ -60,7 +60,14 @@ def build_runtime(role, environ, *, client_factory=None):
         settings = AwsSettings.parse(environ.get("ARC_JOURNEY_CONFIG"), role)
         settings.check_environment(environ)
         keys = _keys(environ, settings.environment) if role == "api" else None
-        from mock_journey.assembly import build_application, build_worker, build_relay
+        execution = course_provider = None
+        if role != "relay":
+            from mock_journey.execution_definitions import execution_catalog
+            execution = execution_catalog()
+            if settings.course is not None:
+                from mock_journey.dev_course import DummyDevCourseProvider
+                course_provider = DummyDevCourseProvider(settings=settings.course, execution=execution)
+        from mock_journey.assembly import build_application, build_course_application, build_worker, build_relay
         from mock_journey.aws_storage import AwsLegacyBindings
         from mock_journey.aws_logs import InvocationLogs
         from mock_journey.log_storage import DynamoLogStore
@@ -98,12 +105,15 @@ def build_runtime(role, environ, *, client_factory=None):
             s3 = client("s3", settings.sdk)
             clients.append(s3)
             legacy = AwsLegacyBindings(s3, settings.role_settings.storage)
-            from mock_journey.execution_definitions import execution_catalog
-            execution = execution_catalog()
             if role == "api":
-                target = build_application(settings.role_settings, dynamodb_client=dynamodb, s3_client=s3,
-                                           legacy_bindings=legacy, resume_keys=keys[0], current_key_version=keys[1],
-                                           execution=execution, operations=operations)
+                builder = build_application if course_provider is None else build_course_application
+                options = {} if course_provider is None else {
+                    "provider": course_provider, "course_settings": settings.course,
+                    "mapping_document": course_provider.mapping_document,
+                }
+                target = builder(settings.role_settings, dynamodb_client=dynamodb, s3_client=s3,
+                                 legacy_bindings=legacy, resume_keys=keys[0], current_key_version=keys[1],
+                                 execution=execution, operations=operations, **options)
             else:
                 from mock_journey.internal_calculator import InternalCalculator
                 from mock_journey.aws_lease import AwsLeaseGuardFactory

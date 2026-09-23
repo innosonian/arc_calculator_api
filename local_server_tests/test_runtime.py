@@ -31,8 +31,11 @@ def test_cli_default_is_journey_and_explicit_control_remains_available():
                           args.worker_lease_seconds, args.worker_retry_seconds, args.worker_poll_seconds)
     assert limits.payload_limit == 1_333_336
     assert limits.response_body_limit == 8_016_384
+    assert args.course_v2 is False
+    assert cli.argument_parser().parse_args(["--course-v2"]).course_v2 is True
     assert cli.argument_parser().parse_args(["--control-only"]).control_only is True
     assert cli.argument_parser().parse_args(["--artifact-bytes", "9000000"]).artifact_bytes == 9_000_000
+    assert cli.main(["--course-v2", "--control-only"]) == 1
 
 
 def test_all_fifteen_definitions_use_real_enums_and_explicit_pending_policy():

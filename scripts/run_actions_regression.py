@@ -15,6 +15,16 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TESTS = (
     "tests/test_deployment_preflight.py",
     "tests/test_deployment_preflight_security.py",
+    "tests/test_mock_artifact.py",
+    "tests/test_aws_runtime.py",
+    "tests/test_aws_dev_course.py",
+    "tests/test_aws_dev_bundle.py",
+    "tests/test_vcc_http_ingress_security.py",
+    "tests/test_aws_lease.py",
+    "tests/test_aws_storage.py",
+    "tests/test_aws_logs.py",
+    "tests/test_aws_relay_entrypoint.py",
+    "tests/test_aws_relay_budget.py",
     "tests/test_validate_actions.py",
     "tests/test_actions_regression.py",
 )

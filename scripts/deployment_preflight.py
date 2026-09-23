@@ -182,6 +182,10 @@ def validate_configuration(selector, component, document, variables, *, storage_
     _object(binding, ("account_id", "region", "runtime_stage", "calculator"), ("gateway",))
     _text(binding["account_id"], r"[0-9]{12}")
     _text(binding["region"], r"[a-z]{2}(?:-[a-z]+)+-[0-9]+")
+    # These legacy scripts construct arn:aws IAM/Lambda/Gateway bindings.
+    # A different partition needs a separate explicit deployment contract.
+    if binding["region"].startswith(("cn-", "us-gov-")):
+        _fail("DEPLOYMENT_PARTITION_UNSUPPORTED")
     _text(binding["runtime_stage"], _SEGMENT.pattern)
     _validate_environment(variables)
     if variables.get("STAGE") != binding["runtime_stage"]:

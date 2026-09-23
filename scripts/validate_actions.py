@@ -106,20 +106,42 @@ def action_steps(document):
 
 
 def validate_deployment(document):
-    """Preserve the two existing auth paths and their offline prerequisite."""
+    """Require explicit deployment and validation before either existing auth path."""
+    triggers = document.get("on", {})
+    require(isinstance(triggers, dict) and set(triggers) == {"workflow_dispatch"}, "DEPLOYMENT_GATE_INVALID")
     require(document.get("permissions") == {"contents": "read", "id-token": "write"}, "DEPLOYMENT_AUTH_INVALID")
     require(set(document.get("jobs", {})) == {"deploy-dev", "deploy-prod"}, "DEPLOYMENT_AUTH_INVALID")
     for suffix, environment, prefix in (("dev", "development", "DEV"), ("prod", "production", "PROD")):
         job = document["jobs"]["deploy-" + suffix]
         require(job.get("runs-on") == "ubuntu-latest" and "container" not in job, "DEPLOYMENT_AUTH_INVALID")
         require(job.get("permissions", document["permissions"]) == document["permissions"]
-                and "environment" not in job, "DEPLOYMENT_AUTH_INVALID")
+                and job.get("environment") == environment, "DEPLOYMENT_AUTH_INVALID")
+        branch = "develop" if suffix == "dev" else "main"
+        require(job.get("if", "").strip() ==
+                f"github.event_name == 'workflow_dispatch' && inputs.stage == '{environment}' && github.ref == 'refs/heads/{branch}'",
+                "DEPLOYMENT_GATE_INVALID")
+        require(job.get("concurrency") == {"group": "deploy-" + environment, "cancel-in-progress": False},
+                "DEPLOYMENT_GATE_INVALID")
         require(job.get("env", {}).get("AWS_ROLE_ARN") == "${{ secrets." + prefix + "_AWS_ROLE_ARN }}",
                 "DEPLOYMENT_AUTH_INVALID")
         steps = job.get("steps", [])
         preflights = [(i, s) for i, s in enumerate(steps) if s.get("id") == "preflight"]
         require(len(preflights) == 1, "DEPLOYMENT_AUTH_INVALID")
         before, preflight = preflights[0]
+        regressions = [(i, s) for i, s in enumerate(steps) if s.get("id") == "deployment_regression"]
+        require(len(regressions) == 1 and regressions[0][0] < before, "DEPLOYMENT_GATE_INVALID")
+        regression_index, regression = regressions[0]
+        expected_regression = (
+            'python3 -m venv "$RUNNER_TEMP/deployment-validation"\n'
+            '\"$RUNNER_TEMP/deployment-validation/bin/python\" -m pip install --only-binary=:all: \\\n'
+            '  -r requirements.txt -r requirements-ci.txt -c constraints-lambda.txt\n'
+            '\"$RUNNER_TEMP/deployment-validation/bin/python\" scripts/run_actions_regression.py'
+        )
+        require(regression.get("run", "").strip() == expected_regression
+                and regression.get("env") == {"STAGE": "test", "AWS_EC2_METADATA_DISABLED": "true"}
+                and not any(k in regression for k in ("if", "continue-on-error")), "DEPLOYMENT_GATE_INVALID")
+        require(not any(re.search(r"\bsecrets\s*(?:\.|\[)", json.dumps(step), re.I)
+                        for step in steps[:regression_index + 1]), "DEPLOYMENT_GATE_INVALID")
         command = preflight.get("run", "")
         require("scripts/deployment_preflight.py" in command and "--environment " + environment in command
                 and '--github-output "$GITHUB_OUTPUT"' in command

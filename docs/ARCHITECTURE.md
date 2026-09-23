@@ -1,12 +1,13 @@
 # 현재 구조와 변경 원칙
 
-기준: 2026-09-18 VCC 고도화 완료 코드. 사용자 정책의 원본은 [DECISIONS](DECISIONS.md), 앱 요청·응답은 [APP_API](APP_API.md)와 [상세 API 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 실행은 [LOCAL_RUN](LOCAL_RUN.md), AWS는 [DEPLOY_GUIDE](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조와 변경할 때 보존할 조건을 설명한다.
+기준: 2026-09-22 AWS Dummy Dev 조립 고도화 코드. 사용자 정책의 원본은 [DECISIONS](DECISIONS.md), 앱 요청·응답은 [APP_API](APP_API.md)와 [상세 API 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 실행은 [LOCAL_RUN](LOCAL_RUN.md), AWS는 [DEPLOY_GUIDE](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조와 변경할 때 보존할 조건을 설명한다.
 
 ## 1. 현재 구현과 실행 범위
 
 - Python 3.12 백엔드이며 iOS/Android 화면·마네킨 연결 코드는 포함하지 않는다. 앱이 수집한 실제 누적 CPR/AED 바이너리를 기존 내부 계산기로 처리한다.
-- 기본 로컬 서버는 `/mock/v1` Journey다. `build_course_application`으로 명시 조립하는 `course_v2`와 `/api/v2`는 별도로 구현·검증됐다. 기본 CLI를 실행한다고 VCC로 전환되지 않는다.
+- 기본 로컬 서버는 `/mock/v1` Journey다. `build_course_application`으로 명시 조립하는 `course_v2`와 `/api/v2`는 별도로 구현·검증됐다. 기본 CLI를 실행한다고 VCC로 전환되지 않는다. `--course-v2`를 붙인 실행만 그 조립을 연다.
 - VCC는 합성 공급자와 실제 내부 계산을 연결한 로컬 내부 인수를 통과했다. 공식 ARC/MuleSoft 공급자, 실물 앱, AWS 운영 인수는 별도다.
+- AWS API/Worker에는 명시적 `course_v2_dummy` 조립을 추가했다. `dev_course.py`가 기존 계산 정의로 임시 과정 15개를 제공하며 Dummy만 허용한다. 테스트 fixture나 가짜 점수를 배포물에 넣지 않는다. 별도 `course` 설정이 없으면 기존 AWS 조립을 유지한다.
 - 계산 성공, 프로그램 완료, 현재 공유 진도 반영, ARC 제출 상태는 서로 독립적이다. ARC/HSTM 실제 전송은 비활성이다.
 - 직접 의존성은 `requirements.txt`, 배포 간접 의존성은 `constraints-lambda.txt`, 로컬 실행과 시험은 `requirements-local.txt`·`requirements-ci.txt`를 사용한다.
 
@@ -34,6 +35,7 @@ VCC 전용 모듈은 모두 `mock_journey/` 안에 있다. HTTP → service → 
 | `course_contracts.py`, `course_schema.py` | 공통 frozen DTO·Protocol·route·exact schema. 별도 동명 DTO를 만들지 않음 |
 | `course_errors.py`, `course_settings.py` | 고정 오류 코드와 명시 한도. 운영값을 fixture에서 추론하지 않음 |
 | `course_provider.py`, `course_fixture.py` | 외부 경계·합성 공급자·전체 정의 검증. DB/HTTP 응답 작성은 하지 않음 |
+| `dev_course.py` | 명시적인 AWS Dev Dummy 임시 카탈로그. 기존 5프로그램×3연령, 훈련→최종평가, ARC 실제 배정·영상/문서 없음 |
 | `course_policy.py` | 시작 가능 여부·콘텐츠 완료·과정 집계·제출 분류의 순수 판정 |
 | `course_state.py` | inventory/refresh/start/report의 읽기 snapshot과 원자적 저장 |
 | `course_service.py` | 검증된 명령과 조회를 조정. 외부 원문 dict를 공개하지 않음 |
@@ -195,6 +197,8 @@ START의 canonical bytes는 보고 commit 전 400KiB 기술 상한으로 보수�
 로컬 감독기는 자신이 띄운 DB/Worker만 소유·종료한다. 자식 준비 실패 시 계속 접수하지 않으며 같은 설치 재시작으로 복구한다. 부모 SIGKILL 뒤 Java orphan 가능성, OS/SDK의 강제 hard deadline은 해결된 것으로 주장하지 않는다.
 
 AWS API/Worker/Relay runtime은 명시 설정으로 기존 조립에 연결한다. 역할별 IAM·자원·trigger·partial batch·due schedule·DLQ·로그 전달·Linux 패키지·용량은 실환경 인수가 필요하다. Relay의 환경별 진행 행은 create-only 초기화와 revision/owner/fence/lease를 사용하며 런타임이 손상/부재 행을 자동 생성하지 않는다.
+
+`course_v2_dummy`는 Dev stage에서만 허용하며 API·Worker가 같은 카탈로그 버전·9개 과정 한도·저장·실행 정의를 사용해야 한다. 실제 과정 snapshot의 직렬화 크기를 저장 한도와 대조해 시작조차 불가능한 설정을 거절한다. `scripts/validate_aws_dev_bundle.py`는 역할 간 DB/환경/저장/version 혼선, Worker와 Queue의 시간 관계, Relay가 한 항목도 처리하지 못할 실행 예산을 오프라인에서 검사한다. 실제 자원·IAM 확인을 대신하지 않는다.
 
 | 확인 경계 | 해소 전 동작 |
 |---|---|

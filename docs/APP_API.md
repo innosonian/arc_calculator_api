@@ -2,13 +2,31 @@
 
 2026-09-18 구현을 기준으로 2026-09-19 정리한 **앱팀 전달용 Markdown 명세**다. 이 파일 안에 `/api/v2`의 **13개 경로·16개 동작, 요청·응답 자료형, 필수값·null, 전체 오류, JSON 예시**를 모았다. 별도 YAML 없이 읽고 구현할 수 있다. 예시는 합성 자료이며 실제 ARC 과정·계정·서버 주소가 아니다.
 
-**연결할 서버는 백엔드팀과 먼저 맞춘다.** 새 과정 API는 `build_course_application`으로 명시 조립한 `course_v2`에서 제공한다. 현재 기본 로컬·AWS 조립은 `/mock/v1`이다. 이 명세 작성이나 로컬 검증 완료가 배포 완료를 뜻하지 않는다. 실제 ARC/MuleSoft 인증·자료 공급·결과 전송 계약, 실물 앱·AWS 인수는 남아 있다. ARC 송신은 비활성이다.
+**연결할 서버는 백엔드팀과 먼저 맞춘다.** 새 과정 API는 `build_course_application`으로 명시 조립한 `course_v2`에서 제공한다. 기본 로컬·AWS 조립은 `/mock/v1`이며, AWS API/Worker에 `course_v2_dummy`를 명시하면 아래 Dev 임시 과정을 제공한다. 이 명세 작성이나 로컬 검증 완료가 배포 완료를 뜻하지 않는다. 실제 ARC/MuleSoft 인증·자료 공급·결과 전송 계약, 실물 앱·AWS 인수는 남아 있다. ARC 송신은 비활성이다.
+
+2026-09-22 추가한 AWS Dummy Dev 카탈로그 `arc-dummy-dev-v1`에는 기존 5개 프로그램×성인·소아·영아의 **15개 임시 과정**이 있다. 이름에 `[Dummy Dev]`가 붙고 각 과정은 훈련 1개→마지막 평가 1개다. 이 카탈로그에는 영상·문서 자료가 없으며 아래 콘텐츠 API 설명은 해당 자료를 공급하는 별도 조립의 계약이다. 앱은 과정 목록에서 실제 ID와 `definitionHash`를 받아 사용한다. 실제 ARC 배정이나 공식 수료 과정으로 표시하지 않는다. 점수는 업로드한 실제 바이너리로 계산하고 CPR 완료는 계속 `pending_policy`다. Dummy 계산 결과의 `submit_arc`는 `status="excluded"`, `ok=false`, `error=null`이며 외부로 보내지 않는다. 기본 제외 사유는 `exclusionReasons=["dummy"]`이고, 계산 확정 전 진도 초기화 등의 조건에서는 `progress_reset_before_result` 같은 사유도 함께 들어간다. 요청·응답 경로와 자료형은 기존 명세와 같다. 공용 Dummy 로그아웃 뒤 다른 활성 세션은 기존 결과를 계속 조회할 수 있지만, 새 공유 진도는 `POST /api/v2/session/refresh/` 후 다시 시작한다.
+
+**2026-09-23 AWS Dev 연결 정보**
+
+| 항목 | 값 |
+|---|---|
+| 환경 | Dummy Dev · 오하이오 `us-east-2` |
+| 서버 주소 | `https://2ftxmdtrx1.execute-api.us-east-2.amazonaws.com/dev` |
+| 로그인 요청 | `POST https://2ftxmdtrx1.execute-api.us-east-2.amazonaws.com/dev/api/v2/sessions/` |
+| Dummy 로그인 | `test@test.com` / 비밀번호 문자열 `2222` |
+| 초기 업로드 원본 한도 | CPR+AED 합계2MiB(2,097,152 bytes) |
+| 초기 Gateway 요청량 | 초당10회·burst20. 엄격한 처리량/비용 보장이 아니며429 처리 필요 |
+
+사용자 실행으로 HTTPS 로그인/조회, 기존 압박 자료31380bytes의 일반 훈련·최종평가 계산(각101회·100점)과 과정 FINISHED를 확인했다. 일반 훈련 원본/최종 결과/운용 로그·서명 차트 다운로드·익명 접근403도 확인했다. 앱의 실제 파일·기기와 다른 훈련 종류, 소유권/재전송/실제 만료·장애·용량/비용을 포함한 전체 AWS 인수는 진행 중이다. 접속 주소의 `/dev`와 각 API의 마지막 `/`를 유지한다.
+
+현재 시험한 성인 압박 Only 과정은 공유 진도에서 이미 완료됐다. 같은 등록의 새 일반 훈련/합격 후 최종평가 시작 거절은 정상이다. 공용 Dummy 로그아웃은 다른 기기와 공유하는 진도를 초기화하므로 앱의 자동 로그아웃이나 무조건 초기화로 이를 우회하지 않는다. 과정·등록·항목 ID는 아래 일반 계약대로 실제 목록/상세 응답에서 사용한다.
 
 목차: [1. 공통 계약](#1-공통-계약) · [2. 경로·세션·과정·TrainingProgram](#2-경로와-기본-흐름) · [3. 시작·멱등성](#3-시작과-재전송) · [4. 콘텐츠 보고](#4-영상문서-진도-보고) · [5. 측정·업로드](#5-측정-시도와-업로드) · [6. 계산·완료·차트](#6-결과완료차트) · [7. 취소·복구·오류](#7-취소복구전체-오류) · [8. 기존 앱 이행](#8-기존-앱에서-바뀌는-지점)
 
 ## 1. 공통 계약
 
 - 모든 새 경로의 마지막 `/`가 필수다. 빠뜨리면 redirect 없이 `404`; 알려진 경로의 잘못된 method는 `405`다.
+- API Gateway stage를 사용하는 서버 주소에는 stage 경로까지 포함한다. 예를 들어 서버 주소가 `https://example.execute-api.us-east-2.amazonaws.com/dev`이면 `/api/v2/session/`의 요청 주소는 `https://example.execute-api.us-east-2.amazonaws.com/dev/api/v2/session/`이다. 목록의 `next`·`previous`도 API 기준 경로이므로 서버 주소 뒤에 연결하며 `/dev`가 사라지는 일반 URL 루트 병합을 피한다. 서버 주소는 백엔드팀이 전달한 고정 주소를 사용한다.
 - 로그인 외 모든 API는 `Authorization: Bearer <accessToken>`을 요구한다. 발급받은 차트 URL 직접 GET만 예외다. 토큰·복구 증표·서명 URL을 로그, query, 분석 수집기에 기록하지 않는다.
 - 제어 요청은 UTF-8 `application/json`이다. 필수 키 누락, 알 수 없는 키, 중복 키, `NaN`/`Infinity`, 잘못된 자료형은 거절한다. GET·DELETE에는 body를 보내지 않는다. 계산 업로드 형식은 5절을 따른다.
 - 허용된 query 외에는 보내지 않는다. 중복·빈 값·다중값을 허용하지 않는다. 숫자 query는 선행 `0`, `+`, 공백 없는 양의 십진 문자열이다.

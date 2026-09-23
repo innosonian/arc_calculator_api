@@ -213,7 +213,9 @@ class CourseHttp:
         return parsed
 
     def _query_int(self, value, key):
-        if _POSITIVE.fullmatch(value) is None:
+        # Reject above-contract integers before Python's decimal conversion
+        # limit can turn a malformed client query into a 503 response.
+        if len(value) > len(str(PUBLIC_ID_MAX)) or _POSITIVE.fullmatch(value) is None:
             raise CourseError("INVALID_REQUEST")
         number = int(value)
         if key == "pageSize" and number > PAGE_SIZE_MAX:
@@ -223,7 +225,9 @@ class CourseHttp:
         return number
 
     def _body(self, event, spec):
-        raw = self._raw_body(event)
+        limit = (self._settings.max_control_body_bytes
+                 if spec.body_kind not in ("none", "measurement") else None)
+        raw = self._raw_body(event, max_bytes=limit)
         if spec.body_kind == "none":
             if raw:
                 raise CourseError("INVALID_REQUEST")
@@ -257,7 +261,7 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
         return parsed
 
-    def _raw_body(self, event):
+    def _raw_body(self, event, *, max_bytes=None):
         body = event.get("body")
         if body is None or body == "":
             return b""
@@ -265,10 +269,16 @@ class CourseHttp:
             if event.get("isBase64Encoded"):
                 if type(body) is not str:
                     raise CourseError("INVALID_REQUEST")
+                # Bound allocation before decoding public login/control bodies.
+                # The exact decoded limit is still checked by _body below.
+                if max_bytes is not None and len(body) > 4 * ((max_bytes + 2) // 3):
+                    raise CourseError("PAYLOAD_TOO_LARGE")
                 return base64.b64decode(body, validate=True)
             if type(body) is bytes:
                 return body
             if type(body) is str:
+                if max_bytes is not None and len(body) > max_bytes:
+                    raise CourseError("PAYLOAD_TOO_LARGE")
                 return body.encode("utf-8")
         except (ValueError, TypeError, UnicodeError):
             raise CourseError("INVALID_REQUEST") from None

@@ -235,6 +235,8 @@ def argument_parser():
     parser.add_argument("--allow-insecure-lan", action="store_true")
     parser.add_argument("--control-only", action="store_true",
                         help="Run login/session/program control APIs without training or calculation.")
+    parser.add_argument("--course-v2", action="store_true",
+                        help="Serve the explicit /api/v2 course assembly. The default remains /mock/v1.")
     parser.add_argument("--calculation-body-bytes", type=int, default=1_000_000)
     parser.add_argument("--artifact-bytes", type=int, default=8_000_000)
     parser.add_argument("--storage-quota-bytes", type=int, default=1_073_741_824)
@@ -268,6 +270,10 @@ def close_journey_resources(runtime, server, db, child):
 
 def main(argv=None):
     args = argument_parser().parse_args(argv)
+    if args.course_v2 and args.control_only:
+        print("Local server could not start: The course API cannot run in control-only mode.",
+              file=sys.stderr)
+        return 1
     db = child = server = runtime = None
     phase = "validate local configuration"
     os.umask(0o077)
@@ -305,7 +311,8 @@ def main(argv=None):
                     material = prepare_material(data_dir, initialize=False)
                     from local_server.runtime import LocalRuntime
                     phase = "prepare the local calculation runtime"
-                    runtime = LocalRuntime(db, material, options, args.host, args.port, child)
+                    runtime = LocalRuntime(db, material, options, args.host, args.port, child,
+                                           course_v2=args.course_v2)
                     phase = "start the owned local worker"
                     runtime.start_worker(material, endpoint, args.host, args.port)
                 phase = "start the local HTTP listener"
@@ -321,6 +328,10 @@ def main(argv=None):
                 if runtime is None:
                     print(f"ARC local control API ready: http://{args.host}:{args.port}", flush=True)
                     print("Available: login, session, programs/progress, logout. Training/calculation unavailable.", flush=True)
+                elif args.course_v2:
+                    print(f"ARC local course API ready: http://{args.host}:{args.port}", flush=True)
+                    print("Available: /api/v2 login, course progress, measured binary calculation, stored results and 300-second charts.", flush=True)
+                    print("/mock/v1 is not served. Dummy login has no synthetic enrollments. ARC submission remains disabled.", flush=True)
                 else:
                     print(f"ARC local journey API ready: http://{args.host}:{args.port}", flush=True)
                     print("Available: login, programs, measured binary calculation, stored results and 300-second charts.", flush=True)

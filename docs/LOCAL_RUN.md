@@ -1,6 +1,6 @@
 # 로컬 Journey 서버 실행 안내
 
-2026-09-18 기준. 기본 실행은 기존 `/mock/v1`이다. 새 `/api/v2`는 `build_course_application`의 명시적 공급자 조립이 필요하며 CLI에서 자동 활성화하지 않는다. 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
+2026-09-18 기준. 기본 실행은 기존 `/mock/v1`이다. 새 `/api/v2`는 `--course-v2`로 `build_course_application`을 명시 조립할 때만 열린다. 플래그 없이 실행하면 `/mock/v1`이다. 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
 
 ## 1. Mac에서 실행
 
@@ -22,6 +22,8 @@ ARC local journey API ready: http://127.0.0.1:8000
 터미널을 켜 둔 상태에서 `http://127.0.0.1:8000/healthz`를 연다. 정상 상태는 HTTP `200`, `mode: "local_journey"`, `calculator_available: true`다. 로그인 화면이나 Swagger UI가 뜨는 서버는 아니다.
 
 이제 기본 명령으로 로그인·프로그램·훈련 생성·계산·결과·실제 차트 조회가 연결된다. 과거 제어 API만 필요할 때에만 `--control-only`를 붙인다. 그 모드의 `calculator_available: false`는 정상이며 계산 Journey에는 사용하지 않는다.
+
+앱이 `/api/v2`를 쓰면 같은 명령에 `--course-v2`를 붙인다. `--control-only`와 함께 쓸 수 없다. 이 모드는 `/mock/v1`과 `/cpr-analysis`를 제공하지 않는다. Dummy 로그인(`test@test.com` / 문자열 `2222`)은 가능하지만 합성 과정의 등록을 자동으로 받지 않으므로 과정 목록은 비어 있다. 공급자는 저장소의 합성 fixture이며 ARC 배정·운영 한도가 아니다. ARC 제출은 계속 비활성이다.
 
 ## 2. 실제 앱의 연결 순서
 
@@ -48,6 +50,8 @@ var/local-python/bin/python scripts/serve_local.py \
   --host <Mac의_현재_내부_IP> \
   --allow-client <iPad의_현재_내부_IP> \
   --allow-insecure-lan
+
+`/api/v2`로 같은 기기를 받으려면 위 명령에 `--course-v2`를 추가한다. 앱의 baseURL은 `http://<Mac의_현재_내부_IP>:8000`이고 경로는 `/api/v2/`로 시작한다.
 ```
 
 iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 모드는 지정한 Mac IP에만 서버를 열며 `127.0.0.1:8000`을 동시에 열지 않는다. 동일 데이터 폴더로 두 서버를 동시에 실행하지 않는다.

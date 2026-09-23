@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import math
 import multiprocessing
 import os
+from pathlib import Path
 import signal
 import threading
 import time
@@ -84,17 +85,44 @@ def _objects(material, options, host, port, *, object_material=None):
         raise
 
 
-def build_api(database, material, options, host, port):
-    from mock_journey.assembly import build_application
+def _course_provider():
+    """Explicit synthetic catalog for --course-v2. Not an ARC assignment source."""
+    from mock_journey.auth import PRINCIPAL
+    from mock_journey.course_contracts import LearnerContext
+    from mock_journey.course_fixture import FixtureCourseProvider
+    from mock_journey.course_settings import fixture_course_settings
+    from mock_journey.typed import parse_json
+
+    root = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "vcc_contract" / "v1"
+    document = parse_json((root / "course_bundle.json").read_bytes())
+    mapping = parse_json((root / "execution_mapping.json").read_bytes())
+    settings = fixture_course_settings()
+    row = document["learners"]["dummy"]
+    learner = LearnerContext(row["provider"], row["tenant_id"], row["learner_id"], PRINCIPAL, True)
+    provider = FixtureCourseProvider(document=document, settings=settings, mapping_document=mapping)
+    return provider, settings, mapping, learner
+
+
+def build_api(database, material, options, host, port, *, course_v2=False):
+    from mock_journey.assembly import build_application, build_course_application
 
     api_settings, _ = _settings(database, material, options)
     objects, charts, legacy = _objects(material, options, host, port)
     try:
-        service = build_application(
-            api_settings, dynamodb_client=database.client, s3_client=objects, legacy_bindings=legacy,
-            resume_keys={material.key_version: material.resume_key}, current_key_version=material.key_version,
-            execution=execution_catalog(), operations=getattr(database, "operations", None),
+        common = dict(
+            dynamodb_client=database.client, s3_client=objects, legacy_bindings=legacy,
+            resume_keys={material.key_version: material.resume_key},
+            current_key_version=material.key_version, execution=execution_catalog(),
+            operations=getattr(database, "operations", None),
         )
+        if course_v2:
+            provider, course_settings, mapping, learner = _course_provider()
+            service = build_course_application(
+                api_settings, provider=provider, course_settings=course_settings,
+                mapping_document=mapping, dummy_learner=learner, **common,
+            )
+        else:
+            service = build_application(api_settings, **common)
         return service, objects, charts
     except BaseException:
         objects.close()
@@ -324,9 +352,10 @@ class OwnedWorker:
 
 class LocalRuntime:
     """Own API files and supervise HTTP/worker health; the CLI still owns DB."""
-    def __init__(self, database, material, options, host, port, db_child):
+    def __init__(self, database, material, options, host, port, db_child, *, course_v2=False):
         self.database, self.db_child, self.options = database, db_child, options
-        self.service, self.objects, self.charts = build_api(database, material, options, host, port)
+        self.service, self.objects, self.charts = build_api(
+            database, material, options, host, port, course_v2=course_v2)
         self.worker = None
         self._closing = threading.Event()
         self._http_done = threading.Event()

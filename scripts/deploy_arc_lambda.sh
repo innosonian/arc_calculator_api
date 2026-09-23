@@ -97,6 +97,15 @@ if [[ "${FUNCTION_HANDLER}" != lambda_handler.run ]]; then
   # separate reviewed correction is needed before this deployment can proceed.
   echo "EXISTING_PUBLIC_HANDLER_REQUIRED" >&2; exit 1
 fi
+# Code changes become visible before the later configuration update. Refuse a
+# mixed-runtime transition and image package here; migrate those separately.
+FUNCTION_RUNTIME="$(aws_value lambda get-function --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}" \
+  --query Configuration.Runtime --output text)"
+FUNCTION_PACKAGE_TYPE="$(aws_value lambda get-function --function-name "${CALC_LAMBDA_NAME}" --region "${AWS_REGION}" \
+  --query Configuration.PackageType --output text)"
+if [[ "${FUNCTION_RUNTIME}" != python3.12 || "${FUNCTION_PACKAGE_TYPE}" != Zip ]]; then
+  echo "EXISTING_PYTHON312_ZIP_REQUIRED" >&2; exit 1
+fi
 # Resolve the actual existing destination before any AWS mutation. A successful
 # null response means Lambda's documented default; a failed/invalid read never
 # silently falls back. Null retention requires no log-group lookup or change.
