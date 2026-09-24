@@ -152,7 +152,7 @@
 | Q15 | 환경별 향후 계산 전용/ARC 테스트/운영 제출 사용 범위 | 현재 로컬은 외부 호출 없는 계산, 모든 현재 submit_arc는 disabled |
 | Q16 | 로컬 원본·결과·실차트 | 후속 승인으로 완료; 더 이상 제공 여부를 질문하지 않음 |
 | Q17 | 실제 HSTM lifecycle·로그/백업/제출·중복 기록 retention 및 삭제 정책 | 같은 방식 요구 유지, 임의 보관 일수 없음 |
-| Q18 | Dev/Beta/Prod account·region·API·Lambda·Role·S3·DB·Queue 실제 연결 | 기존 IAM 사용자 로그인 유지. 2026-09-22 사용자가 공유한 관리자 회신: MFA 후 사용하는 개인 작업용 `arc-dev-operator-role`, CI/CD용 `gha-arc-calc-dev-deploy` 준비 및 서비스 권한 범위 안내. 실제 정책·역할 전환·자원 접근은 미검증이며 Lambda 실행 Role과 구별. 새 관리 Role·SSO 설정을 반복 요구하지 않음. 이번 Dev는 오하이오(`us-east-2`)로 준비 중이며 관리자 요청은 새 자원 접두사 `arc-calc-dev-`, 태그 `Project=arc-calc`/`Env=dev`. 이름별 생성 완료·운영값 확정으로 해석하지 않음. 비용/예산 알림은 관리자 설명상 FitCloud를 이용하며 계정 전달·실제 설정은 미확인. 기존 접근으로 직접 조회를 우선하고 조회 불가·공유 영향 미확인 항목만 담당자 확인. 절차는 [배포 안내](DEPLOY_GUIDE.md) |
+| Q18 | Dev/Beta/Prod account·region·API·Lambda·Role·S3·DB·Queue 실제 연결 | 기존 IAM 사용자 로그인 유지. 2026-09-22 사용자가 공유한 관리자 회신: MFA 후 사용하는 개인 작업용 `arc-dev-operator-role`, CI/CD용 `gha-arc-calc-dev-deploy` 준비 및 서비스 권한 범위 안내. 실제 정책·역할 전환·자원 접근은 미검증이며 Lambda 실행 Role과 구별. 새 관리 Role·SSO 설정을 반복 요구하지 않음. 이번 Dev는 오하이오(`us-east-2`)로 준비 중이며 관리자 요청은 새 자원 접두사 `arc-calc-dev-`, 태그 `Project=arc-calc`/`Env=dev`. 이름별 생성 완료·운영값 확정으로 해석하지 않음. 비용/예산 알림은 관리자 설명상 FitCloud를 이용한다. 2026-09-24 사용자는 계정을 아직 받지 못했다고 확인했으며 비용 조회·예산 알림 설정 검증은 대기 중이다. 기존 접근으로 직접 조회를 우선하고 조회 불가·공유 영향 미확인 항목만 담당자 확인. 절차는 [배포 안내](DEPLOY_GUIDE.md) |
 | Q19 | CI 승인·검증·Beta 배포 기준, 실제 branch/tag/역할 | 현재 소스의 develop/main 동작과 운영 승인 구별 |
 | Q20 | 실제 앱 최대 누적 요청·동시성·시간·비용/HSTM 한도 | 이번 AWS Dev의 시간·메모리·초기 업로드 한도는 D95로 선택. 실제 앱 파일·동시성·처리시간·비용은 AWS 실측 필요; HSTM 한도나 운영 보장으로 해석하지 않음 |
 | Q21 | ARC 승인 테스트 계정/과정·결과 확인·Prod 시험의 실제 기록/정리 범위 | 외부 실험 전 공식 확인 |

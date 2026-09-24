@@ -1,6 +1,6 @@
 # AWS·Dev 배포와 인수 안내
 
-2026-09-23 기준. **새 `/api/v2` Dummy Dev의 자원 연결과 stage 생성 후 사용자 출력으로 HTTPS 로그인·조회 및 기존 압박 파일 한 건의 실제 계산·일반 훈련 완료·진도 반영, 저장 원본·최종 결과 일치와 운용 로그를 확인했다. 일반 훈련 차트 다운로드·서명 없는 접근 차단과 최종평가 합격·과정 FINISHED까지 확인했다. 해당 기본 흐름은 통과했고 나머지 AWS 인수는 진행 중이다.** 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
+2026-09-24 기준. **새 `/api/v2` Dummy Dev 배포 후 사용자 출력으로 HTTPS 로그인·조회, 기존 성인 압박 파일의 일반 훈련·최종평가 계산과 과정 FINISHED, 원본·결과·운용 로그·차트를 확인했다. 다른 세션의 조회 차단, 차트의 실제 만료/재발급, 완료된 시작·업로드의 순차 재전송과 기존 기록 보존도 통과했다. 이 범위에서 앱 연결 시험을 시작할 수 있으며 전체 AWS 운영 인수는 진행 중이다.** 다음 단계는 [앱팀에 연결 정보 전달](#beginner-dev-app-handoff)이다. 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
 
 기본 AWS 조립은 `/mock/v1`과 인증된 `/cpr-analysis`를 제공한다. **이번 목표는 API·Worker에 `course_v2_dummy`를 명시한 새 `/api/v2` Dev 시험**이다. 내장 Dummy 임시 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)를 사용하고 실제 업로드 바이너리로 계산한다. 영상·문서 자료나 공식 ARC 배정을 만들지 않는다. Dummy 결과는 ARC 제출 `excluded`, 일반 비활성 상태는 `disabled`, CPR 완료는 `pending_policy`다. 생성된 Dev 주소와 완료한 검증 범위를 함께 앱팀에 안내한다.
 
@@ -1389,7 +1389,7 @@ aws sns get-subscription-attributes --region us-east-2 \
 <a id="beginner-dev-create-alarms"></a>
 ### 초기 경보 8개 생성
 
-사용자 D100·D101을 적용하는 도구는 `var/deployment/dev-runtime-20260923-0octlgf9/create-dev-alarms-v3.py`다. v2 사용자 실행은 CLI2.36.47의 `CLOUDWATCH_MODEL_SKELETON`에서 종료252로 중단됐다. 로컬 실제 CLI2.36.44에서도 같은 검사 명령이 만든 예시 응답의 0값·필수 선택 항목 때문에 실패함을 재현했다. **v3는 이 예시 생성 검사를 제거하고 실제 경보 ARN 조회로 존재를 확인한다.** CLI 버전·실패 명령·종료 코드·정해진 오류 분류만 표시하며 명령 인자나 오류 원문은 출력하지 않는다. 후속 사용자 실행은 READY_TO_CREATE→경보8개 생성→SNS 정책 보존·구독1개 확인→8개 설정 검증→ALARMS_CONFIGURED를 통과했다. 초기 상태는 모두 INSUFFICIENT_DATA였으며 실제 메일 수신은 아직 미확인이다. 이미 설치됐으므로 최초 생성 명령을 반복하지 않는다.
+사용자 D100·D101을 적용하는 도구는 `var/deployment/dev-runtime-20260923-0octlgf9/create-dev-alarms-v3.py`다. v2 사용자 실행은 CLI2.36.47의 `CLOUDWATCH_MODEL_SKELETON`에서 종료252로 중단됐다. 로컬 실제 CLI2.36.44에서도 같은 검사 명령이 만든 예시 응답의 0값·필수 선택 항목 때문에 실패함을 재현했다. **v3는 이 예시 생성 검사를 제거하고 실제 경보 ARN 조회로 존재를 확인한다.** CLI 버전·실패 명령·종료 코드·정해진 오류 분류만 표시하며 명령 인자나 오류 원문은 출력하지 않는다. 후속 사용자 실행은 READY_TO_CREATE→경보8개 생성→SNS 정책 보존·구독1개 확인→8개 설정 검증→ALARMS_CONFIGURED를 통과했다. 초기 상태는 모두 INSUFFICIENT_DATA였고, 이어진 경보 시험 안내 후 사용자가 이메일 도착을 확인했다. 이미 설치됐으므로 최초 생성 명령을 반복하지 않는다.
 
 설치 실행 중에는 같은 SNS 주제 정책과 아래 경보를 다른 터미널/콘솔에서 동시에 편집하지 않는다. PutMetricAlarm에는 이 도구가 사용할 원자적 생성 전용 기능이 없어, 사전 조회와 재조회만으로 동시 편집 충돌을 완전히 막을 수 없다.
 
@@ -1475,6 +1475,142 @@ aws cloudwatch describe-alarm-history --region us-east-2 \
 ```
 
 시험 시각의 SNS 동작 성공 기록은 CloudWatch의 발행 확인이며 이메일 수신함 도착 확인과는 구별한다. 출력이 비어 있거나 시간 초과·동작 실패·미수신이면 즉시 시험을 반복하지 않고 기록부터 확인한다. 이 조회는 최근5개이며 전체 이력을 증명하지 않는다. 메일을 확인해도 실제 오류·큐 적체 발생에서의 지표 탐지나 모든 경보의 개별 수신까지 시험한 것은 아니다. [경보 실행 기록](https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/describe-alarm-history.html)
+
+후속 사용자가 “이메일 도착”을 회신했다. 직전 안내한 CloudWatch→SNS 시험 메일 수신 확인으로 기록하며 시험 알림을 다시 보낼 필요는 없다. 이메일 원문·Action 이력 출력은 제공받지 않았고 현재 재평가 상태도 별도로 확인한다.
+
+4. 설치된 경보의 현재 상태와 감시 활성 여부를 읽는다.
+
+```sh
+aws cloudwatch describe-alarms --region us-east-2 \
+  --alarm-name-prefix 'arc-calc-dev-' \
+  --alarm-types MetricAlarm \
+  --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Enabled:ActionsEnabled}' \
+  --output json --no-cli-pager
+```
+
+8개의 State가 OK이고 Enabled가 true이면 현재 경보 감시 상태 확인을 마치고 로그 수집 확인으로 진행한다. ALARM이면 시험 표시가 남은 것인지 실제 지표 때문인지 확인하며 임의로 OK로 바꾸지 않는다. INSUFFICIENT_DATA는 평가 자료 부족 상태이며 시험 메일 수신 실패를 뜻하지 않는다. OK는 전체 업무 무장애나 로그 수집 성공의 증거로 확대하지 않는다.
+
+후속 사용자 출력에서 경보8개 모두 State=OK/Enabled=true를 확인했다. 앞서 안내 응답에 잘못 적힌 `State:State` 조회가 null을 표시했지만, 실제 필드인 `State:StateValue`로 조회한 두 번째 결과는 정상이다. 이는 안내 오타였으며 경보 상태 오류나 AWS 설정 변경 사유가 아니다. 시험 알림 재발송·경보 상태 재설정 없이 다음 확인으로 진행한다.
+
+<a id="beginner-dev-log-stream-check"></a>
+### 세 Lambda의 로그 수집 흔적 확인
+
+API·Worker·Relay가 실행할 때 남긴 기록이 CloudWatch에 들어왔는지 먼저 로그 스트림의 이름·최근 이벤트 시각·수집 시각만 읽는다. 이 조회는 로그 본문·비밀값을 출력하지 않으며 함수를 호출하거나 설정을 변경하지 않는다. 기존 로그 그룹 존재·StoredBytes0 및 DynamoDB 운용 로그 확인과 구별한다.
+
+CloudShell에 아래 괄호를 포함한 블록 전체를 한 번 붙여넣는다. 세 그룹을 차례로 읽으며 오류가 나면 나머지 조회를 중단한다. CloudShell 자체는 종료하지 않는다.
+
+```sh
+(
+  for arc_dev_role in api worker relay; do
+    arc_dev_log_group="/aws/lambda/arc-calc-dev-${arc_dev_role}"
+    AWS_MAX_ATTEMPTS=1 aws logs describe-log-streams \
+      --region us-east-2 \
+      --log-group-name "$arc_dev_log_group" \
+      --order-by LastEventTime --descending \
+      --max-items 1 --page-size 1 \
+      --query "{Group:'$arc_dev_log_group',Streams:logStreams[].{Name:logStreamName,LastEventMillis:lastEventTimestamp,LastIngestedMillis:lastIngestionTime}}" \
+      --output json --no-cli-pager || exit 1
+  done
+)
+```
+
+예상 출력은 그룹별 JSON3개다. Streams 안의 이름과 두 시각은 해당 스트림의 수집 흔적이며 함수 실행·계산 성공·로그 무누락·본문 정제를 보장하지 않는다. API/Worker는 이전 시험 시점의 기록일 수 있고, Relay의 반복 실행과 별개로 두 시각 모두 갱신이 지연될 수 있다. AWS는 통상 수집 후1시간 이내 갱신되지만 더 오래 걸릴 수도 있다고 명시한다. 빈 목록·null·이전 시각만으로 수집 장애를 단정하거나 시험 계산을 재실행하지 않고 출력부터 확인한다. [로그 스트림 조회와 시각 갱신](https://docs.aws.amazon.com/cli/latest/reference/logs/describe-log-streams.html)
+
+2026-09-24 사용자 출력으로 세 그룹 모두 이벤트·수집 시각이 있는 스트림을 확인했다. 한국 시간의 마지막 수집 시각은 API 09-23 17:53:54, Worker 09-23 16:10:13, Relay 09-24 06:58:55다. 이 범위의 로그 수집 확인은 통과했으며, 기존 계산을 다시 실행하거나 로그 보관기간을 변경할 필요는 없다.
+
+<a id="beginner-dev-ownership-check"></a>
+### 다른 로그인 세션의 결과 접근 차단 확인
+
+같은 공용 Dummy 계정이라도 새 로그인은 별도 세션이다. 다음 시험은 새 세션이 기존 세션의 훈련·계산 결과·차트 링크를 자동 조회하지 못하는지 확인한다. 기존 일반 훈련의 비공개 체크포인트를 읽고 추가 로그인1회만 수행한다. 로그인에 따른 세션·과정 준비 기록은 생기지만, 새 훈련 시작·업로드·로그아웃·재인가·진도 초기화는 하지 않는다.
+
+Mac에 준비된 파일은 `var/deployment/dev-runtime-20260923-0octlgf9/api-ownership-check.py`다. 권한0600·Git 제외이며 SHA256은 `653a8a584162a69307103485e8a45115d0b85d1d6a6a192f8d01a3d90e0b08bd`다. 같은 폴더의 기존 `api-calculation-check.py`를 고정 SHA256 `396e9bef6f8f56cbd4a3c95c6ba44bbd02707c7a36a63ff4003a13ed7a60f91b`로 확인해 읽기 도우미만 사용한다. 기존 자료 파일은 다시 올릴 필요가 없다.
+
+1. AWS CloudShell의 **Actions → Upload file**을 누른다.
+2. Mac 파일 선택 창에서 **⌘⇧G**를 누르고 `/Users/mac/arc_calculator_api/var/deployment/dev-runtime-20260923-0octlgf9`를 입력한다. 이 경로는 Mac 파일 선택 창에 입력하는 것이며 CloudShell 명령이 아니다.
+3. `api-ownership-check.py`만 선택해 업로드한다. 앞선 계산 시험에 사용한 CloudShell의 홈 폴더에 기존 `api-calculation-check.py`와 체크포인트가 있어야 한다.
+4. 아래 명령을 한 번 실행한다.
+
+```sh
+python3 "$HOME/api-ownership-check.py"
+```
+
+도구는 고정 Dev HTTPS 주소로 원래 세션·훈련·성공 결과·차트 발급의 정상 응답을 먼저 확인한다. 새 로그인201과 별도 유효 세션200 뒤 새 세션의 훈련·계산·차트 발급 요청 모두 정확한404 NOT_FOUND를 요구한다. 마지막에 원래 결과와 로컬 체크포인트의 보존을 확인한다. 총10요청 중 POST는 로그인1회이며 자동 재시도·리다이렉트·프록시·차트 URL 다운로드는 없다. 토큰·시도 식별자·서명 URL·응답 본문은 출력하지 않는다.
+
+마지막 `ALL_PASS`와 `Scope=same_account_cross_session_ownership`이면 이 기존 시도의 세션 간 조회 차단 시험이 통과한 것이다. 다른 사용자·환경·재인가·실제 만료·중복 처리·장애 시험까지 확대하지 않는다. 세션은 로그인부터24시간이므로 SESSION_EXPIRED가 나오면 이 시험을 통과로 세지 않고 중단한다. STOP/FAIL이면 화면 출력만 공유하고 체크포인트를 삭제하거나 새 계산·로그아웃을 실행하지 않는다. 추가 세션은 메모리에만 보관하며 종료 시 토큰을 파일에 저장하지 않는다.
+
+2026-09-24 후속 사용자 실행은 원래 세션의 정상 조회4개, 새 로그인/유효 세션 확인, 다른 세션의 세 경로404, 원래 결과 일치와 체크포인트 보존 및 ALL_PASS였다. 이 기존 훈련의 세션 간 조회 차단 확인을 마쳤으며 같은 시험을 다시 실행할 필요는 없다.
+
+<a id="beginner-dev-chart-expiry-check"></a>
+### 차트 링크의 실제 만료와 재발급 확인
+
+다음은 새로 발급받은 차트 링크가 처음에는 열리고, 실제 유효시간300초가 지난 뒤에는 차단되며, 다시 발급받은 링크로 같은 차트를 읽을 수 있는지 확인한다. 기존 계산의 조회와 차트 링크 발급/다운로드만 수행한다. 링크 발급은 비공개 저장 파일을 공개하는 설정 변경이 아니며 새 훈련·로그인·로그아웃·재인가·업로드는 하지 않는다.
+
+준비한 `api-chart-expiry-check.py`는 권한0600·Git 제외이며 SHA256 `470f85c19ad96707627f82190aff8c1fffce9659efd20fff0f8622f3644b9392`다. 기존 `api-artifacts-check-v2.py`와 `api-calculation-check.py`를 고정 체크섬으로 확인하고 조회·검증 함수만 재사용한다. 고정 API 주소와 Dev 버킷의 regional/global S3 주소만 허용하며 실제 파일 다운로드 내용·서명 URL·토큰은 메모리에서만 처리한다.
+
+1. 앞서 사용한 CloudShell에서 **Actions → Upload file**을 누른다.
+2. Mac 파일 선택 창에서 **⌘⇧G**를 누르고 `/Users/mac/arc_calculator_api/var/deployment/dev-runtime-20260923-0octlgf9`로 이동한다. `api-chart-expiry-check.py`만 선택해 업로드한다.
+3. 기존 `api-calculation-check.py`, `api-artifacts-check-v2.py`와 일반 훈련 체크포인트는 CloudShell 홈 폴더에 그대로 둔다. 파일이나 세션 토큰을 직접 열어서 복사할 필요는 없다.
+4. 아래 명령을 한 번 실행하고 약5~6분 기다린다. WAITING은 실제 시간이 지나기를 기다리는 정상 표시다. 터미널을 닫거나 같은 명령을 동시에 다시 실행하지 않는다.
+
+```sh
+python3 "$HOME/api-chart-expiry-check.py"
+```
+
+처음 서명 링크의200, **동일한 링크**의 시간 경과 후 만료 거절, 새로 발급한 링크의200·같은 차트 확인이 모두 통과해야 한다. 단순403은 다른 권한 문제일 수도 있으므로 만료 오류까지 확인한다. 임시 AWS 자격증명 만료인 ExpiredToken은300초 만료 시험 통과로 세지 않는다. AWS는 요청이 시작될 때 유효기간을 확인하므로 만료 전에 시작한 다운로드가 계속된다는 사실로 만료 실패를 판정하지 않는다. [서명 링크 만료 규칙](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html), [S3 만료 오류](https://www.repost.aws/knowledge-center/request-has-expired-s3-object)
+
+마지막 ALL_PASS와 화면 결과만 공유한다. STOP/FAIL이면 기존 체크포인트·원본을 보존하고 해당 출력부터 확인한다. 서명 URL과 토큰은 메모리에만 두며 화면이나 파일에 저장하지 않는다. 세션의 남은 시간이 시험에 부족하면 시작 전에 중단한다. 이는 시험 완료를 위한 여유시간 검사이며 세션24시간·차트300초 정책은 그대로다.
+
+구체적으로 세션 잔여600초 이상을 먼저 확인하고 총8회 GET을 수행한다. 서명의 만료와 API가 알린 만료 중 더 늦은 시각에7초를 더해 기다린다. 대기 출력은 최대30초마다 갱신하며 시계 변동·대기330초/전체480초 예산 초과는 중단한다. 이전 계산 응답에 저장된 객체 경로와 일치하는지, 다운로드가 기존 시험 자료의101점 차트인지, 재발급 후 본문과 원래 결과·체크포인트가 같은지 확인한다. 이번 시험은 별도 DynamoDB/S3 저장 감사의 반복이 아니며 GET 처리의 운용 로그는 생길 수 있다.
+
+2026-09-24 사용자 실행은 새 링크/차트200,307초부터의 실제 대기 뒤 같은 링크의403 AccessDenied/ExpiryConfirmed=true, 재발급200·같은 차트 및 원래 결과/체크포인트 보존과 ALL_PASS였다. 이번 차트의 실제 만료·재발급 확인을 마쳤으며 같은5분 시험을 반복할 필요는 없다.
+
+<a id="beginner-dev-replay-check"></a>
+### 같은 시작·파일 요청을 다시 보냈을 때 기존 결과 확인
+
+네트워크가 끊겨 응답을 못 받은 앱은 같은 요청을 다시 보낼 수 있다. 이번 시험은 이미 완료한 일반 훈련의 시작 요청번호·본문과 파일·조건을 그대로 재전송하고, 기존 훈련·계산 작업·결과가 유지되는지 확인한다. HTTP POST는 기존 시작 요청1회와 파일 업로드1회다. 요청 처리에 따른 운용 로그는 생기며 완전한 읽기 전용 시험은 아니다.
+
+준비한 `api-replay-check.py`는 권한0600·Git 제외이며 SHA256 `c0239334297a6790fc8c539f0141207cbe6713abcac495eab43d3265965a0af7`다. 기존 artifacts-v2/calculation 도우미를 고정 체크섬으로 확인하고 기존31380bytes fixture의 원본 hash도 검사한다. API 세션·훈련·성공 결과를 조회하고, 계정150612770165·Ohio의 원래 COURSE_CREATE 접수 행/완료 ATTEMPT/done JOB가 요청·세션·epoch·입력 digest·저장 참조와 일치할 때만 재전송한다. DynamoDB 조회는 ConsistentRead이며 세 행 전체를 메모리에서 전후 비교한다. 개별 조회와 POST를 하나의 원자적 거래로 묶는 도구는 아니므로 동시 삭제·재인가 등의 변경과 함께 실행하지 않는다. [DynamoDB GetItem](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_GetItem.html)
+
+앞선 시험과 같은 오하이오 CloudShell을 사용한다. AWS 자격증명과 계정도 확인하므로 로그인 만료 오류가 나면 기존 체크포인트를 보존하고 출력부터 확인한다. 시험 중 다른 작업에서 이 훈련의 삭제·재인가·로그아웃·진도 초기화를 함께 실행하지 않는다.
+
+1. CloudShell의 **Actions → Upload file**을 누른다.
+2. Mac 파일 선택 창에서 **⌘⇧G**로 `/Users/mac/arc_calculator_api/var/deployment/dev-runtime-20260923-0octlgf9`에 이동하고 `api-replay-check.py`만 업로드한다.
+3. 기존 `api-calculation-check.py`, `api-artifacts-check-v2.py`, `cco_1.bin`과 비공개 일반 훈련 체크포인트는 그대로 둔다.
+4. 아래 명령을 한 번 실행한다.
+
+```sh
+python3 "$HOME/api-replay-check.py"
+```
+
+정상 재전송은 새로 만들었다는201/처리 대기202가 아닌200으로 기존 응답을 돌려준다. 시작 재전송의 `state=created`는 최초 시작 당시의 영수증이며, 현재 계산 상태가 과거로 돌아갔다는 뜻이 아니다. 도구는 별도로 현재 완료 결과·저장 작업을 확인한다. 이번 시험은 완료된 요청의 순차 재전송이며 동시 요청 경쟁·처리 중 재전송·SQS 중복 전달·장애 복구까지 증명하지 않는다.
+
+마지막 ALL_PASS와 화면 결과만 공유한다. STOP/FAIL·시간 초과이면 자동 재시도 없이 중단하며 같은 명령을 즉시 다시 실행하지 않는다. 기존 체크포인트·원본·진도를 삭제하거나 새 요청번호를 만들지 않는다. 토큰·복구 증표·서명 URL·DB 원문을 화면에 출력하거나 공유할 필요는 없다.
+
+정상 흐름은 HTTP7회(GET5·POST2), STS 계정 조회1회와 DynamoDB GetItem6회다. 새 요청번호·로그인·파일 삭제·AWS 설정 변경·큐 메시지 생성은 수행하지 않는다. CLI 입력에 필요한 행 식별자는 권한0600 임시 파일로 전달하고 종료 시 해당 임시 파일만 정리한다. 기존 체크포인트는 읽기만 하며 마지막에 바이트/권한 보존을 확인한다. AWSCLIReadOnly는 CLI 작업 범위를 뜻하며 API 재전송에 따른 운용 로그 생성을 제외한다는 의미는 아니다.
+
+2026-09-24 사용자 실행은 시작 재전송200/SameAttempt·SameReceipt=true, 업로드 재전송200/SameCompletedResult=true, 훈련·작업·접수 기록·결과 보존, POST2회 및 체크포인트 보존/ALL_PASS였다. 완료된 일반 훈련의 순차 재전송 확인을 마쳤다. 같은 시험을 다시 실행할 필요는 없다.
+
+<a id="beginner-dev-app-handoff"></a>
+### 이제 앱 담당자에게 전달하기
+
+AWS Dev 서버가 만들어졌고 위의 기본 흐름은 통과했다. 다음은 실제 앱이 이 서버에 연결되는지 확인하는 단계다. 기존 AWS 자원 생성이나 ZIP 업로드를 반복하지 않는다.
+
+1. 앱 담당자에게 [APP_API.md](APP_API.md) 파일을 전달한다. Mac에서는 `/Users/mac/arc_calculator_api/docs/APP_API.md`에 있다. 서버 주소와 API 사용법을 모은 문서다.
+2. 다음 연결 정보를 함께 전달한다. 서버 주소의 `/dev`와 개별 요청 끝의 `/`를 유지한다.
+
+   | 전달할 내용 | 값 |
+   |---|---|
+   | 시험 환경 | 공유 Dummy Dev · 오하이오 |
+   | 서버 기본 주소 | `https://2ftxmdtrx1.execute-api.us-east-2.amazonaws.com/dev` |
+   | Dummy 로그인 | `test@test.com` / 문자열 `2222` |
+   | 첫 확인 순서 | 로그인 → 과정 목록15개 → 현재 완료 진도 표시 |
+   | 현재 완료된 과정 | 기존 시험의 성인 압박 Only 과정 |
+
+3. 앱 담당자에게 앱 화면에서 로그인과 목록/진도가 표시되는지 확인해 달라고 요청한다. 완료한 과정의 새 훈련·평가 시작이 거절되는 것은 현재 규칙이다. 새 로그인 세션으로 이전 세션의 개별 훈련 결과를 읽을 때404가 나오는 것도 소유권 규칙이며, 공유 진도 조회와 구별한다. 이를 우회하려고 자동 로그아웃·진도 초기화를 추가하지 않는다. Dummy 로그아웃은 팀이 공유하는 진도를 초기화한다.
+4. 실제 앱이 저장한 파일이 준비되면 해당 훈련 종류·연령·크기로 별도 계산 시험을 진행한다. 현재31380bytes 압박 파일의 성공만으로 다른 종류나2MiB 최대 입력·동시 사용을 검증했다고 표시하지 않는다. 기존 완료 과정을 다시 쓰기 위해 임의로 초기화하지 않고 시험할 항목과 공유 진도 영향을 먼저 맞춘다.
+5. 관리자 Angelo에게 아직 전달받지 못한 FitCloud 비용 조회 계정과 예산 알림 안내를 요청한다. 계정이 오면 실제 Dev 비용을 확인한다. 현재 장애 이메일 수신 성공은 비용 알림 완료를 뜻하지 않는다.
+
+이는 팀의 앱 연결 시험을 시작할 수 있다는 기술 판정이다. 실제 앱/기기·동시 요청·세션 만료/복구·장애/백업 복원·용량/비용 검증은 별도로 남아 있다. 공식 ARC 인증/과정 공급/제출은 계속 비활성이고 CPR 완료 규칙은 `pending_policy`이며, Beta/Prod 운영 완료로 해석하지 않는다.
 
 ## 7. 기존 Calculator/Gateway 배포 도구
 
