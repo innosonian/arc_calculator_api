@@ -447,3 +447,38 @@ def test_workflow_invokes_the_subcommands_this_script_defines():
         assert f"scripts/deploy_dev_lambdas.py {subcommand}" in text
     parser = deployer.build_parser()
     assert set(parser._subparsers._group_actions[0].choices) == {"check-config", "deploy", "smoke", "summary"}
+
+
+def test_script_invocation_resolves_the_code_registry_without_the_repository_on_sys_path(tmp_path):
+    # The workflow runs `python scripts/deploy_dev_lambdas.py ...` from a bare
+    # environment: scripts/ is sys.path[0], the repository root is not on the path,
+    # and no STAGE or PYTHONPATH is exported to that step.
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS
+    from mock_journey.execution_definitions import PROJECTION_VERSION
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts/deploy_dev_lambdas.py"
+    probe = (
+        "import json, runpy, sys\n"
+        f"sys.path[0] = {str(script.parent)!r}\n"
+        f"assert {str(root)!r} not in sys.path\n"
+        f"ns = runpy.run_path({str(script)!r}, run_name='deploy_probe')\n"
+        "from mock_journey.aws_settings import AwsSettings\n"
+        "print(json.dumps(ns['expected_execution']()))\n"
+    )
+    environment = {key: value for key, value in os.environ.items()
+                   if key in ("PATH", "HOME", "SYSTEMROOT", "TMPDIR")}
+    completed = subprocess.run([sys.executable, "-c", probe], cwd=tmp_path, env=environment,
+                               capture_output=True, text=True, timeout=60)
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "current_adapter_version": CURRENT_ADAPTER_VERSION,
+        "retained_adapter_versions": list(RETAINED_ADAPTER_VERSIONS),
+        "projection_version": PROJECTION_VERSION,
+    }
+

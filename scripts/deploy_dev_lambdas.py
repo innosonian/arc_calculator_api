@@ -36,6 +36,12 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+# The workflow runs this file as `python scripts/deploy_dev_lambdas.py`, which puts
+# scripts/ (not the repository root) first on sys.path; check-config imports
+# mock_journey from the root.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 ROLES = ("api", "worker", "relay")
 EXECUTION_ROLES = ("api", "worker")
