@@ -106,9 +106,9 @@
 }
 ```
 
-현재 v4 검출 adapter(`arc-internal-detection-v4`)는 v2 adapter에서 도입한 목표 평가 형식을 유지하며 모든 종류에서 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR 계열의 `observed`는 계산기가 `cpr`로 분류한 사이클 수다(D136). 이전 pending-v3 adapter로 시작한 진행 중 CPR 시도만 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
+현재 v5 검출 adapter(`arc-internal-detection-v5`, D138·D139)와 직전 v4 adapter(`arc-internal-detection-v4`, 보존)는 v2 adapter에서 도입한 목표 평가 형식을 유지하며 모든 종류에서 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR 계열의 `observed`는 계산기가 `cpr`로 분류한 사이클 수다(D136). v4로 시작한 진행 중 시도는 같은 평가 형식이지만 계산은 원래 규칙(파일 끝 호흡 두 패킷, ARC 최소량 null)을 쓰고 `MINIMUM_QUANTITY_NOT_MET`를 내지 않는다. 이전 pending-v3 adapter로 시작한 진행 중 CPR 시도만 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
 
-목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. 목표 사유가 점수 사유보다 앞선다. 목표를 판단해 충족했고 점수도 Pass인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1 adapter의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
+목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. ARC CPR 최소 수행량 미달은 `MINIMUM_QUANTITY_NOT_MET`다(D139, v5 adapter 결과만). 순서는 목표 사유 → `MINIMUM_QUANTITY_NOT_MET` → `SCORE_NOT_PASS`로 고정이며, `SCORE_NOT_PASS`는 점수 자체가 기존 tester 기준에 못 미칠 때만 들어간다. 최소량 미달이면 표시된 총점과 무관하게 `score.decision="fail"`이고, `pass`에는 `MINIMUM_QUANTITY_NOT_MET`·`SCORE_NOT_PASS`가 모두 없다. 목표를 판단해 충족했고 `decision=pass`인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1 adapter의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
 
 진도 반영은 `{applied: bool, applied_epoch: string|null, reason: string}`다. 계산의 조건 만족과 현재 공유 진도 반영은 별개다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나이며, 이미 저장된 기존 시도의 계산 마무리에도 같은 순서를 쓴다(D117).
 
@@ -216,13 +216,14 @@ HTTP 왕복 테스트는 `urlsafe_b64encode(quote(urlencode(fields), safe="").en
 
 ### 2.3 패킷 검출과 앱 기록 계약
 
-2026-09-11 사용자 확정 D38~D46을 AHA2020/ARC2020/ARC2025/ERC2020/STD2015 모두에 적용한다. guideline별 점수식·최소량과 과정 시도의 ARC2025 고정 조건은 별개다.
+2026-09-11 사용자 확정 D38~D46과 2026-09-30 D138을 AHA2020/ARC2020/ARC2025/ERC2020/STD2015 모두에 적용한다. guideline별 점수식과 과정 시도의 ARC2025 고정 조건은 별개다.
 
 - 첫 패킷은 압박 카운터 기준선이다. 앱은 첫 압박 전에 기준선 패킷을 넣는다. 이후 이전 값과 다른 양수 카운터를1회로 인정하며, 증가 폭으로 유실된 압박을 추정 복원하지 않는다.0은 새 기준선이며 사건을 만들지 않는다.
 - 패킷의 두 호흡량 중 최대값을 사용하고 후보별 최고값을 추적한다. 성인·소아 최고값 대비10mL 이상 하강한 두 연속 패킷에서1회 확정한다. 원본 보정계수10이므로 raw50→49→49가1회다. 영아는 보정계수1, 감소5mL 잠정값이다. 공식 의학·기기 기준으로 확정한 수치가 아니다.
 - 100→90→89,100→90→90,100→89→90,100→0→0은 모두1회다. 중간 패킷이 감소 조건을 벗어나거나 최고값이 갱신되면 연속 확인을 처음부터 다시 한다. 새로운 최고값을 이전 호흡에서 가져오지 않는다.
 - 확정 후에는 대표량0 또는 패킷별 최대 압박 깊이의 상승 시작으로 재준비한다. 이후 새 호흡량 상승부터 후보를 시작하며 재준비한 패킷을 새 후보에 재사용하지 않는다. 아직 확인 중인 호흡을 압박 시작 때문에 취소하지 않는다. 깊이에 새 잡음 임계값을 추가하지 않는다.
-- 파일 끝은 추가 관측이 아니다. 두 패킷을 확인하지 못한 마지막 호흡은 길이에 관계없이 추가하지 않는다. 이미 확정한 마지막 호흡을 중복 추가하지 않는다.
+- 파일 끝은 추가 관측이 아니며 길이로 호흡을 추정하지 않는다. 현재 adapter(v5, D138)는 파일 끝에 호흡 후보가 아직 남아 있으면(이미 확정·잠금·기준 미달 종료가 아님) 다음 중 하나일 때1회로 확정한다. ① 최고값보다 감소 기준(성인·소아10mL, 영아5mL) 이상 낮은 패킷이1개 이상 관측됐다. 예: 250→380→440→480(최고)→380 뒤 파일 종료. ② 하강 패킷이 하나도 없어도 그때까지의 최고 호흡량이 후보 시작 직전 패킷의 대표 호흡량(기준선, 첫 패킷이면0)보다 같은 감소 기준 이상 높다. 예: 0→250→380→440→480에서 종료, 평탄 구간 480→478에서 종료, 100→90→95(하강 뒤 재상승)에서 종료. 이때 끊긴 지점까지의 최고값이 그 호흡의 최고점이다(앱이 목표 호흡 감지 즉시 종료하며 끊긴 지점이 최고점 이전인지 서버가 알 수 없기 때문). 인정하지 않는 경우: 기준선 대비 상승이 감소 기준 미만(성인 9mL, 영아 4mL 등), 확정 뒤 재준비되지 않은 잠금 상태의 잔여 호흡량, 이미 두 패킷으로 확정한 마지막 호흡의 중복 추가. 재준비(D43)가 0이 아닌 호흡량에서 일어났으면 그 패킷의 호흡량이 다음 후보의 기준선이다. 보존 adapter(`arc-internal-detection-v4`, `arc-internal-detection-pending-v3`)의 진행 중 시도는 D42 그대로 두 패킷을 확인하지 못한 마지막 호흡을 추가하지 않는다.
+- 앱은 목표 호흡을 스스로 검출한 순간 자동 종료하고 종료 신호 뒤에는 기록하지 않으므로(앱팀 확인, 2026-09-30) 최고값 직후 또는 그 이전에 끝나는 기록이 자동 종료 세션(CPR 사이클 한도, 호흡 Only8회)의 정상 형태다. 앱이 종료 신호 뒤 호흡량이0으로 돌아올 때까지 또는 최소2패킷을 더 기록하면 마지막 호흡의 실제 최고값·시간이 기록되므로 여전히 권장한다. 성인·소아는 보정계수10이라 raw1(10mL)이 곧 감소 기준이어서, 파일이 끝나는 순간 열려 있는 후보는 기준선보다 raw1만 높아도1회로 인정된다.
 - 압박·호흡 사건과 측정 증거를 각각 보존한다. 겹친 전체 시간은 합집합으로 한 번만 합산하고 호흡률 분모와 구별한다. 같은 패킷에서 확정된 두 사건은 같은 계산 cycle에 넣으며 직전 동작이 호흡이면 둘 다 다음 cycle로 이동한다. 이 cycle 규칙은 CPR 프로그램 완료 규칙 Q22를 대신하지 않는다.
 
 앱팀 검증 기록은 **시험 자료와 백엔드 검출 결과를 대조하기 위한 제안**이다. 이 저장소 밖의 앱에 로그를 설치하거나 실제 기기를 검증한 것은 아니다. 실물 시험 전에 앱 저장소/빌드 식별자, 마네킨 모델·펌웨어, binary codec 버전, 기록 시작/종료 절차를 확보한다. 시험 담당자가 동일한 누적 binary와 아래 진단을 비공개로 보관하고 정상·경계·유실·반등·압박 동시 진행 사례의 인정 시점을 패킷 단위로 대조한다.
@@ -263,7 +264,7 @@ HTTP 왕복 테스트는 `urlsafe_b64encode(quote(urlencode(fields), safe="").en
 | `is_2rescuers` | reference 필드 유지. 이 flag만으로 실제 VP 이벤트를 대신하지 않음 |
 
 ARC2025는 reference에서 ARC2020과 같은 계산 설정을 사용한다. 지원 이름의 복원이 해당 기관의
-새 공식 평가 기준이나 ARC 연동 승인을 의미하지 않는다. P3에 따라 비ARC guideline에는 추가 CPR 최소량 null 예외를 적용하지 않는다.
+새 공식 평가 기준이나 ARC 연동 승인을 의미하지 않는다. CPR 최소량은 비ARC guideline에 적용한 적이 없고(P3), ARC guideline에서는 D139로 v5부터 점수 null 대신 합격 조건으로 적용한다(§5).
 
 VP 이벤트의 정상 입력 형태는 `[{"event":0,"timestamp":1000}, ...]`다. 이벤트 ID는 압박0/1,
 호흡10/11, AED20/21이며 timestamp 단위는 ms다. 실제 코드가 사용하는 `last_timestamp` 우선순위와
@@ -336,7 +337,9 @@ rescue 값·누락 여부가 이 HTTP 값과 같다는 뜻은 아니다. `score_
 metrics에는 지표 분포 객체, 평균·합계·횟수·CCF 값 등이 들어간다. `VentilationSpeed` 등은 조건에 따라
 객체·빈 객체·null이 다를 수 있다. score가 null이라는 이유로 해당 실측 평균까지 일괄 null로 바꾸지 않는다.
 
-## 5. CPR 최소량 예외와 원본 동작 복원
+## 5. CPR 최소량: 합격 조건(현재)·점수 null 예외(보존 adapter 전용)와 원본 동작 복원
+
+**2026-09-30 D139: 최소량 미달 시 점수는 표시하고 합격만 인정하지 않는다.** 현재 adapter(`arc-internal-detection-v5`)와 execution context 없는 직접 호출(로컬 도구·회귀 helper·참고 대조)은 ARC2020/ARC2025 CPR에서도 다른 guideline과 같은 방식으로 압박·호흡 그룹 점수와 총점을 계산한다(그룹 null 없음). 대신 v5의 평가(`evaluation`)가 아래 표의 최소량을 합격 조건으로 적용한다: ARC2020/ARC2025의 CPR 계열(CPR·2인 CPR·2인 CPR+AED)에서 압박·호흡 중 하나라도 표의 값 미만이면 표시된 총점이 80 이상이어도 `score.decision="fail"`, `program_completed=false`이고 `reason_codes`에 `MINIMUM_QUANTITY_NOT_MET`가 들어간다. 다른 guideline과 압박 전용·호흡 전용에는 적용하지 않는다. 판정은 계산 결과의 `action_count`와 점수 계산과 같은 단일 출처(`NullPolicy.create`)로 한다. 직접 호출 경로(평가 단계가 없는 `run_calculator` 결과)에는 합격 판정 자체가 없으므로 점수만 나온다. 아래 "미만은 해당 점수 그룹 null" 규칙들은 보존 adapter(`arc-internal-detection-v4`, `arc-internal-detection-pending-v3`)의 정의로 시작한 진행 중 시도가 원래 의미로 끝나도록 남겨 둔 동작이며(`CalculationOptions.minimum_quantity_null=True`, 새 사유 코드 없음), 저장된 과거 결과는 다시 계산하지 않는다. HSTM 호환 문서 내부의 조기 종료 게이트(`services/legacy_document.py`: 압박 Only60회·호흡 Only12회·CPR3사이클 미만이면 Fail)는 바뀌지 않았다.
 
 | CPR target | 압박 최소량 | 호흡 최소량 |
 |---|---:|---:|
@@ -344,7 +347,7 @@ metrics에는 지표 분포 객체, 평균·합계·횟수·CCF 값 등이 들�
 | child | 90 | 6 |
 | infant | 45 | 6 |
 
-**ARC2020/ARC2025의 CPR에만 적용한다.** 기준 이상은 해당 최소량 조건 충족, 미만은 해당 점수 그룹 null이다.
+**보존 adapter에서 ARC2020/ARC2025의 CPR에만 적용한다.** 기준 이상은 해당 최소량 조건 충족, 미만은 해당 점수 그룹 null이다.
 파싱된 데이터에 계산 가능한 cycle이 없으면 원본의 조기 반환을 유지해 총점0을 반환한다.
 
 - chest 그룹: `score_comp_depth`, `score_recoil`, `score_comp_no`/`score_comp_count`, `score_hand_position`.
@@ -357,6 +360,7 @@ metrics에는 지표 분포 객체, 평균·합계·횟수·CCF 값 등이 들�
 - 양쪽 그룹이 충족된 경우에도 실제 데이터·calc_case에 따라 원래 산출되지 않는 값은 남을 수 있다.
   최소 횟수 충족이 모든 지표의 존재나 합격을 보장하지 않는다.
 - AHA2020/ERC2020/STD2015는 이 추가 예외 없이 reference 계산을 유지하며 ERC rescue도 reference를 따른다.
+- D139 이후 현재 규칙의 ARC CPR 점수(계산 결과)는 null 예외를 뺀 계산과 같다(합격 조건은 평가 단계에서 따로 적용). 참고 대조27건(`tests/fixtures/reference_parity/approved_expectations.json`)에 승인 예외 산식을 다시 적용하면 보존 옵션 결과와 정확히 일치하고, 예외가 null로 만들던 그룹 점수는 참고 구현 기록값으로 돌아온다. 단 호흡률 점수(`score_vent_rate`)3건(기록 자료 cpr_1·cpr_2·cpr_4)과 CCF·총점은 D45 시간·호흡률 구간 개정의 값(독립 기대값과 일치)이며 참고 기록값과 다르다. 이 차이는 D139 이전에도 비ARC guideline에서 같은 값으로 존재했다.
 - 호환 문서에는 계산 결과의 실제 null을 보존한다. 실제 숫자인 평균·횟수·시간을 해당 점수 그룹이
   null이라는 이유로 null로 바꾸지 않는다. overall null이면 입력 문서의 Pass보다 Fail이 우선한다.
 

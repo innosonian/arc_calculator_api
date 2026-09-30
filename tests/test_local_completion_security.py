@@ -12,7 +12,8 @@ import pytest
 
 from mock_journey import typed
 from mock_journey.contracts import (
-    CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION, VerifiedCalculation,
+    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
+    VerifiedCalculation,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.internal_calculator import InternalCalculator
@@ -125,6 +126,10 @@ def test_schema_cannot_be_relabelled_by_rebinding_another_version_candidate(targ
     (CYCLE_GOAL_ADAPTER_VERSION, True, None),
     (CYCLE_GOAL_ADAPTER_VERSION, False, None),
     (CYCLE_GOAL_ADAPTER_VERSION, True, lambda *args: 3),
+    # D138: the same holds for the current cycle-rule adapter (v5).
+    (CURRENT_ADAPTER_VERSION, True, None),
+    (CURRENT_ADAPTER_VERSION, False, None),
+    (CURRENT_ADAPTER_VERSION, True, lambda *args: 3),
 ])
 def test_constructor_cannot_change_a_version_meaning_or_choose_between_two_policies(version, pending, resolver):
     with pytest.raises(ValueError):

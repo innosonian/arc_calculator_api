@@ -1,9 +1,10 @@
 """Approved training definitions shared by explicit runtime composition.
 
 No clients, operating limits, credentials, or runtime activation live here.
-New definitions select the current adapter (the D136 cycle-goal adapter).
-Already accepted definitions are immutable in storage; retained candidates and
-in-flight pending-adapter attempts keep their original version.
+New definitions select the current adapter (D138: arc-internal-detection-v5
+under the cycles-v2 profile; the D136 cycle rule is unchanged). Already
+accepted definitions are immutable in storage; retained candidates and
+in-flight attempts of a retained adapter keep their original version.
 """
 
 from mock_journey.contracts import PROJECTION_VERSION  # noqa: F401  (re-exported; defined with the adapter versions)
@@ -13,7 +14,7 @@ def execution_catalog():
     """The approved five programs/three targets, using current calculator enums."""
     from mock_journey.assembly import ExecutionCatalog
     from mock_journey.catalog import PROGRAMS, TARGETS, definition_key
-    from mock_journey.contracts import CYCLE_GOAL_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION
+    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
     from mock_journey.projection import ProjectionSchema
 
     definitions = {}
@@ -26,8 +27,8 @@ def execution_catalog():
                     "guideline": "ARC2025", "cpr_cycle_type": "152" if target == "infant" else "302",
                     "is_2rescuers": program in ("mock-two-rescuer-cpr", "mock-two-rescuer-aed"),
                 },
-                "calculation_profile": {}, "profile_version": CYCLE_GOAL_PROFILE_VERSION,
-                "adapter_version": CYCLE_GOAL_ADAPTER_VERSION, "projection_version": PROJECTION_VERSION,
+                "calculation_profile": {}, "profile_version": CURRENT_PROFILE_VERSION,
+                "adapter_version": CURRENT_ADAPTER_VERSION, "projection_version": PROJECTION_VERSION,
             }
     # Existing response/document projection remains strict. No new arbitrary
     # metric fields, completion formula, partner events or AED timing is added.

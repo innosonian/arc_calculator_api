@@ -14,8 +14,10 @@ from services.config import Config
 
 
 class ActionDataPrepare:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, *, eof_single_confirmation: bool = True):
         self.config = config
+        # D138 end-of-file ventilation rule; False is the retained adapters' D42 rule.
+        self.eof_single_confirmation = eof_single_confirmation
 
     def get_action_list(self, rtdata_list: list[dict]) -> list[dict]:
         action_rtdata_list = self.generate_action_rtdata_list(rtdata_list)
@@ -26,7 +28,9 @@ class ActionDataPrepare:
         action_list = []
         if not rtdata_list:
             return action_list
-        events = PacketActionDetector(self.config).detect(rtdata_list)
+        events = PacketActionDetector(
+            self.config, eof_single_confirmation=self.eof_single_confirmation,
+        ).detect(rtdata_list)
         compression_intervals = sorted(
             (rtdata_list[event.evidence_start]["timestamp"], rtdata_list[event.evidence_stop - 1]["timestamp"])
             for event in events if event.action_type == ACTION_TYPE_COMP

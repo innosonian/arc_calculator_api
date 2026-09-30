@@ -45,6 +45,8 @@ def make_pre_action_list(
     config: Config,
     parsed_data: dict,
     vp_event_list: list[VPEvent],
+    *,
+    eof_single_confirmation: bool = True,
 ) -> (list[dict], list[dict]):
     # aed
     aed_part_list = config.divider.divide_aed_part(parsed_data["aed_data_list"])
@@ -56,6 +58,9 @@ def make_pre_action_list(
     vp_marked_rtdata_list = ActionDataInjector(config).mark_virtual_partner_rtdata(marked_rtdata_list, vp_event_list)
 
     # action 데이터 만듦
-    action_list = ActionDataPrepare(config).get_action_list(vp_marked_rtdata_list)
+    # eof_single_confirmation: D138 파일 끝 호흡 규칙(기본=현재 규칙). 보존 어댑터만 False를 넘긴다.
+    action_list = ActionDataPrepare(
+        config, eof_single_confirmation=eof_single_confirmation,
+    ).get_action_list(vp_marked_rtdata_list)
 
     return action_list, aed_part_list

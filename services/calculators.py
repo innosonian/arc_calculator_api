@@ -89,9 +89,14 @@ def make_cpr_metrics(part_with_score_list, calculation_config: BaseCalculationCo
     return MetricEvaluator(calculation_config).evaluate(part_with_score_list)
 
 
-def calculate_cpr(prepared_data: dict, config: Config) -> CalculationResult:
-    null_policy = NullPolicy.create(
-        config.calculation_config, prepared_data["comp_count"], prepared_data["vent_count"],
+def calculate_cpr(prepared_data: dict, config: Config, *, minimum_quantity_null: bool = False) -> CalculationResult:
+    # D139: ARC2020/ARC2025 CPR의 최소량 미달 null 정책(D07/D08)은 새 계산부터 적용하지 않는다.
+    # 보존 어댑터(v4·pending-v3)만 minimum_quantity_null=True로 원래 정책을 유지한다. 정책 자체
+    # (NullPolicy, 해시 고정)는 그대로이며 여기서 만들지 여부만 고른다. 최소량 자체는 없어지지 않았다:
+    # 점수는 표시하되 합격 조건으로는 평가 단계(mock_journey.worker.evaluate)가 같은 NullPolicy.create로 판정한다.
+    null_policy = (
+        NullPolicy.create(config.calculation_config, prepared_data["comp_count"], prepared_data["vent_count"])
+        if minimum_quantity_null else NullPolicy.inactive()
     )
     # 파트, 사이클 점수 계산
     # 분리 할 걸...

@@ -37,7 +37,11 @@ def make_calculate_result(
 
     # Observer failures stay inside the calculate_cpr step (existing diagnostic contract).
     with _step("calculate_cpr", "calc_complete"):
-        calculation_result = calculate_cpr(prepared_data, config)
+        # D139: the owning adapter version's minimum-quantity option; a call
+        # without a context keeps the existing two-argument form (current rule).
+        policy_kwargs = ({} if execution_context is None
+                         else {"minimum_quantity_null": execution_context.options.minimum_quantity_null})
+        calculation_result = calculate_cpr(prepared_data, config, **policy_kwargs)
         if execution_context is not None:
             execution_context.observe_calculation(calculation_result)
 

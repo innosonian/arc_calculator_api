@@ -58,10 +58,16 @@ def run_calculator(
         ),
     )
     # rtdata to action data list
+    # D138/D139: 어댑터 버전이 정한 계산 옵션(CalculationOptions)은 execution_context로만 전달된다.
+    # context가 없는 직접 호출(로컬 도구·회귀 helper)은 현재 규칙(각 함수의 기본값)을 쓰고 기존 호출
+    # 형태를 유지한다. 최소량 null 정책 옵션은 make_calculate_result가 같은 context에서 읽는다.
+    detection_kwargs = ({} if execution_context is None
+                        else {"eof_single_confirmation": execution_context.options.eof_single_confirmation})
     action_list, aed_part_list = make_pre_action_list(
         config,
         parsed_data,
         vp_event_list,
+        **detection_kwargs,
     )
 
     # action data에 이런저런 양념치기. 계산에 필요한 데이터 준비는 이 단계에서 마무리한다

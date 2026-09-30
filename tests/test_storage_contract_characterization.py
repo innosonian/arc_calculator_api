@@ -218,14 +218,20 @@ def test_projected_definition_accepts_the_seven_keys_and_drops_credentials_only(
 
 # -- adapter/profile/projection versions ----------------------------------------------
 
-# D136: the current adapter evaluates a cycles goal by the closed-cycle rule;
+# D136: a cycle-rule adapter evaluates a cycles goal by the closed-cycle rule;
 # the two pending adapters are retained (v3 still calculates, v2 verify-only).
-CURRENT = "arc-internal-detection-v4"
+# D138/D139: the current adapter is v5 (end-of-file ventilation, no minimum-quantity
+# null) under the cycles-v2 profile; the former current v4 is retained and still
+# calculates its own attempts under cycles-v1.
+CURRENT = "arc-internal-detection-v5"
+CYCLE_V4 = "arc-internal-detection-v4"
 PENDING = "arc-internal-detection-pending-v3"
 RETAINED = "arc-local-calculator-pending-v2"
 PROFILE = "tester-goal-pending-v2"
 CYCLE_PROFILE = "tester-goal-cycles-v1"
+CURRENT_PROFILE = "tester-goal-cycles-v2"
 PROJECTION = "arc-local-projection-v1"
+REGISTRY_RETAINED = (RETAINED, PENDING, CYCLE_V4)
 
 
 def _resolver(*args):
@@ -235,22 +241,54 @@ def _resolver(*args):
 def test_version_constants():
     from mock_journey import contracts
     from mock_journey.execution_definitions import PROJECTION_VERSION
-    assert contracts.CURRENT_ADAPTER_VERSION == contracts.CYCLE_GOAL_ADAPTER_VERSION == CURRENT
+    assert contracts.CURRENT_ADAPTER_VERSION == contracts.EOF_VENT_ADAPTER_VERSION == CURRENT
+    assert contracts.CYCLE_GOAL_ADAPTER_VERSION == CYCLE_V4
     assert contracts.PENDING_GOAL_ADAPTER_VERSION == PENDING
     assert contracts.RETAINED_PENDING_GOAL_ADAPTER_VERSION == RETAINED
     assert contracts.PENDING_GOAL_ADAPTER_VERSIONS == frozenset({PENDING, RETAINED})
     assert type(contracts.PENDING_GOAL_ADAPTER_VERSIONS) is frozenset
-    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({CURRENT, PENDING, RETAINED})
-    assert contracts.RETAINED_ADAPTER_VERSIONS == (RETAINED, PENDING)
+    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({CURRENT, CYCLE_V4, PENDING, RETAINED})
+    assert contracts.CYCLE_RULE_ADAPTER_VERSIONS == frozenset({CURRENT, CYCLE_V4})
+    assert contracts.RETAINED_ADAPTER_VERSIONS == REGISTRY_RETAINED
     assert contracts.VERIFY_ONLY_ADAPTER_VERSIONS == frozenset({RETAINED})
     assert contracts.PENDING_GOAL_PROFILE_VERSION == PROFILE
     assert contracts.CYCLE_GOAL_PROFILE_VERSION == CYCLE_PROFILE
+    assert contracts.EOF_VENT_PROFILE_VERSION == contracts.CURRENT_PROFILE_VERSION == CURRENT_PROFILE
     assert PROJECTION_VERSION == PROJECTION
+
+
+def test_adapter_feature_table():
+    # One row per versioned adapter: (cycles goal status, profile, candidate schema,
+    # D138 end-of-file option, D139 minimum-quantity null option, D139 pass gate).
+    from mock_journey import contracts
+    from services.calculation_context import CalculationOptions
+    assert {version: (f.goal_status, f.profile, f.candidate_schema, f.eof_single_confirmation,
+                      f.minimum_quantity_null, f.minimum_quantity_pass_gate)
+            for version, f in contracts.ADAPTER_FEATURES.items()} == {
+        RETAINED: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False, True, False),
+        PENDING: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False, True, False),
+        CYCLE_V4: ("evaluated", CYCLE_PROFILE, "arc-internal-calculation-v3", False, True, False),
+        CURRENT: ("evaluated", CURRENT_PROFILE, "arc-internal-calculation-v4", True, False, True),
+    }
+    assert contracts.MINIMUM_QUANTITY_REASON == "MINIMUM_QUANTITY_NOT_MET"
+    assert [contracts.gates_pass_on_minimum_quantity(version)
+            for version in (CURRENT, CYCLE_V4, PENDING, RETAINED, "arc-other-v9", None)] == [
+        True, False, False, False, False, False]
+    assert contracts.calculation_options(CURRENT) == CalculationOptions(True, False) == CalculationOptions()
+    for old in (CYCLE_V4, PENDING, RETAINED):
+        assert contracts.calculation_options(old) == CalculationOptions(False, True)
+    # A version outside the registry has no stored meaning to keep: the current rules.
+    assert contracts.calculation_options("arc-other-v9") == CalculationOptions()
+    assert contracts.adapter_features("arc-other-v9") is None
+    with pytest.raises(Exception):
+        contracts.ADAPTER_FEATURES[CURRENT] = None
 
 
 def _verified(kind, status, observed):
     from mock_journey.contracts import VerifiedCalculation
-    return VerifiedCalculation({"x": 1}, kind, observed, "no_chart", goal_status=status)
+    # action_count is read only by the v5 pass gate (D139); 90/6 meets the adult ARC minimum.
+    return VerifiedCalculation({"x": 1, "action_count": {"comp": 90, "vent": 6}}, kind, observed, "no_chart",
+                               goal_status=status)
 
 
 @pytest.mark.parametrize("adapter,profile,kind,status,observed,expected", [
@@ -258,13 +296,23 @@ def _verified(kind, status, observed):
     (RETAINED, PROFILE, "compressions", "evaluated", 60, ("evaluated", True, [])),
     (PENDING, "other-profile", "compressions", "evaluated", 60, "CALCULATOR_CONTRACT_MISMATCH"),
     (PENDING, PROFILE, "compressions", None, 60, "CALCULATOR_CONTRACT_MISMATCH"),
-    # D136: the current adapter evaluates cycles (met = observed >= required).
-    (CURRENT, CYCLE_PROFILE, "cycles", "evaluated", 3, ("evaluated", True, [])),
-    (CURRENT, CYCLE_PROFILE, "cycles", "evaluated", 2, ("evaluated", False, ["GOAL_NOT_MET"])),
-    (CURRENT, CYCLE_PROFILE, "compressions", "evaluated", 60, ("evaluated", True, [])),
-    (CURRENT, CYCLE_PROFILE, "cycles", "pending_policy", None, "CALCULATOR_CONTRACT_MISMATCH"),
+    # D136: a cycle-rule adapter evaluates cycles (met = observed >= required).
+    # The retained v4 rows are unchanged; the current v5 follows the same rules
+    # under its own profile (D139 changes no reason code).
+    (CYCLE_V4, CYCLE_PROFILE, "cycles", "evaluated", 3, ("evaluated", True, [])),
+    (CYCLE_V4, CYCLE_PROFILE, "cycles", "evaluated", 2, ("evaluated", False, ["GOAL_NOT_MET"])),
+    (CYCLE_V4, CYCLE_PROFILE, "compressions", "evaluated", 60, ("evaluated", True, [])),
+    (CYCLE_V4, CYCLE_PROFILE, "cycles", "pending_policy", None, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CYCLE_V4, PROFILE, "cycles", "evaluated", 3, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CYCLE_V4, CURRENT_PROFILE, "cycles", "evaluated", 3, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CYCLE_V4, CYCLE_PROFILE, "cycles", None, 3, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CURRENT, CURRENT_PROFILE, "cycles", "evaluated", 3, ("evaluated", True, [])),
+    (CURRENT, CURRENT_PROFILE, "cycles", "evaluated", 2, ("evaluated", False, ["GOAL_NOT_MET"])),
+    (CURRENT, CURRENT_PROFILE, "compressions", "evaluated", 60, ("evaluated", True, [])),
+    (CURRENT, CURRENT_PROFILE, "cycles", "pending_policy", None, "CALCULATOR_CONTRACT_MISMATCH"),
     (CURRENT, PROFILE, "cycles", "evaluated", 3, "CALCULATOR_CONTRACT_MISMATCH"),
-    (CURRENT, CYCLE_PROFILE, "cycles", None, 3, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CURRENT, CYCLE_PROFILE, "cycles", "evaluated", 3, "CALCULATOR_CONTRACT_MISMATCH"),
+    (CURRENT, CURRENT_PROFILE, "cycles", None, 3, "CALCULATOR_CONTRACT_MISMATCH"),
     ("v1", None, "compressions", None, 59, (None, False, ["GOAL_NOT_MET"])),
     ("v1", None, "compressions", "evaluated", 60, "CALCULATOR_CONTRACT_MISMATCH"),
 ])
@@ -272,8 +320,11 @@ def test_worker_evaluate_version_rules(monkeypatch, adapter, profile, kind, stat
     from mock_journey import worker
     from mock_journey.errors import JourneyError
     monkeypatch.setattr(worker, "_is_pass", lambda *args: True)
+    training = {"cycles": "cpr", "compressions": "compression_only"}[kind]
     definition = {"goal": {"kind": kind, "required": 60 if kind != "cycles" else 3},
-                  "adapter_version": adapter, "condition": {"target": "adult"}}
+                  "adapter_version": adapter,
+                  "condition": {"mode": "training", "target": "adult", "training_type": training,
+                                "guideline": "ARC2025", "cpr_cycle_type": "302", "is_2rescuers": False}}
     if profile is not None:
         definition["profile_version"] = profile
     verified = _verified(kind, status, observed)
@@ -284,7 +335,7 @@ def test_worker_evaluate_version_rules(monkeypatch, adapter, profile, kind, stat
         return
     result = worker.evaluate({}, definition, verified)
     assert (result["goal"].get("status"), result["program_completed"], result["reason_codes"]) == expected
-    assert ("status" in result["goal"]) is (adapter in (CURRENT, PENDING, RETAINED))
+    assert ("status" in result["goal"]) is (adapter in (CURRENT, CYCLE_V4, PENDING, RETAINED))
 
 
 def test_jobs_evaluation_uses_the_same_version_rules():
@@ -304,10 +355,14 @@ def test_jobs_evaluation_uses_the_same_version_rules():
     del plain["goal"]["status"]
     assert DynamoJobRepository.check_evaluation(versioned, attempt(PENDING, PROFILE)) == versioned
     assert DynamoJobRepository.check_evaluation(versioned, attempt(RETAINED, PROFILE)) == versioned
-    assert DynamoJobRepository.check_evaluation(versioned, attempt(CURRENT, CYCLE_PROFILE)) == versioned
+    assert DynamoJobRepository.check_evaluation(versioned, attempt(CYCLE_V4, CYCLE_PROFILE)) == versioned
+    assert DynamoJobRepository.check_evaluation(versioned, attempt(CURRENT, CURRENT_PROFILE)) == versioned
     assert DynamoJobRepository.check_evaluation(plain, attempt("v1", None)) == plain
     for value, row in ((versioned, attempt(PENDING, "other")), (plain, attempt(PENDING, PROFILE)),
-                       (versioned, attempt(CURRENT, PROFILE)), (plain, attempt(CURRENT, CYCLE_PROFILE)),
+                       (versioned, attempt(CYCLE_V4, PROFILE)), (plain, attempt(CYCLE_V4, CYCLE_PROFILE)),
+                       (versioned, attempt(CYCLE_V4, CURRENT_PROFILE)),
+                       (versioned, attempt(CURRENT, PROFILE)), (plain, attempt(CURRENT, CURRENT_PROFILE)),
+                       (versioned, attempt(CURRENT, CYCLE_PROFILE)),
                        (versioned, attempt("v1", None))):
         with pytest.raises(JourneyError) as error:
             DynamoJobRepository.check_evaluation(value, row)
@@ -316,28 +371,39 @@ def test_jobs_evaluation_uses_the_same_version_rules():
 
 def test_internal_calculator_version_rules():
     from mock_journey.internal_calculator import InternalCalculator
+    from services.calculation_context import CalculationOptions
     current = InternalCalculator(version=CURRENT, projection_version=PROJECTION, stage="dev",
                                  cycle_goal_resolver=_resolver)
+    cycle_v4 = InternalCalculator(version=CYCLE_V4, projection_version=PROJECTION, stage="dev",
+                                  cycle_goal_resolver=_resolver)
     pending = InternalCalculator(version=PENDING, projection_version=PROJECTION, stage="dev",
                                  allow_pending_cycle_goal=True)
     retained = InternalCalculator(version=RETAINED, projection_version=PROJECTION, stage="dev",
                                   allow_pending_cycle_goal=True)
     assert current.can_calculate is True and pending.can_calculate is True and retained.can_calculate is False
-    assert current.candidate_schema == "arc-internal-calculation-v3"
+    assert cycle_v4.can_calculate is True  # D138: retained, but it still calculates its own attempts.
+    assert current.candidate_schema == "arc-internal-calculation-v4"
+    assert cycle_v4.candidate_schema == "arc-internal-calculation-v3"
     assert pending.candidate_schema == retained.candidate_schema == "arc-internal-calculation-v2"
+    assert current.calculation_options == CalculationOptions(eof_single_confirmation=True, minimum_quantity_null=False)
+    for old in (cycle_v4, pending, retained):
+        assert old.calculation_options == CalculationOptions(eof_single_confirmation=False,
+                                                             minimum_quantity_null=True)
     other = InternalCalculator(version="arc-other-v9", projection_version=PROJECTION, stage="dev")
     assert other.can_calculate is True and other.candidate_schema == "arc-internal-calculation-v1"
+    assert other.calculation_options == CalculationOptions()
     with pytest.raises(ValueError):
         InternalCalculator(version="arc-other-v9", projection_version=PROJECTION, stage="dev",
                            allow_pending_cycle_goal=True)
     with pytest.raises(ValueError):
         InternalCalculator(version=PENDING, projection_version=PROJECTION, stage="dev")
-    # The cycle-goal adapter is never constructed without its resolver or as a pending adapter.
-    with pytest.raises(ValueError):
-        InternalCalculator(version=CURRENT, projection_version=PROJECTION, stage="dev")
-    with pytest.raises(ValueError):
-        InternalCalculator(version=CURRENT, projection_version=PROJECTION, stage="dev",
-                           allow_pending_cycle_goal=True)
+    # A cycle-rule adapter is never constructed without its resolver or as a pending adapter.
+    for version in (CURRENT, CYCLE_V4):
+        with pytest.raises(ValueError):
+            InternalCalculator(version=version, projection_version=PROJECTION, stage="dev")
+        with pytest.raises(ValueError):
+            InternalCalculator(version=version, projection_version=PROJECTION, stage="dev",
+                               allow_pending_cycle_goal=True)
 
 
 @pytest.mark.parametrize("change,accepted", [
@@ -346,16 +412,19 @@ def test_internal_calculator_version_rules():
     ({"retained_adapter_versions": [RETAINED, RETAINED]}, False),
     ({"retained_adapter_versions": [RETAINED]}, False),  # D136: partial (the pending-v3 adapter is retained too).
     ({"retained_adapter_versions": [PENDING]}, False),
-    ({"retained_adapter_versions": [PENDING, RETAINED]}, False),  # Same set, other order.
+    ({"retained_adapter_versions": [RETAINED, PENDING]}, False),  # D138: the pre-v5 list is now partial (v4 missing).
+    ({"retained_adapter_versions": [PENDING, RETAINED, CYCLE_V4]}, False),  # Same set, other order.
+    ({"retained_adapter_versions": [RETAINED, CYCLE_V4, PENDING]}, False),  # Same set, other order.
     ({"retained_adapter_versions": [CURRENT]}, False),
-    ({"retained_adapter_versions": [RETAINED, PENDING, CURRENT]}, False),
+    ({"retained_adapter_versions": [RETAINED, PENDING, CYCLE_V4, CURRENT]}, False),
     ({"retained_adapter_versions": ["arc-other-v1"]}, False),
-    ({"retained_adapter_versions": (RETAINED, PENDING)}, True),  # JSON has no tuple: dumps() makes it a list.
+    ({"retained_adapter_versions": REGISTRY_RETAINED}, True),  # JSON has no tuple: dumps() makes it a list.
     ({"retained_adapter_versions": [1]}, False),
     ({"retained_adapter_versions": RETAINED}, False),
     ({"retained_adapter_versions": None}, False),
     ({"current_adapter_version": RETAINED}, False),
     ({"current_adapter_version": PENDING}, False),  # D136: the former current adapter is no longer current.
+    ({"current_adapter_version": CYCLE_V4}, False),  # D138: v4 is retained, no longer current.
     ({"projection_version": "arc-local-projection-v2"}, False),
 ])
 @pytest.mark.parametrize("role", ["api", "worker"])
@@ -415,8 +484,8 @@ def test_aws_timing_tuples_by_role():
     assert relay.relay_budget.reserve_ms == 500 + 40 + 20
     api = AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert api.timing is None and relay.execution is None
-    assert api.execution == worker.execution == (CURRENT, PROJECTION, (RETAINED, PENDING))
-    assert hash(api.execution) == hash((CURRENT, PROJECTION, (RETAINED, PENDING)))
+    assert api.execution == worker.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)
+    assert hash(api.execution) == hash((CURRENT, PROJECTION, REGISTRY_RETAINED))
     assert api == AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert json.dumps(worker.timing) == "[0.05, 0.1, 500]"
 

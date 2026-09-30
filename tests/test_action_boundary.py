@@ -6,6 +6,12 @@ F4 12/11. Independent detection, first-packet baseline and two peak-relative
 confirmations now justify the ordinary assertions below. The twelve-breath
 fixture is not the product's eight-breath goal. Historical app/recording
 statistics are not evidence from the current repository or this test run.
+
+D138 (2026-09-30): the D42 expectations below are kept under the retained
+adapters' option (``eof_single_confirmation=False``, arc-internal-detection-v4
+and pending-v3); the current rule additionally recognizes a last breath whose
+descent was observed in exactly one packet before the file ends, and one that
+was cut with no descent packet but had risen at least the drop threshold.
 """
 
 from unittest import TestCase
@@ -29,7 +35,7 @@ def _packet(comp_count: int = 0, vent_raw: tuple[int, int] = (0, 0), timestamp: 
     return bytes(packet)
 
 
-def _count_actions(packets: list[bytes], training_type: str) -> tuple[int, int]:
+def _count_actions(packets: list[bytes], training_type: str, eof_single_confirmation: bool = True) -> tuple[int, int]:
     config = Config({
         "mode": "training", "target": "adult", "training_type": training_type,
         "guideline": "ARC2020", "cpr_cycle_type": "302", "is_2rescuers": False,
@@ -37,7 +43,7 @@ def _count_actions(packets: list[bytes], training_type: str) -> tuple[int, int]:
     rtdata_list = DataParser().parse_cpr_bytes(b"".join(packets), config)
     for rtdata in rtdata_list:
         rtdata["is_aed_overlapped"] = False
-    actions = ActionDataPrepare(config).get_action_list(rtdata_list)
+    actions = ActionDataPrepare(config, eof_single_confirmation=eof_single_confirmation).get_action_list(rtdata_list)
     return (
         len([a for a in actions if a["action_type"] == ACTION_TYPE_COMP]),
         len([a for a in actions if a["action_type"] == ACTION_TYPE_VENT]),
@@ -167,27 +173,59 @@ class TestTrailingBreathFlushVentOnly(TestCase):
             timestamp += 50
         return packets
 
+    # Both options (False = the retained adapters' D42 rule, True = D138).
+    OPTIONS = (False, True)
+
     def test_trailing_breath_still_descending_at_eof_is_counted(self):
         # 완결 호흡 11 + 하강 중 호흡 1 → 12. 수정 전에는 11로 세어져 정책 경계가 섰다.
-        self.assertEqual((0, 12), _count_actions(self._with_slow_tail(11), "ventilation_only"))
+        for option in self.OPTIONS:
+            self.assertEqual((0, 12), _count_actions(self._with_slow_tail(11), "ventilation_only", option))
 
     def test_fully_deflated_last_breath_is_not_double_counted(self):
         # Two zero packets confirm each breath once; EOF never adds another.
-        self.assertEqual((0, 12), _count_actions(_breaths(12), "ventilation_only"))
+        for option in self.OPTIONS:
+            self.assertEqual((0, 12), _count_actions(_breaths(12), "ventilation_only", option))
 
     def test_trailing_noise_below_minimum_is_not_flushed(self):
         # A later zero packet does not create a new candidate.
         packets = _breaths(12) + [_packet(0, (0, 0), 99000)]
-        self.assertEqual((0, 12), _count_actions(packets, "ventilation_only"))
+        for option in self.OPTIONS:
+            self.assertEqual((0, 12), _count_actions(packets, "ventilation_only", option))
 
     def test_same_confirmed_tail_is_counted_in_cpr(self):
         # D38/D39: the former11 expectation only reflected the old detector.
         # This input already has two confirmations, so this is not EOF recovery.
-        self.assertEqual(12, _count_actions(self._with_slow_tail(11), "cpr")[1])
+        for option in self.OPTIONS:
+            self.assertEqual(12, _count_actions(self._with_slow_tail(11), "cpr", option)[1])
 
     def test_compression_only_never_flushes_vent(self):
         # cco에서 환기 검출 자체가 꺼져 있으므로(EOF 노이즈 포함) 플러시도 없다.
         packets = [_packet(0, (0, 0), 0)]
         packets += [_packet(n, (0, 0), n * 500) for n in range(1, 61)]
         packets.append(_packet(60, (5, 5), 31000))
-        self.assertEqual((60, 0), _count_actions(packets, "compression_only"))
+        for option in self.OPTIONS:
+            self.assertEqual((60, 0), _count_actions(packets, "compression_only", option))
+
+    def test_tail_cut_after_one_low_packet_counts_only_under_the_current_rule(self):
+        # The same slow tail recorded one packet shorter: raw 52 -> 50 (520 -> 500 mL,
+        # one packet 20 mL below the peak) and then the file ends. D42 (retained
+        # option) leaves it uncounted; D138 recognizes the observed descent.
+        packets = self._with_slow_tail(11)[:-1]
+        self.assertEqual((0, 11), _count_actions(packets, "ventilation_only", False))
+        self.assertEqual((0, 12), _count_actions(packets, "ventilation_only", True))
+        self.assertEqual(11, _count_actions(packets, "cpr", False)[1])
+        self.assertEqual(12, _count_actions(packets, "cpr", True)[1])
+        self.assertEqual((0, 0), _count_actions(packets, "compression_only", True))
+
+    def test_tail_cut_at_its_peak_counts_only_under_the_current_rule(self):
+        # Two packets shorter: the file ends at the 520 mL peak, no descent was recorded.
+        # D138 (b): it rose 520 mL above its zero baseline, so the cut point is the peak.
+        packets = self._with_slow_tail(11)[:-2]
+        self.assertEqual((0, 11), _count_actions(packets, "ventilation_only", False))
+        self.assertEqual((0, 12), _count_actions(packets, "ventilation_only", True))
+        # Cut while still rising (120 -> 350 mL): counted as well; cut before any volume: not.
+        self.assertEqual((0, 12), _count_actions(self._with_slow_tail(11)[:-3], "ventilation_only", True))
+        self.assertEqual((0, 12), _count_actions(self._with_slow_tail(11)[:-4], "ventilation_only", True))
+        self.assertEqual((0, 11), _count_actions(self._with_slow_tail(11)[:-5], "ventilation_only", True))
+        for cut in (3, 4, 5):
+            self.assertEqual((0, 11), _count_actions(self._with_slow_tail(11)[:-cut], "ventilation_only", False))

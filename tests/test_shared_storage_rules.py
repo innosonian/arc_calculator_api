@@ -204,11 +204,13 @@ def test_binding_helpers_are_one_definition():
 def test_version_registry_helpers():
     from mock_journey import contracts, execution_definitions
     assert execution_definitions.PROJECTION_VERSION is contracts.PROJECTION_VERSION == "arc-local-projection-v1"
-    assert contracts.CURRENT_ADAPTER_VERSION == "arc-internal-detection-v4"
-    assert contracts.RETAINED_ADAPTER_VERSIONS == ("arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3")
+    assert contracts.CURRENT_ADAPTER_VERSION == "arc-internal-detection-v5"
+    assert contracts.RETAINED_ADAPTER_VERSIONS == (
+        "arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3", "arc-internal-detection-v4")
     assert contracts.VERIFY_ONLY_ADAPTER_VERSIONS == frozenset({"arc-local-calculator-pending-v2"})
     for version, versioned, retained, verify_only in (
-            ("arc-internal-detection-v4", True, False, False),
+            ("arc-internal-detection-v5", True, False, False),
+            ("arc-internal-detection-v4", True, True, False),  # D138: retained, still calculating.
             ("arc-internal-detection-pending-v3", True, True, False),
             ("arc-local-calculator-pending-v2", True, True, True),
             ("v1", False, False, False), (None, False, False, False)):
@@ -218,15 +220,20 @@ def test_version_registry_helpers():
         assert contracts.is_verify_only_adapter(version) is verify_only
     assert contracts.is_versioned_goal({}) is False
     kinds = ("cycles", "compressions", "ventilations")
-    assert [contracts.expected_goal_status(kind, "arc-internal-detection-v4") for kind in kinds] == [
-        "evaluated", "evaluated", "evaluated"]
+    for cycle_rule in ("arc-internal-detection-v5", "arc-internal-detection-v4"):
+        assert [contracts.expected_goal_status(kind, cycle_rule) for kind in kinds] == [
+            "evaluated", "evaluated", "evaluated"]
+        assert contracts.uses_cycle_rule(cycle_rule) is True
     for pending in ("arc-internal-detection-pending-v3", "arc-local-calculator-pending-v2"):
         assert [contracts.expected_goal_status(kind, pending) for kind in kinds] == [
             "pending_policy", "evaluated", "evaluated"]
         assert contracts.expected_profile_version(pending) == "tester-goal-pending-v2"
+        assert contracts.uses_cycle_rule(pending) is False
     assert [contracts.expected_goal_status(kind, "v1") for kind in kinds] == [None, None, None]
     assert contracts.expected_profile_version("arc-internal-detection-v4") == "tester-goal-cycles-v1"
+    assert contracts.expected_profile_version("arc-internal-detection-v5") == "tester-goal-cycles-v2"
     assert contracts.expected_profile_version("v1") is None
+    assert contracts.uses_cycle_rule("v1") is False
 
 
 def test_definition_key_sets_match_the_course_contract_tuples():

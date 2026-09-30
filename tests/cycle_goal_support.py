@@ -8,7 +8,7 @@ a passing final assessment finishes the course.
 
 import json
 
-from mock_journey.contracts import CYCLE_GOAL_ADAPTER_VERSION
+from mock_journey.contracts import CURRENT_ADAPTER_VERSION
 from tests._synth import cpr_session
 
 
@@ -21,7 +21,7 @@ def cpr_course_journey(store):
     token = h.login().token
     detail = h.course(token, course)
     assert json.loads(h.store.row(f"ATTEMPT#{_first_attempt(h, token, course, detail)}", "META")["definition_json"]) \
-        ["adapter_version"] == CYCLE_GOAL_ADAPTER_VERSION
+        ["adapter_version"] == CURRENT_ADAPTER_VERSION == "arc-internal-detection-v5"
 
     def run(link_id, data):
         attempt = h.start(token, course, link_id)

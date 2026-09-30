@@ -31,11 +31,49 @@ def test_oracle_fixed_counter_and_breath_trace_has_independent_units_and_boundar
 
 
 def test_oracle_resets_nonconsecutive_lows_and_never_infers_eof():
-    assert event_trace(samples([100, 90, 95, 90]), "adult", "ventilation_only") == []
-    trace = event_trace(samples([100, 90, 95, 90, 90]), "adult", "ventilation_only")
-    assert trace[0]["confirmations"] == [3, 4]
-    assert event_trace(samples([100] * 100 + [90]), "adult", "ventilation_only") == []
-    assert event_trace(samples(([40] * 6 + [0]) * 10), "adult", "ventilation_only") == []
+    # The retained adapters' D42 rule (eof_single_confirmation=False): unchanged expectations.
+    assert event_trace(samples([100, 90, 95, 90]), "adult", "ventilation_only", False) == []
+    for option in (False, True):
+        trace = event_trace(samples([100, 90, 95, 90, 90]), "adult", "ventilation_only", option)
+        assert len(trace) == 1 and trace[0]["confirmations"] == [3, 4]
+    assert event_trace(samples([100] * 100 + [90]), "adult", "ventilation_only", False) == []
+    assert event_trace(samples(([40] * 6 + [0]) * 10), "adult", "ventilation_only", False) == []
+
+
+def test_oracle_recognizes_an_open_candidate_at_the_end_of_the_file():
+    # D138 (the default): an open candidate counts once (a) when its last packet is one
+    # observed confirmation, or (b) with no low packet, when it rose at least the drop
+    # threshold above the packet before it. Length is never the evidence.
+    def summary(volumes, target="adult"):
+        return [(e["start"], e["at"], e["stop"], e["peak"], e["peak_at"], e["confirmations"])
+                for e in event_trace(samples(volumes), target, "ventilation_only")]
+
+    # (a)
+    assert summary([100, 90, 95, 90]) == [(0, 3, 4, 100, 0, [3])]
+    assert summary([100] * 100 + [90]) == [(0, 100, 101, 100, 0, [100])]
+    assert summary(([40] * 6 + [0]) * 10) == [(0, 69, 70, 40, 0, [69])]
+    assert summary([100, 90]) == [(0, 1, 2, 100, 0, [1])]
+    assert summary([30, 25], "infant") == [(0, 1, 2, 30, 0, [1])]
+    # (b): at the peak, on a plateau, still rising, after a recovery, one unit short of a confirmation
+    assert summary([100]) == [(0, 0, 1, 100, 0, [])]
+    assert summary([100] * 30) == [(0, 29, 30, 100, 0, [])]
+    assert summary([100, 90, 95]) == [(0, 2, 3, 100, 0, [])]
+    assert summary([50, 80, 100]) == [(0, 2, 3, 100, 2, [])]
+    assert summary([0, 250, 380, 440, 480]) == [(1, 4, 5, 480, 4, [])]
+    assert summary([100, 91]) == [(0, 1, 2, 100, 0, [])]
+    assert summary([30, 26], "infant") == [(0, 1, 2, 30, 0, [])]
+    # A breath already confirmed by two packets is not added again at the end.
+    assert summary([100, 90, 90]) == summary([100, 90, 90, 80]) == [(0, 2, 3, 100, 0, [1, 2])]
+    # A rise below the threshold is not a breath, with or without a return to zero.
+    assert summary([9]) == summary([9, 0]) == summary([5, 9, 9]) == []
+    assert summary([4], "infant") == summary([4, 0], "infant") == []
+    assert summary([10]) == [(0, 0, 1, 10, 0, [])] and summary([5], "infant") == [(0, 0, 1, 5, 0, [])]
+    # After a confirmed breath rearmed at a non-zero level the baseline is that level.
+    depths = [0, 0, 0, 1, 1, 1]
+    below = event_trace(samples([100, 90, 90, 80, 85, 89], depths=depths), "adult", "ventilation_only")
+    at = event_trace(samples([100, 90, 90, 80, 85, 90], depths=depths), "adult", "ventilation_only")
+    assert [(e["start"], e["at"]) for e in below] == [(0, 2)]
+    assert [(e["start"], e["at"], e["peak"], e["confirmations"]) for e in at] == [(0, 2, 100, [1, 2]), (4, 5, 90, [])]
 
 
 def test_oracle_does_not_borrow_subthreshold_or_prior_candidate_peak():
@@ -71,9 +109,15 @@ def test_recorded_infant_tail_has_only_one_confirmation_and_twenty_complete_brea
     assert volumes[1035] == 0 and volumes[1036] == 2
     assert max(volumes[1036:1064]) == 43
     assert volumes[1058:] == [43, 43, 43, 43, 43, 43, 0]
-    events = event_trace(packets, "infant", "ventilation_only")
+    # Retained D42 rule: the cut 21st breath stays unconfirmed.
+    events = event_trace(packets, "infant", "ventilation_only", False)
     assert len(events) == 20
     assert events[-1]["confirmations"] == [1005, 1006]
+    # D138: its one recorded low packet (43 -> 0, the last packet) recognizes it.
+    current = event_trace(packets, "infant", "ventilation_only")
+    assert current[:20] == events and len(current) == 21
+    assert (current[-1]["start"], current[-1]["at"], current[-1]["stop"], current[-1]["peak"],
+            current[-1]["confirmations"]) == (1036, 1064, 1065, 43, [1064])
 
 
 def test_recorded_fourth_breath_cannot_reuse_previous_confirmation_volume():

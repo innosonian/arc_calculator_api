@@ -1,4 +1,4 @@
-"""Test-only oracle for D38-D46, separate from the production state machine.
+"""Test-only oracle for D38-D46 and D138, separate from the production state machine.
 
 Events are found by searching prefixes for the first qualifying pair, rather
 than replaying the detector's mutable peak/confirmation/lock variables. Time
@@ -9,6 +9,14 @@ The unchanged scoring/serialization/coaching functions are deliberately reused:
 their historical source hashes are checked separately, and fixed arithmetic
 tests cover their inputs and weighted results. This is a detection-change oracle,
 not an independent reimplementation of every historical scoring formula.
+
+D138 (end-of-file ventilation) is derived here from the volumes alone: an open
+candidate (a) whose last packet lies at least the drop below the maximum of its
+earlier packets, or (b) without such a packet, whose maximum lies at least the
+drop above the volume of the packet before its first one (0 at the start of
+the file). ``eof_single_confirmation=False`` is the D42 rule of the
+retained adapters. The D139 minimum-quantity option is not detection: it is
+passed to the reused scoring through the execution context's options.
 """
 
 from contextlib import ExitStack
@@ -18,7 +26,7 @@ from unittest.mock import patch
 import hashlib
 
 
-def event_trace(packets, target, training):
+def event_trace(packets, target, training, eof_single_confirmation=True):
     if not packets:
         return []
     volumes = [max(p["ventilation_volume"]) for p in packets]
@@ -67,6 +75,21 @@ def event_trace(packets, target, training):
                 if closure is not None:
                     search_from, rearmed = closure + 1, True
                     continue
+                # D138: no pair was found and the candidate is still open at
+                # the end of the file. One observed low packet (the last one,
+                # otherwise a pair or a recovery would exist) recognizes it.
+                last = len(volumes) - 1
+                baseline = volumes[start - 1] if start > 0 else 0
+                if eof_single_confirmation and last > start and max(volumes[start:last]) - volumes[last] >= drop:
+                    peak_index = max(range(start, last), key=volumes.__getitem__)
+                    result.append({"kind": "vent", "at": last, "start": start, "stop": last + 1,
+                                   "peak": volumes[peak_index], "peak_at": peak_index, "confirmations": [last]})
+                elif eof_single_confirmation and max(volumes[start:]) - baseline >= drop:
+                    # D138 (b): no low packet at all; the highest recorded volume
+                    # (the cut point when still rising) is taken as the peak.
+                    peak_index = max(range(start, last + 1), key=volumes.__getitem__)
+                    result.append({"kind": "vent", "at": last, "start": start, "stop": last + 1,
+                                   "peak": volumes[peak_index], "peak_at": peak_index, "confirmations": []})
                 break
             peak_index = max(range(start, confirmation - 1), key=volumes.__getitem__)
             result.append({"kind": "vent", "at": confirmation, "start": start,
@@ -96,10 +119,10 @@ def event_trace(packets, target, training):
     return sorted(result, key=lambda event: (event["at"], event["kind"] != "comp"))
 
 
-def expected_actions(packets, target, training):
+def expected_actions(packets, target, training, eof_single_confirmation=True):
     from config.enums import Actor
 
-    events = event_trace(packets, target, training)
+    events = event_trace(packets, target, training, eof_single_confirmation)
     answer = []
     for event in events:
         indices = list(range(event["start"], event["stop"]))
@@ -190,22 +213,32 @@ def expected_totals(actions):
     return duration, max(duration - credits, 0)
 
 
-def run_expected(cpr, aed, condition, vp_events=()):
-    """Run fixed scoring with independent events, signal arrays, cycles and time."""
+def run_expected(cpr, aed, condition, vp_events=(), options=None):
+    """Run fixed scoring with independent events, signal arrays, cycles and time.
+
+    ``options`` (services.calculation_context.CalculationOptions) selects the
+    adapter semantics: None is the current rule set (D138 end-of-file breath,
+    D139 no minimum-quantity null); the retained adapters' options give the
+    D42/D07/D08 expectations.
+    """
     from main import run_calculator
     from data_handlers.action_data import ActionDataPrepare
     from transformers.counter import CountMarker
-    from services.calculation_context import AcceptedRaw, CalculationExecutionContext
+    from services.calculation_context import AcceptedRaw, CalculationExecutionContext, CalculationOptions
 
+    options = CalculationOptions() if options is None else options
     charts = []
     context = CalculationExecutionContext(
         accepted_raw=AcceptedRaw(hashlib.sha256(cpr).hexdigest(), len(cpr), hashlib.sha256(aed).hexdigest(), len(aed),
                                  "CPR-ACTION-1700000000-12345678-1234-4234-9234-123456789abc", "_no_org"),
         publish_chart=lambda chart: charts.append(deepcopy(chart)), observe=lambda _evidence: None,
+        options=options,
     )
     with ExitStack() as stack:
         stack.enter_context(patch.object(ActionDataPrepare, "get_action_list",
-                                        lambda self, packets: expected_actions(packets, condition["target"], condition["training_type"])))
+                                        lambda self, packets: expected_actions(
+                                            packets, condition["target"], condition["training_type"],
+                                            options.eof_single_confirmation)))
         stack.enter_context(patch.object(CountMarker, "make_count", expected_cycles))
         stack.enter_context(patch("calculators.cycle_evaluator.timeline_totals", expected_totals))
         stack.enter_context(patch("calculators.metric_evaluator.timeline_totals", expected_totals))

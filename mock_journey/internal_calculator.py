@@ -14,15 +14,17 @@ import uuid
 
 from mock_journey import typed
 from mock_journey.contracts import (
-    CYCLE_GOAL_ADAPTER_VERSION,
     PENDING_GOAL_ADAPTER_VERSIONS,
     CALL_BINDING_FIELDS,
     VerifiedCalculation,
     VerifiedChart,
+    adapter_features,
+    calculation_options,
     expected_goal_status,
     expected_profile_version,
     is_verify_only_adapter,
     is_versioned_adapter,
+    uses_cycle_rule,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.projection import LoadedInput, typed_identity
@@ -30,11 +32,12 @@ from util import legacy_layout
 
 
 _BINDING = frozenset(CALL_BINDING_FIELDS)
-# Candidate schemas by adapter family. The v1/v2 meanings are kept for stored
-# candidates; the cycle-goal adapter (D136) writes its own schema.
+# The candidate schema of an adapter outside the version registry. A versioned
+# adapter writes the schema of its contracts.ADAPTER_FEATURES row: the pending
+# adapters arc-internal-calculation-v2, arc-internal-detection-v4 (D136)
+# arc-internal-calculation-v3, arc-internal-detection-v5 (D138)
+# arc-internal-calculation-v4. Stored candidates keep their schema.
 _SCHEMA = "arc-internal-calculation-v1"
-_PENDING_SCHEMA = "arc-internal-calculation-v2"
-_CYCLE_SCHEMA = "arc-internal-calculation-v3"
 _VERSION = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
 _STEM = legacy_layout.KEY_STEM
 _CORE_KEYS = frozenset(("cpr_score", "metrics", "aed_score", "training_stats",
@@ -86,24 +89,29 @@ class InternalCalculator:
                 or type(allow_pending_cycle_goal) is not bool
                 or allow_pending_cycle_goal != (version in PENDING_GOAL_ADAPTER_VERSIONS)
                 or (allow_pending_cycle_goal and cycle_goal_resolver is not None)
-                # The cycle-goal adapter's meaning is the D136 rule: it is never
+                # A cycle-rule adapter's meaning is the D136 rule: it is never
                 # constructed without a resolver (mock_journey.cycle_goal).
-                or (version == CYCLE_GOAL_ADAPTER_VERSION and cycle_goal_resolver is None)):
+                or (uses_cycle_rule(version) and cycle_goal_resolver is None)):
             raise ValueError("Invalid internal calculator configuration.")
         self.version, self.projection_version, self.stage = version, projection_version, stage
         self.cycle_goal_resolver = cycle_goal_resolver
         self.allow_pending_cycle_goal = allow_pending_cycle_goal
         # A versioned goal carries a status (pending or cycle-goal adapters).
         self.versioned_goal = is_versioned_adapter(version)
-        self.candidate_schema = (_PENDING_SCHEMA if allow_pending_cycle_goal
-                                 else _CYCLE_SCHEMA if version == CYCLE_GOAL_ADAPTER_VERSION else _SCHEMA)
+        features = adapter_features(version)
+        self.candidate_schema = _SCHEMA if features is None else features.candidate_schema
+        # D138/D139: the end-of-file ventilation rule and the minimum-quantity
+        # null policy are part of the version's fixed meaning; a retained
+        # adapter keeps calculating with its original options.
+        self.calculation_options = calculation_options(version)
 
     @property
     def can_calculate(self):
         # A verify-only adapter (arc-local-calculator-pending-v2) still
         # validates its stored candidates, but running the current detector
         # under its old name would silently change accepted-job meaning. The
-        # retained pending-v3 adapter keeps calculating its own attempts (D136).
+        # retained pending-v3 and v4 adapters keep calculating their own attempts
+        # with their original meaning (D136, D138).
         return not is_verify_only_adapter(self.version)
 
     def _validate_input(self, projected, binding):
@@ -198,6 +206,7 @@ class InternalCalculator:
                 aed_sha256=hashlib.sha256(projected.aed_bytes).hexdigest(), aed_size=len(projected.aed_bytes),
             ),
             publish_chart=chart_publisher, observe=observations.append,
+            options=self.calculation_options,
         )
         inputs = projected.payload["calculation_input"]
         response_context = projected.payload["response_context"]
@@ -277,7 +286,7 @@ class InternalCalculator:
             # A cycle-goal candidate's observed count is the resolver's result at
             # calculation time (not re-derived here: no core re-execution). It can
             # never exceed the core's own cycle grouping count (D136).
-            if (self.version == CYCLE_GOAL_ADAPTER_VERSION and goal["kind"] == "cycles"
+            if (uses_cycle_rule(self.version) and goal["kind"] == "cycles"
                     and observed > core["training_stats"]["cycle_count"]):
                 raise _invalid()
             checksum = hashlib.sha256(typed.json_bytes(chart["data"])).hexdigest()

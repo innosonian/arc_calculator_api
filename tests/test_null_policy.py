@@ -1,9 +1,14 @@
-# 사용자 확정 예외: ARC2020/ARC2025 CPR의 연령별 최소횟수 null 정책.
-# 예외 이외에는 참고 프로젝트의 계산·zero/null 계약을 유지한다:
+# ARC2020/ARC2025 CPR의 연령별 최소횟수 null 처리(D07/D08)와 그 null 처리의 폐지(D139, 2026-09-30).
+# 최소량 자체는 평가의 합격 조건으로 남는다(점수는 표시, 합격은 아님): tests/test_minimum_quantity_pass_gate.py.
+# D139: 새 계산(arc-internal-detection-v5, context 없는 직접 호출)은 이 정책을 적용하지 않고
+# 다른 guideline과 같은 방식으로 점수를 계산한다. 보존 어댑터(arc-internal-detection-v4,
+# arc-internal-detection-pending-v3)의 옵션(tests/calculation_options_support.RETAINED_OPTIONS)은
+# 진행 중 시도를 원래 정책으로 끝내야 하므로 아래 "Retained" 시험이 기존 기대값을 그대로 고정한다.
+# 그 밖에는 참고 프로젝트의 계산·zero/null 계약을 유지한다:
 #   - chest 필드 = score_comp_depth, score_recoil, score_comp_count(=score_comp_no), score_hand_position
 #   - vent 필드 = score_vent_vol, score_vent_count, score_vent_rate, score_vent_speed
 #   - 전용 훈련: 원본 merge_calculator의 total/part 조기 반환·_adj_field_value 유지
-#   - ARC CPR: 성인·소아 압박 <90 / 영아 압박 <45 → chest null, 호흡 <6 → vent null (전 레벨)
+#   - (보존 옵션만) ARC CPR: 성인·소아 압박 <90 / 영아 압박 <45 → chest null, 호흡 <6 → vent null (전 레벨)
 #   - overall: null 필드 가중치 제외 후 잔여 가중치 재정규화, 양측 null이면 overall도 null
 #   - CCF·comp_rate·AED는 정책 비대상(현행 유지)
 import pytest
@@ -17,6 +22,7 @@ from main import run_calculator
 from models.action import ActionWithScore
 from services.config import Config
 from tests._synth import comp_session, cpr_session, vo_session
+from tests.calculation_options_support import CURRENT_OPTIONS, RETAINED_OPTIONS, run_with_options
 
 CHEST_KEYS = ("score_comp_depth", "score_recoil", "score_comp_no", "score_comp_count", "score_hand_position")
 VENT_KEYS = ("score_vent_vol", "score_vent_count", "score_vent_rate", "score_vent_speed")
@@ -33,8 +39,11 @@ def _condition(training_type="cpr", target="adult", guideline="ARC2025"):
     }
 
 
-def _run(data, training_type="cpr", target="adult", guideline="ARC2025"):
-    return run_calculator(data, b"", _condition(training_type, target, guideline), stage="test")
+def _run(data, training_type="cpr", target="adult", guideline="ARC2025", options=None):
+    """options=None: context 없는 직접 호출(현재 규칙). 옵션을 주면 그 어댑터가 실행하는 경로."""
+    if options is None:
+        return run_calculator(data, b"", _condition(training_type, target, guideline), stage="test")
+    return run_with_options(data, b"", _condition(training_type, target, guideline), options)[0]
 
 
 def _all_levels(result):
@@ -112,9 +121,11 @@ class TestVentilationOnlyChestNull:
 
 
 class TestCprMinimumAttemptNull:
+    """보존 옵션(v4·pending-v3): D07/D08 기대값은 D139 이전과 같다."""
+
     def test_low_comp_count_nulls_chest_at_every_level(self):
         # 성인 압박 30(<90) → chest null. 호흡 12(≥6) → vent 실점수.
-        result = _run(cpr_session([(30, 12)]))
+        result = _run(cpr_session([(30, 12)]), options=RETAINED_OPTIONS)
         total, parts, cycles = _all_levels(result)
 
         for key in CHEST_KEYS:
@@ -137,7 +148,7 @@ class TestCprMinimumAttemptNull:
 
     def test_low_vent_count_nulls_vent_at_every_level(self):
         # 성인 압박 90(≥90) → chest 실점수. 호흡 4(<6) → vent null.
-        result = _run(cpr_session([(45, 2), (45, 2)]))
+        result = _run(cpr_session([(45, 2), (45, 2)]), options=RETAINED_OPTIONS)
         total, parts, cycles = _all_levels(result)
 
         for key in VENT_KEYS:
@@ -156,7 +167,7 @@ class TestCprMinimumAttemptNull:
 
     def test_both_below_minimum_nulls_overall(self):
         # 성인 압박 30(<90) + 호흡 2(<6) → 양측 null → overall도 null.
-        result = _run(cpr_session([(30, 2)]))
+        result = _run(cpr_session([(30, 2)]), options=RETAINED_OPTIONS)
         total, _parts, _cycles = _all_levels(result)
 
         for key in CHEST_KEYS + VENT_KEYS:
@@ -165,7 +176,7 @@ class TestCprMinimumAttemptNull:
 
     def test_enough_attempts_keep_all_fields_real(self):
         # 성인 압박 90·호흡 6의 경계값부터 최소량 null 정책이 발동하지 않는다.
-        result = _run(cpr_session([(30, 2), (30, 2), (30, 2)]))
+        result = _run(cpr_session([(30, 2), (30, 2), (30, 2)]), options=RETAINED_OPTIONS)
         total = result["cpr_score"]["total_score"]
         for key in CHEST_KEYS + ("score_vent_vol", "score_vent_count", "score_vent_rate", "score_comp_rate", "score_ccf"):
             assert total[key] is not None, key
@@ -177,13 +188,70 @@ class TestCprMinimumAttemptNull:
         assert "score_vent_rate_measured" not in result["cpr_score"]["total_score"]
 
 
+class TestCprMinimumNoLongerNullsByDefault:
+    """D139: 현재 규칙(직접 호출·v5 옵션)은 최소량에 못 미쳐도 점수를 계산한다."""
+
+    @pytest.mark.parametrize("options", [None, CURRENT_OPTIONS])
+    @pytest.mark.parametrize("cycles", [[(30, 12)], [(45, 2), (45, 2)], [(30, 2)]])
+    def test_below_minimum_sessions_keep_real_scores_at_every_level(self, cycles, options):
+        result = _run(cpr_session(cycles), options=options)
+        total, parts, cycle_scores = _all_levels(result)
+        assert parts and cycle_scores
+        for score in [total, *parts, *cycle_scores]:
+            for key in CHEST_KEYS + ("score_vent_vol", "score_vent_count", "score_vent_rate"):
+                assert score[key] is not None, (key, score)
+            assert score["overall"] is not None and 0 <= score["overall"] <= 100
+
+    def test_direct_call_and_current_options_are_the_same_result(self):
+        data = cpr_session([(30, 2)])
+        assert _run(data) == _run(data, options=CURRENT_OPTIONS)
+
+    def test_both_below_minimum_session_scores_like_another_guideline(self):
+        # 같은 입력을 최소량 정책이 원래 없던 STD2015로 계산한 점수와 같다(D139: "다른
+        # 가이드라인과 같은 방식"). ARC2025와 STD2015의 성인 CPR 경계·가중치는 이 입력에서 같은 값을 낸다.
+        arc = _run(cpr_session([(30, 2)]))["cpr_score"]["total_score"]
+        other = _run(cpr_session([(30, 2)]), guideline="STD2015")["cpr_score"]["total_score"]
+        assert arc["overall"] is not None
+        assert {key: arc[key] for key in CHEST_KEYS + VENT_KEYS + ("overall",)} == \
+            {key: other[key] for key in CHEST_KEYS + VENT_KEYS + ("overall",)}
+
+    def test_retained_options_only_differ_by_the_null_groups(self):
+        # 같은 입력: 보존 옵션은 그룹을 null로 만들 뿐 횟수·지표·비대상 점수는 같다.
+        data = cpr_session([(30, 12)])
+        current, retained = _run(data), _run(data, options=RETAINED_OPTIONS)
+        assert current["action_count"] == retained["action_count"]
+        assert current["metrics"] == retained["metrics"]
+        for key in ("score_comp_rate", "score_ccf", "score_vent_vol", "score_vent_count", "score_vent_rate"):
+            assert current["cpr_score"]["total_score"][key] == retained["cpr_score"]["total_score"][key]
+        assert all(retained["cpr_score"]["total_score"][key] is None for key in CHEST_KEYS)
+        assert all(current["cpr_score"]["total_score"][key] is not None for key in CHEST_KEYS)
+
+
+@pytest.mark.parametrize("target,comp_per_cycle", [("adult", 30), ("child", 30), ("infant", 15)])
+@pytest.mark.parametrize("guideline", ["ARC2020", "ARC2025"])
+@pytest.mark.parametrize("comp_delta,vent_delta", [(-1, -1), (-1, 0), (0, -1), (0, 0), (1, 1)])
+def test_current_rule_has_no_minimum_count_null_at_any_score_level(target, comp_per_cycle, guideline, comp_delta, vent_delta):
+    # D139: 위 보존 옵션 경계 시험과 같은 입력에서 어느 그룹도 null이 되지 않는다.
+    cycles = [(comp_per_cycle, 2), (comp_per_cycle, 2), (comp_per_cycle + comp_delta, 2 + vent_delta)]
+    result = _run(cpr_session(cycles), target=target, guideline=guideline)
+    assert result["action_count"] == {"comp": comp_per_cycle * 3 + comp_delta, "vent": 6 + vent_delta}
+    total, parts, cycle_scores = _all_levels(result)
+    assert parts and cycle_scores
+    for score in [total, *parts, *cycle_scores]:
+        for key in CHEST_KEYS + VENT_KEYS:
+            if key == "score_vent_speed" and target != "infant":
+                continue  # 성인·소아에서 이 지표는 원래 평가 대상이 아니다.
+            assert score[key] is not None, (target, key, score)
+        assert score["overall"] is not None
+
+
 @pytest.mark.parametrize("target,comp_per_cycle", [("adult", 30), ("child", 30), ("infant", 15)])
 @pytest.mark.parametrize("guideline", ["ARC2020", "ARC2025"])
 @pytest.mark.parametrize("comp_delta,vent_delta", [(-1, -1), (-1, 0), (0, -1), (0, 0), (1, 1)])
 def test_age_specific_minimum_counts_propagate_to_every_score_level(target, comp_per_cycle, guideline, comp_delta, vent_delta):
-    # 사용자 확정 계약의 직전·정확한 경계·초과를 실제 바이너리 파싱부터 검증한다.
+    # 보존 옵션(v4·pending-v3): 사용자 확정 계약(D07)의 직전·정확한 경계·초과를 실제 바이너리 파싱부터 검증한다.
     cycles = [(comp_per_cycle, 2), (comp_per_cycle, 2), (comp_per_cycle + comp_delta, 2 + vent_delta)]
-    result = _run(cpr_session(cycles), target=target, guideline=guideline)
+    result = _run(cpr_session(cycles), target=target, guideline=guideline, options=RETAINED_OPTIONS)
     assert result["action_count"] == {"comp": comp_per_cycle * 3 + comp_delta, "vent": 6 + vent_delta}
     total, parts, cycle_scores = _all_levels(result)
     assert parts and cycle_scores
@@ -311,7 +379,7 @@ class TestOverallRenormalization:
         # (재정규화된 값)의 평균과 일치한다 — 재정규화가 total 레벨까지 전파됨을 고정.
         from util.custom_math import custom_round
 
-        result = _run(cpr_session([(30, 12)]))
+        result = _run(cpr_session([(30, 12)]), options=RETAINED_OPTIONS)
         total, _parts, cycles = _all_levels(result)
         cycle_overalls = [c["overall"] for c in cycles if c["overall"] is not None]
         assert cycle_overalls, cycles

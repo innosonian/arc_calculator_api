@@ -32,7 +32,16 @@ class DetectedAction:
 class PacketActionDetector:
     """Detect zero, one, or two independent events per original packet."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, *, eof_single_confirmation: bool = True):
+        # D138: a candidate still open at the end of the file is recognized once
+        # when (a) at least one packet already confirmed its descent, or (b) no
+        # descent was recorded but its highest volume is at least the drop
+        # threshold above the baseline it rose from (the cut point is taken as
+        # the peak). The name predates (b). False keeps the D42 rule of the
+        # retained adapters (two confirmations, EOF adds nothing).
+        if type(eof_single_confirmation) is not bool:
+            raise TypeError("eof_single_confirmation must be a bool")
+        self.eof_single_confirmation = eof_single_confirmation
         self.drop_ml = INFANT_DROP_ML if config.calculation_config.is_infant() else ADULT_CHILD_DROP_ML
         self.include_comp = not config.calculation_config.is_vent_only()
         self.include_vent = not config.calculation_config.is_cco()
@@ -49,6 +58,9 @@ class PacketActionDetector:
         compression_start = 0
         compression_pending_start = None
         candidate_start = None
+        # Representative volume of the packet before the candidate's first packet
+        # (0 at the first packet). Read only by the D138 end-of-file rule.
+        candidate_baseline = 0
         peak = 0
         peak_index = None
         first_confirmation = None
@@ -91,6 +103,7 @@ class PacketActionDetector:
                 elif candidate_start is None:
                     if volume > 0 and (not require_new_rise or volume > previous_volume):
                         candidate_start = index
+                        candidate_baseline = previous_volume
                         peak = volume
                         peak_index = index
                         confirmations = 0
@@ -150,5 +163,26 @@ class PacketActionDetector:
             previous_depth = depth
             previous_depth_rising = depth_rising
 
-        # EOF provides no additional observation or inferred confirmation.
+        # EOF provides no additional observation. D138 recognizes a candidate
+        # that is still open (not already confirmed, not locked, not closed as a
+        # sub-threshold signal) from what was recorded, never from file length:
+        # (a) its descent from the peak was seen in at least one packet, or
+        # (b) no descent packet exists (still rising, at a plateau, or recovered
+        #     after a reset) but its highest volume is at least the drop
+        #     threshold above the baseline it rose from. The app stops the
+        #     moment it detects the target breath and the server cannot know
+        #     whether the cut came before the peak, so the highest recorded
+        #     volume is taken as the peak. A rise below the threshold is not
+        #     a breath.
+        if (self.eof_single_confirmation and self.include_vent and candidate_start is not None
+                and (confirmations >= 1 or peak - candidate_baseline >= self.drop_ml)):
+            events.append(DetectedAction(
+                action_type=ACTION_TYPE_VENT,
+                packet_index=len(packets) - 1,
+                evidence_start=candidate_start,
+                evidence_stop=len(packets),
+                peak_volume=peak,
+                peak_index=peak_index,
+                first_confirmation_index=first_confirmation,
+            ))
         return events

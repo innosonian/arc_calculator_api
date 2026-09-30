@@ -9,6 +9,7 @@ import pytest
 import lambda_handler
 import services.legacy_response as legacy_response
 from tests._synth import comp_session, condition_json, cpr_session, multipart_event
+from tests.calculation_options_support import use_retained_minimum_quantity_null
 from tests.request_support import form_event as _form_event
 
 
@@ -20,9 +21,8 @@ def _event(parts, wire):
     return _form_event(fields)
 
 
-@pytest.mark.parametrize("wire", ["multipart", "form"])
-@pytest.mark.parametrize("document_source", ["hstm_document", "hstm_document_b64", "top_level"])
-def test_real_null_result_replaces_stale_pass_in_generated_document(wire, document_source, monkeypatch, capsys):
+def _generate_from_stale_pass_document(wire, document_source, monkeypatch):
+    """The below-minimum ARC CPR request with a stale Pass document: (response, body, generated documents)."""
     recorded = []
     for name in ("_build_hstm_document", "_apply_calculated_fields"):
         original = getattr(legacy_response, name)
@@ -57,7 +57,15 @@ def test_real_null_result_replaces_stale_pass_in_generated_document(wire, docume
         parts[document_source] = encoded
     response = lambda_handler._run_trusted_calculation(_event(parts, wire), None)
     assert response["statusCode"] == 200, response
-    body = json.loads(response["body"])
+    return response, json.loads(response["body"]), recorded
+
+
+@pytest.mark.parametrize("wire", ["multipart", "form"])
+@pytest.mark.parametrize("document_source", ["hstm_document", "hstm_document_b64", "top_level"])
+def test_real_null_result_replaces_stale_pass_in_generated_document(wire, document_source, monkeypatch, capsys):
+    # Retained policy (D07/D08; attempts of arc-internal-detection-v4/pending-v3 still end this way).
+    use_retained_minimum_quantity_null(monkeypatch)
+    response, body, recorded = _generate_from_stale_pass_document(wire, document_source, monkeypatch)
     assert body["cpr_score"]["total_score"]["overall"] is None
     assert body["certification"] == {"Target": "N/A"}
     assert "submit_hstm" not in body
@@ -71,6 +79,37 @@ def test_real_null_result_replaces_stale_pass_in_generated_document(wire, docume
     assert generated["ResultByCycle"]["CompressionDepth"]["Overall"] is None
     assert all(x is None for x in generated["ResultByCycle"]["CompressionDepth"]["ByCycle"])
     assert generated["ResultByCriteria"]["VentilationSpeed"] is None
+    assert generated["Certification"] == {"Target": "N/A"}
+    assert "ResultSummary" not in body and "hstm_document" not in body
+    exposed = response["body"] + capsys.readouterr().out
+    assert "synthetic-private@example.invalid" not in exposed
+    assert "synthetic-private-token" not in exposed
+
+
+@pytest.mark.parametrize("wire", ["multipart", "form"])
+@pytest.mark.parametrize("document_source", ["hstm_document", "hstm_document_b64", "top_level"])
+def test_below_minimum_result_is_scored_and_replaces_stale_pass_in_generated_document(wire, document_source,
+                                                                                      monkeypatch, capsys):
+    # D139: the same request under the current rules has real scores (30 compressions, 3 ventilations,
+    # three closed cycles). The stale Pass is still replaced by the calculated judgement: the unchanged
+    # document gate fails the 10-compression cycles (score_comp_no 0 < 50).
+    response, body, recorded = _generate_from_stale_pass_document(wire, document_source, monkeypatch)
+    total = body["cpr_score"]["total_score"]
+    assert body["action_count"] == {"comp": 30, "vent": 3}
+    assert total["overall"] == 81 and total["score_comp_depth"] == 100 and total["score_vent_vol"] == 100
+    assert total["score_comp_no"] == 0
+    assert body["certification"] == {"Target": "adult"}  # Passing_Score 0
+    assert "submit_hstm" not in body
+    assert body["submit_arc"] == {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
+    assert len(recorded) == 1
+    generated = recorded[0]
+    # The stale "Pass" is replaced by the calculated training-mode judgement, as before.
+    assert generated["ResultSummary"]["JudgResult"] == total["judg_result"] == "N/A"
+    assert generated["ResultSummary"]["CycleNum"] == 3
+    assert generated["ResultSummary"]["hStreamResult"] == "Fail"
+    assert generated["ResultSummary"]["hStreamReason"].startswith("You were doing well, but compress the chest 30 times")
+    assert generated["ResultByCycle"]["CompressionDepth"]["Overall"] is not None
+    # The compatible document's certification follows its own failed gate (unchanged legacy rule).
     assert generated["Certification"] == {"Target": "N/A"}
     assert "ResultSummary" not in body and "hstm_document" not in body
     exposed = response["body"] + capsys.readouterr().out
