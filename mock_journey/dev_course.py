@@ -9,6 +9,7 @@ from dataclasses import replace
 import json
 import uuid
 
+from config.borders import AdultBorder, ChildBorder, InfantBorder
 from mock_journey.auth import PRINCIPAL
 from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
 from mock_journey.course_contracts import (
@@ -22,6 +23,52 @@ from mock_journey.models import AuthContext
 MODE = "course_v2_dummy"
 CATALOG_VERSION = "arc-dummy-dev-v1"
 _DESCRIPTION = "Temporary Dummy Dev test only. Not an ARC course or certification."
+# The largest course write-set is a final assessment start (8 transaction actions).
+MIN_TRANSACTION_ACTIONS = 8
+_CAPACITY_ERROR = "The explicit course limits cannot hold the Dummy Dev catalog."
+# D132: the synthetic item detail shows the values the server really applies. They
+# are display settings only; the app never rebuilds the upload ``condition`` from them.
+_GUIDELINE = "ARC2025"
+_BORDERS = {"adult": AdultBorder, "child": ChildBorder, "infant": InfantBorder}
+_PASS_THRESHOLD = 80  # services.legacy_document._get_pass_threshold default
+_TWO_RESCUER_CYCLE_CHANGE = 2
+_TWO_RESCUER_PROGRAMS = ("mock-two-rescuer-cpr", "mock-two-rescuer-aed")
+
+
+def _inch(millimetres):
+    return round(millimetres / 25.4, 2)
+
+
+def _guideline(target):
+    border = _BORDERS[target].BORDER[_GUIDELINE]
+    depth, rate, volume, vent_rate = (border[key] for key in ("comp_depth", "comp_rate", "vent_vol", "vent_only_rate"))
+    return {
+        "title": "ARC 2025", "manikinType": target, "name": _GUIDELINE,
+        "compressionDepthMax": depth[2], "compressionDepthMin": depth[1],
+        "compressionRateMax": rate[2], "compressionRateMin": rate[1],
+        "ventilationVolumeMax": volume[2], "ventilationVolumeMin": volume[1],
+        "ventilationRateMax": vent_rate[2], "ventilationRateMin": vent_rate[1],
+        "compressionDepthMaxInch": _inch(depth[2]), "compressionDepthMinInch": _inch(depth[1]),
+    }
+
+
+def training_settings(program, target, definition):
+    """The ``training`` block of a Dummy Dev item detail (D132)."""
+    kind, required = definition["goal"]["kind"], definition["goal"]["required"]
+    cycle_type = definition["condition"]["cpr_cycle_type"]
+    ratio = None
+    if kind == "cycles":
+        compressions = 15 if cycle_type == "152" else 30
+        ratio = {"title": f"{compressions}:2", "cvrVentilation": 2, "cvrCompression": compressions}
+    return {
+        "manikinType": target, "duration": None,
+        "compressionLimit": required if kind == "compressions" else None,
+        "ventilationLimit": required if kind == "ventilations" else None,
+        "cycleLimit": required if kind == "cycles" else None,
+        "compressionVentilationRatio": ratio, "aed": None,
+        "cprGuideline": _guideline(target),
+        "twoRescuers": {"cycleChangeCount": _TWO_RESCUER_CYCLE_CHANGE} if program in _TWO_RESCUER_PROGRAMS else None,
+    }
 
 
 class DummyDevCourseProvider:
@@ -59,14 +106,10 @@ class DummyDevCourseProvider:
                                 "compression_only": "chest compression only", "ventilation_only": "ventilation only",
                                 "cpr": "cpr",
                             }[definition["condition"]["training_type"]],
-                            "feedbackType": "standard", "trainingMode": "practice",
-                            "training": {
-                                "manikinType": target, "duration": None, "compressionLimit": None,
-                                "ventilationLimit": None, "cycleLimit": None,
-                                "compressionVentilationRatio": None, "aed": None,
-                                "cprGuideline": None, "twoRescuers": None,
-                            },
-                            "assessment": {"passThreshold": {"cpr": None, "aed": None}}, "content": [],
+                            "feedbackType": "standard",
+                            "trainingMode": "practice" if kind == "training" else "assessment",
+                            "training": training_settings(program, target, definition),
+                            "assessment": {"passThreshold": {"cpr": _PASS_THRESHOLD, "aed": None}}, "content": [],
                         },
                     }
                     placements.append(Placement(
@@ -107,3 +150,29 @@ class DummyDevCourseProvider:
         if type(binding) is not AssignmentBinding or binding not in self._assignments:
             raise CourseError("NOT_FOUND")
         return replace(self._bundles[binding.public_ids])
+
+
+def validate_dummy_catalog(settings, *, execution, artifact_bytes):
+    """Prove offline that explicit limits can hold the complete Dummy Dev catalog.
+
+    Same meaning as the AWS course configuration check: the transaction action
+    limit must admit the largest course write-set, and every serialized bundle
+    snapshot (including its scope/IDs/hash) must fit the private storage
+    artifact quota. No SDK, file or network I/O. Returns the validated provider;
+    any failure is a fixed ValueError without nested details.
+    """
+    from mock_journey.course_settings import CourseSettings
+    from mock_journey.course_records import bundle_record
+    from mock_journey.typed import json_bytes
+
+    try:
+        if (type(settings) is not CourseSettings or type(artifact_bytes) is not int or artifact_bytes <= 0
+                or settings.max_transaction_actions < MIN_TRANSACTION_ACTIONS):
+            raise ValueError(_CAPACITY_ERROR)
+        provider = DummyDevCourseProvider(settings=settings, execution=execution)
+        if any(len(json_bytes(bundle_record(provider.fetch_bundle(binding)))) > artifact_bytes
+               for binding in provider.list_assignments(provider.learner)):
+            raise ValueError(_CAPACITY_ERROR)
+        return provider
+    except Exception:
+        raise ValueError(_CAPACITY_ERROR) from None

@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-from mock_journey.contracts import VerifiedCalculation
+from mock_journey.contracts import VerifiedCalculation, input_binding
 from mock_journey.errors import JourneyError
 from mock_journey.typed import canonical_bytes
 
@@ -15,9 +15,7 @@ class CourseRecoveryReader:
     def load_consistent(self, job_id, owner, fence):
         snap = self.jobs.recovery_snapshot(job_id)
         job, attempt = snap["job"], snap["attempt"]
-        binding = {key: job[key] for key in (
-            "attempt_id", "epoch", "input_digest", "adapter_version", "projection_version",
-        )}
+        binding = input_binding(job)
         snap["input_lookup"] = {"status": "unreadable"}
         snap["candidate_lookup"] = {"status": "unreadable"}
         snap["adapter"] = {"present": False, "can_calculate": False, "can_verify": False}

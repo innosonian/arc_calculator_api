@@ -1,33 +1,43 @@
 {
-  "schema_version": "arc-mock-route-role-v1",
-  "scope": "Implemented local handler contract; not a deployment or remote calculator approval",
+  "schema_version": "arc-mock-route-role-v2",
+  "scope": "Implemented local handler contract, /api/v2 only (D103); not a deployment or remote calculator approval",
+  "field_scope": {
+    "bound_by": "tests/test_vcc_wiring.py",
+    "bound": [
+      "schema_version", "api_entrypoint", "handler_function", "boot_failure_response", "control_body_limit_bytes",
+      "session_seconds", "chart_link_seconds", "errors", "legacy_history_error_codes",
+      "roles[].entrypoint", "roles[].injected_entrypoint", "roles[api].dependencies (typed command names)",
+      "course_v2.mode", "course_v2.old_routes_status", "course_v2.cpr_analysis_alias", "course_v2.external_transmit",
+      "course_v2.factory", "course_v2.api_dispatch", "course_v2.control_body_limit_bytes", "course_v2.methods",
+      "course_v2.measurement_content_type (headers value rule)", "course_v2.course_errors",
+      "course_v2.routes[].id", "course_v2.routes[].method", "course_v2.routes[].path", "course_v2.routes[].query"
+    ],
+    "descriptive": [
+      "scope", "calculator_public_entrypoint", "trusted_regression_helper", "gateway_event_shape", "handler_dispatch",
+      "configured_wait_policy_upper_bound_seconds", "implemented_wait", "roles[].events", "roles[].direct_sdk_calls",
+      "roles[].legacy_binding_calls", "roles[].does_not_require", "roles[].runtime_status",
+      "deployment_review_required", "course_v2.note", "course_v2.trailing_slash", "course_v2.query_parameters",
+      "course_v2.legacy_attempt_recovery", "course_v2.arc_gateway"
+    ]
+  },
   "api_entrypoint": "mock_journey.handler.run",
   "calculator_public_entrypoint": "lambda_handler.run",
   "trusted_regression_helper": "lambda_handler._run_trusted_calculation (not a public HTTP entrypoint)",
   "handler_function": "mock_journey.handler.handle",
   "gateway_event_shape": "REST proxy: httpMethod/path/headers/multiValueHeaders/body/isBase64Encoded/queryStringParameters/multiValueQueryStringParameters",
-  "common_response_headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
-  "query_parameters": "nonempty single or multi query maps are rejected before routing/authentication",
+  "handler_dispatch": "Every event is handed to the assembled application's course_http (CourseHttp.dispatch); no other route family remains",
+  "boot_failure_response": {
+    "applies_to": "a service without an assembled course_http, or an application that failed to boot",
+    "status": 503,
+    "code": "TEMPORARILY_UNAVAILABLE",
+    "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"},
+    "body": {"error": ["code", "message", "request_id"]}
+  },
   "control_body_limit_bytes": 16384,
   "session_seconds": 86400,
   "chart_link_seconds": 300,
   "configured_wait_policy_upper_bound_seconds": 30,
-  "implemented_wait": "No in-process wait; queued/processing responses are early 202 with wait_expired=false",
-  "attempt_path_parameter": "lowercase hexadecimal UUID-shaped 8-4-4-4-12 string; handler does not restrict UUID version",
-  "routes": [
-    {"id":"login","method":"POST","path":"/mock/v1/sessions","auth":"external_test_access_only","request_body":"control_json","required_string_fields":["login_id","password"],"dispatch":"service.login","success_statuses":[201],"response":"login"},
-    {"id":"session","method":"GET","path":"/mock/v1/session","auth":"session_bearer","request_body":"ignored","dispatch":"service.session","success_statuses":[200],"response":"session"},
-    {"id":"logout","method":"DELETE","path":"/mock/v1/session","auth":"session_bearer_or_own_logout_receipt","request_body":"ignored","dispatch":"service.state.logout","success_statuses":[204],"response":"empty"},
-    {"id":"programs","method":"GET","path":"/mock/v1/programs","auth":"session_bearer","request_body":"ignored","dispatch":"service.programs","success_statuses":[200],"response":"programs"},
-    {"id":"create_attempt","method":"POST","path":"/mock/v1/attempts","auth":"session_bearer","request_body":"control_json","required_string_fields":["client_request_id","catalog_version","program_id","target"],"dispatch":"service.create_attempt","success_statuses":[200,201],"response":"attempt_with_resume_credential"},
-    {"id":"attempt","method":"GET","path":"/mock/v1/attempts/{attempt_id}","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.get_attempt","success_statuses":[200],"response":"attempt"},
-    {"id":"reauthorize","method":"POST","path":"/mock/v1/attempts/{attempt_id}/reauthorize","auth":"same_principal_session_bearer_and_resume_proof","request_body":"control_json","required_string_fields":["resume_credential"],"dispatch":"service.reauthorize","success_statuses":[200],"response":"attempt"},
-    {"id":"cancel","method":"POST","path":"/mock/v1/attempts/{attempt_id}/cancel","auth":"bound_session_bearer","request_body":"control_json","required_string_fields":["reason"],"dispatch":"service.cancel","success_statuses":[204],"response":"empty"},
-    {"id":"submit_calculation","method":"POST","path":"/mock/v1/attempts/{attempt_id}/calculation","auth":"bound_session_bearer","request_body":"existing_measurement_wire","dispatch":"service.calculation.submit","success_statuses":[200,202],"response":"stored_legacy_json_or_pending"},
-    {"id":"submit_calculation_alias","method":"POST","path":"/cpr-analysis","auth":"bound_session_bearer","attempt_id_header":"X-Attempt-ID","request_body":"existing_measurement_wire","dispatch":"service.calculation.submit","success_statuses":[200,202],"response":"stored_legacy_json_or_pending","measurement_error":"HTTP 400 legacy type/client_error and sanitized message; attempt route retains 422"},
-    {"id":"calculation","method":"GET","path":"/mock/v1/attempts/{attempt_id}/calculation","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.calculation.result","success_statuses":[200,202],"response":"stored_legacy_json_or_pending"},
-    {"id":"chart_link","method":"GET","path":"/mock/v1/attempts/{attempt_id}/chart-link","auth":"bound_session_bearer","request_body":"ignored","dispatch":"service.calculation.chart_link","success_statuses":[200],"response":"chart_link"}
-  ],
+  "implemented_wait": "No in-process wait; queued/processing calculation responses are an early 202 with calculationStatus pending",
   "errors": {
     "INVALID_REQUEST":{"status":400,"message":"Invalid request."},
     "LOGIN_FAILED":{"status":401,"message":"Login failed."},
@@ -48,24 +58,25 @@
     "STORED_INPUT_INVALID":{"status":503,"message":"The stored input could not be verified."},
     "CALCULATION_FAILED":{"status":503,"message":"The calculation could not be completed."}
   },
+  "legacy_history_error_codes": ["PROGRAM_ALREADY_COMPLETED"],
   "roles": [
     {
       "role":"api","entrypoint":"mock_journey.handler.run","injected_entrypoint":"mock_journey.handler.handle",
       "events":["REST proxy"],
-      "dependencies":["DynamoStateRepository","AuthManager with explicit resume keyring","Catalog with verified execution definitions","CalculationService with versioned projection schemas","DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings"],
+      "dependencies":["CourseHttp (mock_journey.course_http) over CourseService","DummyDevCourseProvider (course_v2_dummy, Dev stage only) with its mapping document","JourneyService typed commands (login_command, check_session, reauthorize_command, cancel_command)","DynamoStateRepository","DynamoCourseRepository","AuthManager with explicit resume keyring","ExecutionCatalog with verified execution definitions","CalculationService with versioned projection schemas","DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings"],
       "direct_sdk_calls":{"dynamodb":["get_item","put_item","transact_get_items","transact_write_items"],"s3":["get_object","put_object"]},
       "legacy_binding_calls":["build_key_stem","org_prefix","date_prefix","build_raw_input_meta","upload_raw_input","create_signed_url"],
       "does_not_require":["internal calculator invocation","SQS sender"],
-      "runtime_status":"Configuration opt-in can build control-only JourneyService with Catalog() lacking execution definitions; no complete calculation runtime is wired"
+      "runtime_status":"mock_journey.runtime.get_application assembles build_course_application through aws_runtime.build_runtime('api'); the explicit course section is required and any configuration error fails closed as 503 TEMPORARILY_UNAVAILABLE"
     },
     {
       "role":"worker","entrypoint":"mock_journey.worker.run","injected_entrypoint":"mock_journey.worker.handle",
       "events":["SQS Records containing only a job_id reference"],
-      "dependencies":["DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings","versioned verified AdapterRegistry","explicit lease_seconds/retry_seconds"],
+      "dependencies":["DynamoJobRepository","JourneyStorage with explicit S3 client and legacy bindings","versioned verified AdapterRegistry","CourseCompletionPlan","explicit lease_seconds/retry_seconds"],
       "direct_sdk_calls":{"dynamodb":["get_item","transact_get_items","transact_write_items"],"s3":["get_object","put_object"]},
       "legacy_binding_calls":["upload_json_file","create_signed_url"],
       "does_not_require":["app session bearer","resume keyring","SQS sender"],
-      "runtime_status":"get_worker raises CALCULATOR_CONTRACT_MISMATCH; dependency-injected local execution only"
+      "runtime_status":"mock_journey.worker_runtime.get_worker assembles build_worker through aws_runtime.build_runtime('worker'); the course section is validated offline only; any configuration or runtime error is raised as TEMPORARILY_UNAVAILABLE so the batch is retried"
     },
     {
       "role":"relay","entrypoint":"mock_journey.dispatch.run","injected_entrypoint":"mock_journey.dispatch.handle_stream",
@@ -74,22 +85,22 @@
       "direct_sdk_calls":{"dynamodb":["get_item","transact_get_items","transact_write_items","query"],"sqs":["send_message"]},
       "legacy_binding_calls":[],
       "does_not_require":["app session bearer","resume keyring","S3 client","internal calculator"],
-      "runtime_status":"get_relay raises TEMPORARILY_UNAVAILABLE; dependency-injected local execution only"
+      "runtime_status":"mock_journey.worker_runtime.get_relay assembles build_relay through aws_runtime.build_runtime('relay') without a course section; any configuration or runtime error is raised as TEMPORARILY_UNAVAILABLE so the invocation is retried"
     }
   ],
   "deployment_review_required":[
-    "Per-team-member test access protection ahead of every mock route including login; the application does not implement this outer identity provider",
+    "Per-team-member test access protection ahead of every /api/v2 route including login; the application does not implement this outer identity provider",
     "Prevent direct unauthenticated invocation of legacy lambda_handler.run or alternate deployment routes",
     "REST proxy header/body/base64 preservation and ingress payload/timeout enforcement",
-    "Actual deployment configuration and complete program definitions require separate verification",
+    "Actual deployment configuration, the Dev-only course_v2_dummy section and complete program definitions require separate verification",
     "Role identities, resource identifiers, actual least-privilege IAM/resource policies and credentials are not supplied by this manifest",
     "Platform SQS receive/delete, stream read permissions, trigger retry/DLQ settings and scheduled reconciliation need deployment configuration; these are not application SDK calls",
     "Presigned URL generation is a signing operation, not an S3 SDK network request; verify the signing identity's object read permission and policies; the URL holder does not need separate AWS credentials",
     "Storage retention/deletion, encryption and logging policies require infrastructure evidence; no retention duration or deletion job is created here"
   ],
   "course_v2": {
-    "mode": "explicit_opt_in",
-    "note": "Default API/worker/relay assembly remains /mock/v1. course_v2 is selected only by build_course_application.",
+    "mode": "only",
+    "note": "The API role is always assembled by build_course_application. /mock/v1 and its /cpr-analysis alias were removed (D103); stored legacy attempts and jobs keep read, reauthorize, cancel and calculation finalize.",
     "api_dispatch": "mock_journey.course_http.CourseHttp.dispatch",
     "factory": "mock_journey.assembly.build_course_application",
     "trailing_slash": "required_no_redirect",
@@ -98,9 +109,26 @@
     "control_body_limit_bytes": 16384,
     "query_parameters": "allowlist per APP_ROUTES; empty query maps remain omitted",
     "methods": ["GET", "POST", "PUT", "DELETE"],
+    "measurement_content_type": "After authentication and before any attempt read: a Content-Type duplicated by letter case, a multiValueHeaders value that is not exactly one item, or headers/multiValueHeaders disagreement is 400 INVALID_REQUEST without parsing; a present value from headers or multiValueHeaders must be a nonempty string without a comma, CR or LF, else 400 INVALID_REQUEST; a valid multiValueHeaders-only value is then copied once into headers for the parser",
     "legacy_attempt_recovery": "new routes, no provider, nullable course fields",
     "arc_gateway": "DisabledArcGateway",
     "external_transmit": 0,
+    "course_errors": {
+      "METHOD_NOT_ALLOWED":{"status":405,"message":"Method not allowed."},
+      "CONTRACT_PENDING":{"status":503,"message":"The integration contract is not available."},
+      "UPSTREAM_CONTRACT_MISMATCH":{"status":503,"message":"The upstream data contract is not verified."},
+      "ARC_PROGRESS_UNAVAILABLE":{"status":503,"message":"Learning is waiting for ARC progress."},
+      "PROGRESS_RECONCILIATION_REQUIRED":{"status":409,"message":"Progress reconciliation is required."},
+      "DEFINITION_CHANGED":{"status":409,"message":"The course definition has changed."},
+      "EXECUTION_DEFINITION_MISSING":{"status":409,"message":"The execution definition is missing."},
+      "EXECUTION_DEFINITION_UNSUPPORTED":{"status":422,"message":"The execution definition is not supported."},
+      "PREREQUISITES_NOT_COMPLETED":{"status":409,"message":"Prerequisite items are not completed."},
+      "FINAL_ASSESSMENT_ACTIVE":{"status":409,"message":"A final assessment is already active."},
+      "FINAL_ASSESSMENT_RECOVERY_REQUIRED":{"status":409,"message":"The final assessment requires recovery."},
+      "COMPLETION_POLICY_PENDING":{"status":409,"message":"The completion policy is not available."},
+      "PROGRESS_CAPACITY_EXCEEDED":{"status":413,"message":"The progress evidence limit is exceeded."},
+      "CONTENT_VERSION_MISMATCH":{"status":409,"message":"The content version does not match the learning start."}
+    },
     "routes": [
       {"id":"login","method":"POST","path":"/api/v2/sessions/"},
       {"id":"session","method":"GET","path":"/api/v2/session/"},

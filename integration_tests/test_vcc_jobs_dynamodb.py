@@ -1,71 +1,92 @@
-"""Finalize/seal against DynamoDB Local. No ARC outbound queue is created."""
+"""Finalize/seal against DynamoDB Local. No ARC outbound queue is created.
 
-import json
+Attempts without course_binding are the captured /mock/v1 rows
+(tests/fixtures/legacy_mock_v1_rows, seeded by tests/legacy_rows_support.py);
+the removed create route is not used. D103 keeps finishing their calculation.
+"""
+
 import uuid
-from types import SimpleNamespace
+
+import pytest
 
 from mock_journey.errors import JourneyError
 from mock_journey.jobs import DynamoJobRepository
+from mock_journey.models import AuthContext
 from mock_journey.state import DynamoStateRepository
+from tests.journey_support import JourneyStore, V2Journey, dynamodb_local_store
+from tests.legacy_rows_support import seed_legacy_rows
 
 
-def _session(state, principal="dummy-tester"):
-    session = {
-        "session_id": str(uuid.uuid4()), "principal": principal,
-        "token_hash": "c" * 64, "issued_at": state._now(), "expires_at": state._now() + 86400,
-        "status": "active", "revision": 0,
-    }
-    state.create_session(session, ["mock-compression-only:adult"])
-    from mock_journey.models import AuthContext
-    return AuthContext(session["session_id"], principal, 0, session["expires_at"]), session
+def _keys(store):
+    return {(row["PK"], row["SK"]) for row in store.rows()}
 
 
-def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, dynamodb_table):
-    from tests.vcc_runtime_support import runtime, submit
-    env = runtime(dynamodb_client, dynamodb_table)
-    status, created = env.app.journey.create_attempt(env.auth, {
-        "client_request_id": str(uuid.uuid4()), "catalog_version": "mock-catalog-v1",
-        "program_id": "mock-compression-only", "target": "adult",
-    })
-    assert status == 201
-    attempt = env.app.state.get_attempt(env.auth, created["attempt_id"])
-    assert attempt.get("course_binding") is None
-    job_id = submit(env, attempt)
-    assert env.worker.process(job_id) is True
-    finished = env.app.state.get_attempt(env.auth, attempt["attempt_id"])
-    assert finished["state"] == "evaluated"
-    assert finished["evaluation"]["program_completed"] is True
-    assert env.app.calculation.jobs.get_job(job_id)["state"] == "done"
-    keys = [item["PK"]["S"] for item in dynamodb_client.scan(TableName=dynamodb_table)["Items"]]
-    assert not any(key.startswith("SUBMISSION#") for key in keys)
-    # The normal calculation dispatch outbox is allowed; no ARC outbox is made.
-    assert sum(key.startswith("OUTBOX#") for key in keys) == 1
+@pytest.mark.parametrize("path", ["stored_queued_job", "v2_upload"])
+def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, path):
+    with dynamodb_local_store(dynamodb_client) as store:
+        h = V2Journey(store)
+        seeded = seed_legacy_rows(store, objects=h.objects)
+        h.advance(seeded.meta["clock_at_end"] - h.clock())
+        if path == "stored_queued_job":
+            label = "queued"  # accepted by /mock/v1, never relayed or processed
+            attempt_id = seeded.attempts[label]["attempt_id"]
+        else:
+            label = "created"  # created by /mock/v1, measurement uploaded through /api/v2 now
+            attempt_id = seeded.attempts[label]["attempt_id"]
+            token = seeded.issue_session_token()
+            condition = h.attempt(token, attempt_id)["condition"]
+            h.upload(token, attempt_id, condition)
+        attempt = store.row(f"ATTEMPT#{attempt_id}", "META")
+        assert attempt.get("course_binding") is None
+        program_slot = f'{attempt["program_id"]}:{attempt["target"]}'
+        before_keys = _keys(store)
+        before_user = store.row(f"USER#{seeded.principal}", "STATE")
+        assert before_user["slots"][program_slot]["open_attempts"] == 1
+        job_id = attempt["job_id"]
+        assert h.work(job_id=job_id) is True
+        finished = store.row(f"ATTEMPT#{attempt_id}", "META")
+        assert finished["state"] == "evaluated"
+        assert store.row(f"JOB#{job_id}", "STATE")["state"] == "done"
+        user = store.row(f"USER#{seeded.principal}", "STATE")
+        assert user["slots"][program_slot]["open_attempts"] == 0
+        if label == "queued":
+            # Compression goal: a pass completes the legacy slot (legacy finalize kept, D103).
+            assert finished["evaluation"]["program_completed"] is True
+            assert finished["progress_application"] == {
+                "applied": True, "applied_epoch": attempt["epoch"], "reason": "APPLIED"}
+            assert user["slots"][program_slot]["completed_by_attempt"] == attempt_id
+        else:
+            # Cycle goal: pending policy never completes the legacy slot.
+            assert finished["evaluation"]["program_completed"] is False
+            assert finished["progress_application"]["reason"] == "GOAL_POLICY_UNRESOLVED"
+            assert user["slots"][program_slot] == before_user["slots"][program_slot] | {"open_attempts": 0}
+        # Finalize writes no new DynamoDB row: no SUBMISSION, no ARC outbox. The
+        # only OUTBOX rows are the normal calculation dispatch, one per job.
+        assert _keys(store) == before_keys
+        assert not [key for key in before_keys if key[0].startswith("SUBMISSION#")]
+        outboxes = sorted(key[0] for key in before_keys if key[0].startswith("OUTBOX#"))
+        jobs = sorted("OUTBOX#" + key[0].removeprefix("JOB#") for key in before_keys if key[0].startswith("JOB#"))
+        assert outboxes == jobs
+        if label == "created":
+            result = h.result(token, attempt_id)
+            assert result["calculationStatus"] == "succeeded"
+            assert result["evaluation"] == finished["evaluation"]
 
 
 def test_sealed_job_blocks_claim(dynamodb_client, dynamodb_table):
-    state = DynamoStateRepository(dynamodb_client, dynamodb_table, clock=lambda: 1_800_000_000)
+    store = JourneyStore(dynamodb_client, dynamodb_table)
+    seeded = seed_legacy_rows(store)
+    now = seeded.meta["clock_at_end"]
+    state = DynamoStateRepository(dynamodb_client, dynamodb_table, clock=lambda: now)
     jobs = DynamoJobRepository(state)
-    auth, _ = _session(state)
-    template = {
-        "attempt_id": str(uuid.uuid4()), "principal": auth.principal,
-        "creator_session_id": auth.session_id, "bound_session_id": auth.session_id,
-        "program_id": "mock-compression-only", "target": "adult", "profile_name": "tester",
-        "definition_json": json.dumps({
-            "condition": {"target": "adult"}, "calculation_profile": {},
-            "profile_version": "tester-goal-pending-v2",
-            "adapter_version": "arc-internal-detection-pending-v3",
-            "projection_version": "arc-local-projection-v1",
-            "goal": {"kind": "compressions", "required": 60},
-            "catalog_version": "mock-catalog-v1",
-        }),
-        "resume_nonce": "n", "resume_key_version": "v1", "resume_digest": "d" * 64,
-    }
-    attempt = state.create_attempt(auth, str(uuid.uuid4()), "digest-seal", template)
+    session = store.row(f"SESSION#{seeded.session_id}", "AUTH")
+    auth = AuthContext(session["session_id"], session["principal"], session["revision"], session["expires_at"])
+    attempt = seeded.attempts["created"]["row"]
     accepted = jobs.accept_input(
         auth, attempt["attempt_id"], "a" * 64,
         {"bucket": "b", "key": "k", "sha256": "a" * 64, "size": 1},
         job_id=str(uuid.uuid4()), adapter_version="arc-internal-detection-pending-v3",
-        next_due_at=1_800_000_000,
+        next_due_at=now,
     )
     job_id = accepted["job_id"]
     owner = "worker-a"
@@ -81,8 +102,6 @@ def test_sealed_job_blocks_claim(dynamodb_client, dynamodb_table):
             ":failed": {"S": "failed"},
         },
     )
-    try:
+    with pytest.raises(JourneyError) as failure:
         jobs.claim(job_id, "worker-b", 60)
-        raise AssertionError("sealed job must not be claimed")
-    except JourneyError as error:
-        assert error.code == "INVALID_STATE"
+    assert failure.value.code == "INVALID_STATE"

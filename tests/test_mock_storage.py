@@ -9,22 +9,8 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 
 from mock_journey.errors import JourneyError
 from mock_journey.projection import project_input, typed_identity
-from mock_journey.storage import JourneyStorage
 from mock_journey import typed
-from tests.mock_storage_support import MemoryS3, MemoryLegacyBindings
-from tests.test_mock_projection import measurement_fixture
-
-
-def setup_storage(stage="development"):
-    client = MemoryS3()
-    bindings = MemoryLegacyBindings(client)
-    storage = JourneyStorage(client, legacy_bindings=bindings, stage=stage,
-                             limits={"input_bytes": 1_000_000, "artifact_bytes": 2_000_000})
-    body, definition, schema = measurement_fixture()
-    projected = project_input(body, definition, schema)
-    binding = {"attempt_id": "attempt1", "epoch": "epoch1", "input_digest": typed_identity(projected),
-               "adapter_version": definition["adapter_version"], "projection_version": definition["projection_version"]}
-    return storage, client, bindings, projected, binding
+from tests.projection_storage_support import measurement_fixture, setup_storage  # noqa: F401 (re-export)
 
 
 def call_binding(binding):

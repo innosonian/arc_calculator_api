@@ -1,359 +1,294 @@
-"""Real local files + DynamoDB + internal worker; no default CLI/socket claim."""
+"""Real local files + DynamoDB + internal worker; no default CLI/socket claim.
+
+Course attempts through the public /api/v2 harness (FilesJourney: LocalObjectClient
+and signed local charts on a private installation directory). No v1 API route
+or v1-only service method is used.
+"""
 
 import hashlib
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from urllib.parse import urlsplit
 
 from botocore.exceptions import ClientError
 import pytest
 
-from integration_tests.test_local_completion_state import PendingDefinitions
-from integration_tests.test_mock_journey import api, create, login, stored_attempt, submit
-from local_server.database import prepare_material
-from mock_journey.auth import AuthManager
-from mock_journey.calculation import CalculationService
-from mock_journey.catalog import Catalog
-from mock_journey.contracts import CalculatorRegistry
+from integration_tests.worker_journey_support import (  # noqa: F401 (store, files_journey fixtures)
+    ARTIFACT_LIMIT, DUMMY_SUBMISSION, FILES_BUCKET, accepted, attempt_row, calculation, chart_link, course_rows,
+    files_journey, item_view, job_row, start, store, submit,
+)
 from mock_journey.errors import JourneyError
-from mock_journey.internal_calculator import InternalCalculator, PENDING_GOAL_ADAPTER_VERSION
-from mock_journey.jobs import DynamoJobRepository
-from mock_journey.projection import ProjectionSchema
-from mock_journey.service import JourneyService
-from mock_journey.state import DynamoStateRepository
-from mock_journey.storage import JourneyStorage
-from mock_journey.worker import JourneyWorker, call_binding, input_binding
+from mock_journey.worker import call_binding, input_binding
 from tests._synth import comp_session, cpr_session
+from tests.journey_support import V2Journey, dummy_course
 
 
-ARTIFACT_LIMIT = 2_000_000
-QUOTA_BYTES = 16_000_000
-BUCKET = "local-filesystem-integration"
-DIRECTORY = "calculator_result/interpreted_rtdata/arc"
+CPR = dummy_course("mock-cpr", "adult")
+COMPRESSION = dummy_course("mock-compression-only", "adult")
+CPR_DATA = cpr_session([(30, 2)] * 3)
 
 
-def _open_world(db_client, table, material, now, clients, *, quota=QUOTA_BYTES):
-    from local_server.charts import LocalChartService
-    from local_server.object_storage import LocalLegacyBindings, LocalObjectClient, prepare_object_material
-
-    objects = LocalObjectClient(prepare_object_material(material), bucket=BUCKET, directory=DIRECTORY,
-                               stage="development", artifact_limit=ARTIFACT_LIMIT, quota_bytes=quota)
-    clients.append(objects)
-    charts = LocalChartService(objects, base_url="http://127.0.0.1:8000", clock=lambda: now[0])
-    bindings = LocalLegacyBindings(objects, charts)
-    storage = JourneyStorage(objects, legacy_bindings=bindings, stage="development",
-                             limits={"input_bytes": 1_000_000, "artifact_bytes": ARTIFACT_LIMIT})
-    state = DynamoStateRepository(db_client, table, clock=lambda: now[0])
-    auth = AuthManager(state, material.environment, {material.key_version: material.resume_key},
-                       material.key_version, clock=lambda: now[0])
-    jobs = DynamoJobRepository(state)
-    calculation = CalculationService(state, jobs, storage,
-                                     {"test-projection": ProjectionSchema("test-projection", {})},
-                                     payload_limit=2_000_000, clock=lambda: now[0])
-    service = JourneyService(state, auth, Catalog(PendingDefinitions()), calculation)
-    adapter = InternalCalculator(version=PENDING_GOAL_ADAPTER_VERSION, projection_version="test-projection",
-                                 stage="development", allow_pending_cycle_goal=True)
-    worker = JourneyWorker(jobs, storage, CalculatorRegistry([adapter]), lease_seconds=60,
-                           retry_seconds=5, clock=lambda: now[0])
-    return SimpleNamespace(objects=objects, charts=charts, storage=storage, state=state, auth=auth,
-                           jobs=jobs, service=service, adapter=adapter, worker=worker, now=now,
-                           material=material, db_client=db_client, table=table, clients=clients)
+def unavailable(*args, **kwargs):
+    raise JourneyError("TEMPORARILY_UNAVAILABLE")
 
 
-@pytest.fixture
-def files_journey(dynamodb_client, dynamodb_table, tmp_path):
-    directory = tmp_path.resolve() / "private-installation"
-    directory.mkdir(mode=0o700)
-    material = prepare_material(directory)
-    clients = []
-    world = _open_world(dynamodb_client, dynamodb_table, material, [1_800_000_000], clients)
-    try:
-        yield world
-    finally:
-        for client in reversed(clients):
-            client.close()
+def forbid_calculation(monkeypatch, world, message):
+    monkeypatch.setattr(world.calculator, "calculate", lambda *a, **k: pytest.fail(message))
 
 
-def reopen(world, *, quota=QUOTA_BYTES):
-    world.objects.close()
-    world.clients.remove(world.objects)
-    material = prepare_material(world.material.data_dir)
-    assert material == world.material
-    return _open_world(world.db_client, world.table, material, world.now, world.clients, quota=quota)
-
-
-def body(world, key):
-    response = world.objects.get_object(Bucket=BUCKET, Key=key)
-    stream = response["Body"]
-    try:
-        value = stream.read(ARTIFACT_LIMIT + 1)
-    finally:
-        stream.close()
-    assert len(value) == response["ContentLength"] <= ARTIFACT_LIMIT
-    return value
-
-
-def chart_bytes(world, url):
-    parts = urlsplit(url)
-    assert parts.scheme == "http" and parts.netloc == "127.0.0.1:8000" and not parts.query and not parts.fragment
-    return world.charts.read_path(parts.path)
-
-
-def corrupt_file(world, key):
-    ident = world.objects._key(BUCKET, key)
-    path = world.objects.material.object_dir / (ident + ".object")
-    original = path.read_bytes()
-    assert original
-    path.write_bytes(original[:-1] + bytes((original[-1] ^ 1,)))
-    return path, original
-
-
-def result(world, token, attempt):
-    return api(world, "GET", "attempts/" + attempt["attempt_id"] + "/calculation", token=token)
-
-
-def accepted(world, *, program="mock-cpr", data=None):
-    token = login(world)
-    attempt = create(world, token, program=program)
-    measurement = data if data is not None else cpr_session([(30, 2)] * 3)
-    assert submit(world, token, attempt, data=measurement)["statusCode"] == 202
-    saved = stored_attempt(world, token, attempt)
-    return token, attempt, saved["job_id"], measurement
-
-
-@pytest.mark.parametrize("program,data,completed,status", [
-    ("mock-cpr", cpr_session([(30, 2)] * 3), False, "pending_policy"),
-    ("mock-compression-only", comp_session(60), True, "evaluated"),
-], ids=("cpr-pending", "only-completed"))
-def test_real_file_pipeline_reopens_without_recalculation(files_journey, program, data, completed, status, monkeypatch):
+@pytest.mark.parametrize("course,data,completed,status", [
+    (CPR, CPR_DATA, True, "evaluated"),
+    (COMPRESSION, comp_session(60), True, "evaluated"),
+], ids=("cpr-completed", "only-completed"))
+def test_real_file_pipeline_reopens_without_recalculation(files_journey, course, data, completed, status, monkeypatch):
     world = files_journey
-    token, attempt, job_id, measurement = accepted(world, program=program, data=data)
-    assert world.worker.process(job_id)
-    job = world.jobs.get_job(job_id)
-    loaded = world.storage.load_input(job["input_manifest_ref"], input_binding(job))
-    assert loaded.projected.cpr_bytes == body(world, loaded.raw_base + ".bin") == measurement
-    assert json.loads(body(world, loaded.raw_base + ".request.json"))["raw_base"] == loaded.raw_base
-    assert type(json.loads(body(world, loaded.raw_base + ".meta.json"))) is dict
-    raw = world.storage.load_calculation(job["planned_candidate_ref"], call_binding(job))
+    token, attempt, job_id = accepted(world, course, data=data)
+    assert world.work(job_id=job_id)
+    job = job_row(world, job_id)
+    storage = world.worker.storage
+    loaded = storage.load_input(job["input_manifest_ref"], input_binding(job))
+    assert loaded.projected.cpr_bytes == world.body(loaded.raw_base + ".bin") == data
+    assert json.loads(world.body(loaded.raw_base + ".request.json"))["raw_base"] == loaded.raw_base
+    assert type(json.loads(world.body(loaded.raw_base + ".meta.json"))) is dict
+    raw = storage.load_calculation(job["planned_candidate_ref"], call_binding(job))
     assert json.loads(raw)["goal"]["status"] == status
     publication = job["chart_publication"]
-    published = body(world, publication["key"])
+    published = world.body(publication["key"])
     assert hashlib.sha256(published).hexdigest() == publication["published_body_sha256"]
-    final = world.storage.read_final(job["final_ref"], call_binding(job), publication)
+    final = storage.read_final(job["final_ref"], call_binding(job), publication)
     assert "submit_arc" not in json.loads(final)
-    response = result(world, token, attempt)
-    assert response["statusCode"] == 200
-    calculation = json.loads(response["body"])
-    assert calculation["submit_arc"] == {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
-    url = calculation["chart_dataset_url"]
-    assert chart_bytes(world, url) == published
-    saved = stored_attempt(world, token, attempt)
+    response = calculation(world, token, attempt["attemptId"])
+    assert response.status == 200
+    assert response.data["submit_arc"] == DUMMY_SUBMISSION
+    url = response.data["calculation"]["chart_dataset_url"]
+    assert world.chart_bytes(url) == published
+    saved = attempt_row(world, attempt["attemptId"])
     assert saved["evaluation"]["program_completed"] is completed
     assert saved["evaluation"]["goal"]["status"] == status
-    progress = world.state.get_progress(world.auth.authenticate(token))
-    before = {str(path.relative_to(world.material.data_dir)): hashlib.sha256(path.read_bytes()).hexdigest()
-              for path in world.material.data_dir.rglob("*") if path.is_file()}
-    restarted = reopen(world)
-    monkeypatch.setattr(restarted.adapter, "calculate", lambda *a, **k: pytest.fail("A committed file result was recalculated."))
-    assert restarted.worker.process(job_id)
-    assert result(restarted, token, attempt) == response
-    assert submit(restarted, token, attempt, data=measurement) == response
-    assert chart_bytes(restarted, url) == published
-    assert stored_attempt(restarted, token, attempt) == saved
-    assert restarted.state.get_progress(restarted.auth.authenticate(token)) == progress
-    after = {str(path.relative_to(restarted.material.data_dir)): hashlib.sha256(path.read_bytes()).hexdigest()
-             for path in restarted.material.data_dir.rglob("*") if path.is_file()}
-    assert after == before
+    rows = course_rows(world, attempt["attemptId"])
+    before = world.file_hashes()
+    restarted = world.reopen()
+    forbid_calculation(monkeypatch, restarted, "A committed file result was recalculated.")
+    assert restarted.work(job_id=job_id)
+    assert calculation(restarted, token, attempt["attemptId"]).body == response.body
+    assert submit(restarted, token, attempt, data=data).body == response.body
+    assert restarted.chart_bytes(url) == published
+    assert attempt_row(restarted, attempt["attemptId"]) == saved
+    assert course_rows(restarted, attempt["attemptId"]) == rows
+    assert item_view(restarted, token, course, course.practice_link_id)["isCompleted"] is completed
+    assert restarted.file_hashes() == before
 
 
 def test_link_expiry_refresh_and_logout_do_not_rewrite_the_calculation(files_journey):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world)
-    assert world.worker.process(job_id)
-    response = result(world, token, attempt)
-    original_url = json.loads(response["body"])["chart_dataset_url"]
-    published = chart_bytes(world, original_url)
-    world.now[0] += 299
-    assert chart_bytes(world, original_url) == published
-    world.now[0] += 1
+    token, attempt, job_id = accepted(world, CPR, data=CPR_DATA)
+    assert world.work(job_id=job_id)
+    response = calculation(world, token, attempt["attemptId"])
+    original_url = response.data["calculation"]["chart_dataset_url"]
+    published = world.chart_bytes(original_url)
+    world.advance(299)
+    assert world.chart_bytes(original_url) == published
+    world.advance(1)
     with pytest.raises(JourneyError) as expired:
-        chart_bytes(world, original_url)
+        world.chart_bytes(original_url)
     assert expired.value.code == "NOT_FOUND"
-    refreshed = api(world, "GET", "attempts/" + attempt["attempt_id"] + "/chart-link", token=token)
-    assert refreshed["statusCode"] == 200
-    fresh_url = json.loads(refreshed["body"])["chart_dataset_url"]
-    assert fresh_url != original_url and chart_bytes(world, fresh_url) == published
-    assert result(world, token, attempt) == response
-    assert api(world, "DELETE", "session", token=token)["statusCode"] == 204
-    assert chart_bytes(world, fresh_url) == published
-    assert api(world, "GET", "attempts/" + attempt["attempt_id"] + "/chart-link", token=token)["statusCode"] == 403
-    restarted = reopen(world)
-    assert chart_bytes(restarted, fresh_url) == published
-    restarted.now[0] += 300
+    refreshed = chart_link(world, token, attempt["attemptId"])
+    assert refreshed.status == 200
+    fresh_url = refreshed.data["url"]
+    assert fresh_url != original_url and world.chart_bytes(fresh_url) == published
+    # The committed calculation (and its original chart link) is frozen; only the envelope time moves.
+    assert calculation(world, token, attempt["attemptId"]).data == response.data
+    world.logout(token)
+    assert world.chart_bytes(fresh_url) == published
+    denied = chart_link(world, token, attempt["attemptId"])
+    assert denied.status == 403 and denied.error["code"] == "SESSION_REVOKED"
+    restarted = world.reopen()
+    assert restarted.chart_bytes(fresh_url) == published
+    restarted.advance(300)
     with pytest.raises(JourneyError) as expired:
-        chart_bytes(restarted, fresh_url)
+        restarted.chart_bytes(fresh_url)
     assert expired.value.code == "NOT_FOUND"
+
+
+def test_installation_keyed_auth_survives_reopen_and_other_keys_are_refused(files_journey, store):
+    world = files_journey
+    material = world.material
+    assert (world.api.auth.environment, world.api.auth.current_key_version) == (material.environment,
+                                                                                 material.key_version)
+    first = world.login()
+    created = start(world, first.token, CPR)
+    credential = created["resumeCredential"]
+    restarted = world.reopen()
+    assert restarted.material == material
+    assert (restarted.api.auth.environment, restarted.api.auth.current_key_version) == (material.environment,
+                                                                                         material.key_version)
+    # A token issued before the restart is still honoured; ending it lets another session resume.
+    restarted.session(first.token)
+    restarted.logout(first.token)
+    # A process with the same key version but not this installation's key cannot resume the attempt.
+    stranger = V2Journey(store, resume_keys={material.key_version: b"not-this-installation-resume-key"},
+                         key_version=material.key_version)
+    refused = stranger.reauthorize(stranger.login().token, created["attemptId"], credential, expected=404)
+    assert refused["code"] == "NOT_FOUND"
+    assert attempt_row(restarted, created["attemptId"])["bound_session_id"] == first.session_id
+    # The reopened installation accepts the credential it issued before the restart.
+    second = restarted.login()
+    resumed = restarted.reauthorize(second.token, created["attemptId"], credential)
+    assert resumed["attemptId"] == created["attemptId"]
+    row = attempt_row(restarted, created["attemptId"])
+    assert row["state"] == "created" and row["bound_session_id"] == second.session_id
 
 
 def test_full_quota_preserves_committed_reads_retries_and_existing_chart(files_journey):
     world = files_journey
-    token, attempt, job_id, measurement = accepted(world)
-    assert world.worker.process(job_id)
-    response = result(world, token, attempt)
-    url = json.loads(response["body"])["chart_dataset_url"]
-    published = chart_bytes(world, url)
+    token, attempt, job_id = accepted(world, CPR, data=CPR_DATA)
+    assert world.work(job_id=job_id)
+    response = calculation(world, token, attempt["attemptId"])
+    url = response.data["calculation"]["chart_dataset_url"]
+    published = world.chart_bytes(url)
     # Lower only total quota; an artifact read must retain its original bound.
-    restarted = reopen(world, quota=1)
-    assert result(restarted, token, attempt) == response
-    assert submit(restarted, token, attempt, data=measurement) == response
-    assert chart_bytes(restarted, url) == published
-    ref = restarted.jobs.get_job(job_id)["planned_candidate_ref"]
-    old = restarted.objects.get_object(Bucket=BUCKET, Key=ref["key"])
+    restarted = world.reopen(quota=1)
+    assert calculation(restarted, token, attempt["attemptId"]).body == response.body
+    assert submit(restarted, token, attempt, data=CPR_DATA).body == response.body
+    assert restarted.chart_bytes(url) == published
+    ref = job_row(restarted, job_id)["planned_candidate_ref"]
+    old = restarted.objects.get_object(Bucket=FILES_BUCKET, Key=ref["key"])
     stream = old["Body"]
     try:
         raw = stream.read(ARTIFACT_LIMIT + 1)
     finally:
         stream.close()
-    restarted.objects.put_object(Bucket=BUCKET, Key=ref["key"], Body=raw, Metadata=old["Metadata"])
-    new = create(restarted, token, request_id="after-full")
-    denied = submit(restarted, token, new, data=measurement)
-    assert denied["statusCode"] == 503
-    assert stored_attempt(restarted, token, new)["state"] == "created"
-    assert result(restarted, token, attempt) == response
+    restarted.objects.put_object(Bucket=FILES_BUCKET, Key=ref["key"], Body=raw, Metadata=old["Metadata"])
+    new = start(restarted, token, CPR)
+    denied = submit(restarted, token, new, data=CPR_DATA)
+    assert denied.status == 503 and denied.error["code"] == "TEMPORARILY_UNAVAILABLE"
+    created = attempt_row(restarted, new["attemptId"])
+    assert created["state"] == "created" and created.get("job_id") is None
+    assert calculation(restarted, token, attempt["attemptId"]).body == response.body
 
 
 def test_selected_candidate_recovers_using_reopened_real_files(files_journey, monkeypatch):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world)
-
-    def interrupted(*args, **kwargs):
-        raise JourneyError("TEMPORARILY_UNAVAILABLE")
-
-    monkeypatch.setattr(world.jobs, "mark_calculation_saved", interrupted)
-    assert not world.worker.process(job_id)
-    old = world.jobs.get_job(job_id)
-    assert world.storage.load_calculation(old["planned_candidate_ref"], call_binding(old)) is not None
-    restarted = reopen(world)
+    token, attempt, job_id = accepted(world, CPR, data=CPR_DATA)
+    monkeypatch.setattr(world.worker.jobs, "mark_calculation_saved", unavailable)
+    assert not world.work(job_id=job_id)
+    old = job_row(world, job_id)
+    assert world.worker.storage.load_calculation(old["planned_candidate_ref"], call_binding(old)) is not None
+    restarted = world.reopen()
     restarted.now[0] = old["next_due_at"]
-    monkeypatch.setattr(restarted.adapter, "calculate", lambda *a, **k: pytest.fail("A durable file candidate was recalculated."))
-    assert restarted.worker.process(job_id)
-    assert restarted.jobs.get_job(job_id)["call_id"] == old["call_id"]
-    response = result(restarted, token, attempt)
-    assert response["statusCode"] == 200
-    assert chart_bytes(restarted, json.loads(response["body"])["chart_dataset_url"])
-    assert stored_attempt(restarted, token, attempt)["evaluation"]["goal"]["status"] == "pending_policy"
+    forbid_calculation(monkeypatch, restarted, "A durable file candidate was recalculated.")
+    assert restarted.work(job_id=job_id)
+    assert job_row(restarted, job_id)["call_id"] == old["call_id"]
+    response = calculation(restarted, token, attempt["attemptId"])
+    assert response.status == 200
+    assert restarted.chart_bytes(response.data["calculation"]["chart_dataset_url"])
+    assert attempt_row(restarted, attempt["attemptId"])["evaluation"]["goal"] == {
+        "kind": "cycles", "required": 3, "observed": 3, "met": True, "status": "evaluated"}
 
 
 def test_reusing_selected_chart_after_final_commit_interruption_is_idempotent(files_journey, monkeypatch):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world)
-
-    def interrupted(*args, **kwargs):
-        raise JourneyError("TEMPORARILY_UNAVAILABLE")
-
-    monkeypatch.setattr(world.jobs, "finalize", interrupted)
-    assert not world.worker.process(job_id)
-    old = world.jobs.get_job(job_id)
+    token, attempt, job_id = accepted(world, CPR, data=CPR_DATA)
+    monkeypatch.setattr(world.worker.jobs, "finalize", unavailable)
+    assert not world.work(job_id=job_id)
+    old = job_row(world, job_id)
     assert old["chart_snapshot"]["kind"] == "snapshot"
-    raw_base = world.storage.load_input(old["input_manifest_ref"], input_binding(old)).raw_base
-    published = body(world, raw_base + ".json")
-    restarted = reopen(world)
+    raw_base = world.worker.storage.load_input(old["input_manifest_ref"], input_binding(old)).raw_base
+    published = world.body(raw_base + ".json")
+    restarted = world.reopen()
     restarted.now[0] = old["next_due_at"]
-    monkeypatch.setattr(restarted.adapter, "calculate", lambda *a, **k: pytest.fail("A selected chart forced recalculation."))
-    assert restarted.worker.process(job_id)
-    current = restarted.jobs.get_job(job_id)
+    forbid_calculation(monkeypatch, restarted, "A selected chart forced recalculation.")
+    assert restarted.work(job_id=job_id)
+    current = job_row(restarted, job_id)
     assert current["chart_snapshot"] == old["chart_snapshot"]
-    assert body(restarted, current["chart_publication"]["key"]) == published
-    assert result(restarted, token, attempt)["statusCode"] == 200
+    assert restarted.body(current["chart_publication"]["key"]) == published
+    assert calculation(restarted, token, attempt["attemptId"]).status == 200
 
 
 def test_conflicting_write_cannot_replace_committed_result_or_chart(files_journey):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world, program="mock-compression-only", data=comp_session(60))
-    assert world.worker.process(job_id)
-    job = world.jobs.get_job(job_id)
-    response = result(world, token, attempt)
-    saved_progress = world.state.get_progress(world.auth.authenticate(token))
+    token, attempt, job_id = accepted(world, COMPRESSION, data=comp_session(60))
+    assert world.work(job_id=job_id)
+    job = job_row(world, job_id)
+    response = calculation(world, token, attempt["attemptId"])
+    rows = course_rows(world, attempt["attemptId"])
     for key in (job["final_ref"]["key"], job["chart_publication"]["key"]):
-        original = world.objects.get_object(Bucket=BUCKET, Key=key)
+        original = world.objects.get_object(Bucket=FILES_BUCKET, Key=key)
         stream = original["Body"]
         try:
             content = stream.read(ARTIFACT_LIMIT + 1)
         finally:
             stream.close()
         with pytest.raises(ClientError) as caught:
-            world.objects.put_object(Bucket=BUCKET, Key=key, Body=content + b" ", Metadata=original["Metadata"])
+            world.objects.put_object(Bucket=FILES_BUCKET, Key=key, Body=content + b" ", Metadata=original["Metadata"])
         assert caught.value.response["Error"]["Code"] == "LocalStorageUnavailable"
-        assert body(world, key) == content
-    assert result(world, token, attempt) == response
-    assert world.state.get_progress(world.auth.authenticate(token)) == saved_progress
+        assert world.body(key) == content
+    assert calculation(world, token, attempt["attemptId"]).body == response.body
+    assert course_rows(world, attempt["attemptId"]) == rows
 
 
 @pytest.mark.parametrize("kind", ["final", "chart", "raw"])
 def test_file_corruption_fails_closed_without_rewriting_committed_progress(files_journey, kind, monkeypatch):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world, program="mock-compression-only", data=comp_session(60))
-    assert world.worker.process(job_id)
-    saved_attempt = stored_attempt(world, token, attempt)
-    saved_progress = world.state.get_progress(world.auth.authenticate(token))
-    job = world.jobs.get_job(job_id)
-    loaded = world.storage.load_input(job["input_manifest_ref"], input_binding(job))
-    response = result(world, token, attempt)
-    url = json.loads(response["body"])["chart_dataset_url"]
+    token, attempt, job_id = accepted(world, COMPRESSION, data=comp_session(60))
+    assert world.work(job_id=job_id)
+    saved_attempt, saved_rows = attempt_row(world, attempt["attemptId"]), course_rows(world, attempt["attemptId"])
+    job = job_row(world, job_id)
+    loaded = world.worker.storage.load_input(job["input_manifest_ref"], input_binding(job))
+    response = calculation(world, token, attempt["attemptId"])
+    url = response.data["calculation"]["chart_dataset_url"]
     key = {"final": job["final_ref"]["key"], "chart": job["chart_publication"]["key"],
            "raw": loaded.raw_base + ".bin"}[kind]
-    path, original = corrupt_file(world, key)
-    monkeypatch.setattr(world.adapter, "calculate", lambda *a, **k: pytest.fail("Corrupt committed data triggered recalculation."))
+    path, original = world.corrupt_file(key)
+    forbid_calculation(monkeypatch, world, "Corrupt committed data triggered recalculation.")
     if kind == "final":
-        failed = result(world, token, attempt)
-        assert failed["statusCode"] == 503
-        assert json.loads(failed["body"])["error"]["code"] == "TEMPORARILY_UNAVAILABLE"
+        failed = calculation(world, token, attempt["attemptId"])
+        assert failed.status == 503 and failed.error["code"] == "TEMPORARILY_UNAVAILABLE"
     elif kind == "chart":
         with pytest.raises(JourneyError) as denied:
-            chart_bytes(world, url)
+            world.chart_bytes(url)
         assert denied.value.code == "NOT_FOUND"
-        assert api(world, "GET", "attempts/" + attempt["attempt_id"] + "/chart-link", token=token)["statusCode"] == 503
-        assert result(world, token, attempt) == response
+        assert chart_link(world, token, attempt["attemptId"]).status == 503
+        assert calculation(world, token, attempt["attemptId"]).body == response.body
     else:
         with pytest.raises(JourneyError) as invalid:
-            world.storage.load_input(job["input_manifest_ref"], input_binding(job))
+            world.worker.storage.load_input(job["input_manifest_ref"], input_binding(job))
         assert invalid.value.code == "TEMPORARILY_UNAVAILABLE"
-        assert result(world, token, attempt) == response
-    assert world.worker.process(job_id)
-    assert stored_attempt(world, token, attempt) == saved_attempt
-    assert world.state.get_progress(world.auth.authenticate(token)) == saved_progress
+        assert calculation(world, token, attempt["attemptId"]).body == response.body
+    assert world.work(job_id=job_id)
+    assert attempt_row(world, attempt["attemptId"]) == saved_attempt
+    assert course_rows(world, attempt["attemptId"]) == saved_rows
     # A test-only exact restoration demonstrates that no automatic replacement
     # calculation or new progress was required to recover the original bytes.
     path.write_bytes(original)
-    assert result(world, token, attempt) == response
-    assert chart_bytes(world, url)
+    assert calculation(world, token, attempt["attemptId"]).body == response.body
+    assert world.chart_bytes(url)
 
 
 def test_corrupt_saved_candidate_is_not_treated_as_absent_and_recalculated(files_journey, monkeypatch):
     world = files_journey
-    token, attempt, job_id, _ = accepted(world)
-    mark = world.jobs.mark_calculation_saved
-
-    def interrupted(*args, **kwargs):
-        raise JourneyError("TEMPORARILY_UNAVAILABLE")
-
-    monkeypatch.setattr(world.jobs, "mark_calculation_saved", interrupted)
-    assert not world.worker.process(job_id)
-    old = world.jobs.get_job(job_id)
-    path, original = corrupt_file(world, old["planned_candidate_ref"]["key"])
-    monkeypatch.setattr(world.jobs, "mark_calculation_saved", mark)
-    monkeypatch.setattr(world.adapter, "calculate", lambda *a, **k: pytest.fail("Corrupt candidate was treated as missing input."))
+    token, attempt, job_id = accepted(world, CPR, data=CPR_DATA)
+    monkeypatch.setattr(world.worker.jobs, "mark_calculation_saved", unavailable)
+    assert not world.work(job_id=job_id)
+    old = job_row(world, job_id)
+    path, original = world.corrupt_file(old["planned_candidate_ref"]["key"])
+    monkeypatch.undo()
+    forbid_calculation(monkeypatch, world, "Corrupt candidate was treated as missing input.")
     world.now[0] = old["next_due_at"]
-    assert not world.worker.process(job_id)
-    blocked = world.jobs.get_job(job_id)
+    assert not world.work(job_id=job_id)
+    blocked = job_row(world, job_id)
     assert blocked["call_id"] == old["call_id"] and blocked["planned_candidate_ref"] == old["planned_candidate_ref"]
-    assert stored_attempt(world, token, attempt)["evaluation"] is None
-    assert world.state.get_progress(world.auth.authenticate(token))["slots"]["mock-cpr:adult"]["completed"] is False
+    assert blocked.get("calculation_restarts", 0) == 0
+    evidence = world.worker.course_recovery.inspect(job_id, None, blocked["fence"])
+    assert (evidence.candidate_state, evidence.action) == ("unreadable", "wait_integrity")
+    stored = attempt_row(world, attempt["attemptId"])
+    assert stored["state"] == "outcome_unknown" and stored["evaluation"] is None
+    assert course_rows(world, attempt["attemptId"]).item["completed"] is False
     path.write_bytes(original)
+    monkeypatch.undo()
     world.now[0] = blocked["next_due_at"]
-    assert world.worker.process(job_id)
-    assert result(world, token, attempt)["statusCode"] == 200
+    assert world.work(job_id=job_id)
+    assert calculation(world, token, attempt["attemptId"]).status == 200
+    assert len(world.calculator.calls) == 1
 
 
 def test_product_storage_does_not_import_test_storage_or_global_sdk_clients():

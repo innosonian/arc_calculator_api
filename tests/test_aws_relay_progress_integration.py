@@ -9,19 +9,8 @@ import pytest
 from mock_journey.aws_runtime import build_runtime
 from mock_journey.dispatch import run
 from mock_journey.errors import JourneyError
-from tests.relay_progress_support import RelaySdk
-from tests.test_aws_runtime import configuration, context, environment
-
-
-def assembled(monkeypatch, *, config=None, initialize=True):
-    import mock_journey.worker_runtime as runtime_module
-    factory = RelaySdk()
-    runtime = build_runtime("relay", environment("relay", config), client_factory=factory)
-    if initialize:
-        factory.db.put_item(**runtime.target.progress.initialization_request())
-    factory.db.calls.clear()
-    monkeypatch.setattr(runtime_module, "get_relay", lambda: runtime.target)
-    return runtime, factory
+from tests.relay_progress_support import RelaySdk, assembled  # noqa: F401 (re-export)
+from tests.aws_runtime_support import configuration, context, environment
 
 
 def test_aws_composition_requires_shared_persistent_progress_without_constructor_io(monkeypatch):

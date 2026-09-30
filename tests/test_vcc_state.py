@@ -1,116 +1,22 @@
 """V06/V07/V08/V10 course repository tests against an explicit fake store. No sleep."""
 
-from copy import deepcopy
-from pathlib import Path
-
 import pytest
 
 from mock_journey.course_contracts import (
-    POLICY_VERSION, AssignmentBinding, AttemptTemplate, ContentReport, CourseBinding, CourseBundle,
-    CourseScope, LearnerContext, Placement, PublicIds, StartCommand, sealed_bundle,
+    POLICY_VERSION, AttemptTemplate, ContentReport, CourseBinding, StartCommand,
 )
 from mock_journey.course_errors import CourseError
-from mock_journey.course_policy import CoursePolicy, learner_key, placement_key, scope_key
-from mock_journey.course_settings import fixture_course_settings
-from mock_journey.course_state import (
-    HOOK_REQUESTS, DynamoCourseRepository, InMemoryBlobStore, InMemoryCourseStore,
-    _final_key, _head_key, _item_key, _session_key, _user_key,
+from mock_journey.course_policy import learner_key, placement_key, scope_key
+from mock_journey.storage_keys import (
+    course_final_key, course_head_key, course_item_key, session_key, user_key,
 )
 from mock_journey.models import AuthContext
 from mock_journey.typed import json_bytes, parse_json
-
-
-ROOT = Path(__file__).resolve().parents[1]
-BUNDLE_DOC = parse_json((ROOT / "tests" / "fixtures" / "vcc_contract" / "v1" / "course_bundle.json").read_bytes())
-EPOCH = "80000000-0000-4000-8000-000000000001"
-SESSION = "60000000-0000-4000-8000-000000000001"
-REQUEST = "10000000-0000-4000-8000-000000000001"
-REQUEST_B = "11000000-0000-4000-8000-000000000001"
-ATTEMPT = "50000000-0000-4000-8000-000000000001"
-START = "40000000-0000-4000-8000-000000000001"
-REPORT_A = "20000000-0000-4000-8000-000000000001"
-REPORT_B = "30000000-0000-4000-8000-000000000001"
-
-
-def learner_from(name="real"):
-    return LearnerContext(**BUNDLE_DOC["learners"][name])
-
-
-def placement_from(doc):
-    return Placement(
-        source_id=doc["source_id"], public_link_id=doc["public_link_id"], public_item_id=doc["public_item_id"],
-        position=doc["position"], kind=doc["kind"], content_version=doc["content_version"],
-        content_identity_json=deepcopy(doc["content_identity"]), detail_json=deepcopy(doc["detail"]),
-        execution_json=deepcopy(doc["execution"]), execution_status=doc["execution_status"],
-        duration_ms=doc["duration_ms"],
-    )
-
-
-def assignment_doc(enrollment_public_id=501):
-    return next(item for item in BUNDLE_DOC["assignments"] if item["enrollment_public_id"] == enrollment_public_id)
-
-
-def make_bundle(enrollment_public_id=501):
-    assignment = assignment_doc(enrollment_public_id)
-    learner = learner_from()
-    scope = CourseScope(learner, assignment["scope"][3], assignment["scope"][4])
-    public = PublicIds(assignment["course_public_id"], assignment["enrollment_public_id"], assignment["progress_id"])
-    return sealed_bundle(CourseBundle(
-        scope=scope, public_ids=public, source_revision=assignment["source_revision"],
-        mapping_version=BUNDLE_DOC["mapping_version"], definition_hash=assignment["definition_hash"],
-        placements=[placement_from(item) for item in BUNDLE_DOC["placements"]],
-        course_json=deepcopy(BUNDLE_DOC["course_json"]),
-        source_progress_json=deepcopy(BUNDLE_DOC["source_progress_json"]),
-    ))
-
-
-def binding_of(bundle):
-    return AssignmentBinding(bundle.scope, bundle.public_ids)
-
-
-def seed_auth(store, *, epoch=EPOCH, session_id=SESSION, principal=None, expires_at=2_000_000):
-    learner = learner_from()
-    principal = principal or learner.principal
-    store.seed({
-        **_session_key(session_id),
-        "session_id": session_id, "principal": principal, "token_hash": "hash-only",
-        "issued_at": 1, "expires_at": expires_at, "status": "active", "revision": 0,
-    })
-    store.seed({
-        **_user_key(principal),
-        "principal": principal, "epoch": epoch, "revision": 0, "slots": {},
-    })
-    return AuthContext(session_id, principal, 0, expires_at)
-
-
-class SequencedUuid:
-    def __init__(self, values):
-        self.values = list(values)
-
-    def __call__(self):
-        return self.values.pop(0)
-
-
-def repository(store=None, blobs=None, clock=1_000_000, uuids=None):
-    store = store or InMemoryCourseStore()
-    blobs = blobs or InMemoryBlobStore()
-    uuid_factory = SequencedUuid(uuids or [START, ATTEMPT, REPORT_B]) if not callable(uuids) else uuids
-    repo = DynamoCourseRepository(
-        store, fixture_course_settings(), CoursePolicy(fixture_course_settings()), blobs,
-        clock=lambda: clock, uuid_factory=uuid_factory,
-    )
-    return repo, store, blobs
-
-
-def provision(repo, auth, bundle):
-    ticket = repo.begin_inventory(auth, bundle.scope.learner)
-    inventory = repo.apply_inventory(auth, ticket, (binding_of(bundle),))
-    assert inventory.state == "ready"
-    repo.ensure_epoch(auth, binding_of(bundle))
-    refresh = repo.begin_refresh(auth, binding_of(bundle), ticket)
-    gate = repo.apply_refresh(auth, refresh, bundle)
-    assert gate.state == "ready"
-    return repo.load_start_view(auth, StartCommand(REQUEST, bundle.public_ids.enrollment_id, bundle.public_ids.course_id, 1001, bundle.definition_hash))
+from tests.vcc_hook_requests import COURSE_STATE_HOOK_REQUESTS as HOOK_REQUESTS
+from tests.vcc_state_support import (  # noqa: F401 (re-export)
+    ATTEMPT, BUNDLE_DOC, EPOCH, REPORT_A, REPORT_B, REQUEST, REQUEST_B, ROOT, SESSION, START, SequencedUuid,
+    assignment_doc, binding_of, learner_from, make_bundle, placement_from, provision, repository, seed_auth,
+)
 
 
 class TestV06WaitingVersusReady:
@@ -213,15 +119,15 @@ class TestV08EpochHeadAndFinal:
         gate = repo.ensure_epoch(auth, binding_of(bundle))
         assert gate.state == "waiting"
         scope = scope_key(bundle.scope)
-        head = store.get_item(_head_key(scope, EPOCH))
-        final = store.get_item(_final_key(scope, EPOCH))
+        head = store.get_item(course_head_key(scope, EPOCH))
+        final = store.get_item(course_final_key(scope, EPOCH))
         assert head is not None and final is not None
         assert head["completed_placements"] == []
         assert final["phase"] == "free"
-        assert store.get_item(_item_key(scope, EPOCH, placement_key(scope, "src-place-1001"))) is None
+        assert store.get_item(course_item_key(scope, EPOCH, placement_key(scope, "src-place-1001"))) is None
         again = repo.ensure_epoch(auth, binding_of(bundle))
         assert again.revision == gate.revision
-        del store.items[(_final_key(scope, EPOCH)["PK"], _final_key(scope, EPOCH)["SK"])]
+        del store.items[(course_final_key(scope, EPOCH)["PK"], course_final_key(scope, EPOCH)["SK"])]
         with pytest.raises(CourseError) as raised:
             repo.ensure_epoch(auth, binding_of(bundle))
         assert raised.value.status == 503
@@ -233,24 +139,24 @@ class TestV08EpochHeadAndFinal:
         view = provision(repo, auth, bundle)
         repo.start(auth, StartCommand(REQUEST, 501, 101, 1001, bundle.definition_hash), kind="content", view=view, template=None)
         scope = scope_key(bundle.scope)
-        old_head = store.get_item(_head_key(scope, EPOCH))
-        user = store.get_item(_user_key(auth.principal))
+        old_head = store.get_item(course_head_key(scope, EPOCH))
+        user = store.get_item(user_key(auth.principal))
         user["epoch"] = "90000000-0000-4000-8000-000000000009"
         user["revision"] = 1
         store.seed(user)
-        assert store.get_item(_head_key(scope, EPOCH)) == old_head
+        assert store.get_item(course_head_key(scope, EPOCH)) == old_head
         new_auth = AuthContext(auth.session_id, auth.principal, 1, auth.expires_at)
         # Session revision must match USER writes: keep session revision 0 vs user 1 would fail session check.
-        session = store.get_item(_session_key(SESSION))
+        session = store.get_item(session_key(SESSION))
         session["revision"] = 1
         store.seed(session)
         repo.ensure_epoch(new_auth, binding_of(bundle))
-        assert store.get_item(_head_key(scope, EPOCH)) is not None
-        assert store.get_item(_head_key(scope, "90000000-0000-4000-8000-000000000009")) is not None
+        assert store.get_item(course_head_key(scope, EPOCH)) is not None
+        assert store.get_item(course_head_key(scope, "90000000-0000-4000-8000-000000000009")) is not None
 
 
 class TestV10ConcurrentTraining:
-    def test_two_incomplete_starts_then_complete_blocks(self):
+    def test_two_incomplete_starts_then_complete_still_allows_a_new_start(self):
         uuids = [ATTEMPT, "51000000-0000-4000-8000-000000000002", "52000000-0000-4000-8000-000000000003"]
         repo, store, blobs = repository(uuids=uuids)
         auth = seed_auth(store)
@@ -267,7 +173,7 @@ class TestV10ConcurrentTraining:
                 "completed": True, "passed": None,
             }
             progress.setdefault("completed_placements", []).append(key)
-        head = store.get_item(_head_key(view.scope_key, EPOCH))
+        head = store.get_item(course_head_key(view.scope_key, EPOCH))
         head["progress_json"] = json_bytes(progress).decode("utf-8")
         store.seed(head)
         view = repo.load_start_view(auth, StartCommand(REQUEST, 501, 101, 1003, bundle.definition_hash))
@@ -290,31 +196,33 @@ class TestV10ConcurrentTraining:
             kind="attempt", view=view, template=second_template,
         )
         assert first.attempt_id != second.attempt_id
-        item = store.get_item(_item_key(view.scope_key, EPOCH, placement_key(view.scope_key, "src-place-1003")))
+        item = store.get_item(course_item_key(view.scope_key, EPOCH, placement_key(view.scope_key, "src-place-1003")))
         item["completed"] = True
         item["revision"] = item["revision"] + 1
         store.seed(item)
-        progress = parse_json(store.get_item(_head_key(view.scope_key, EPOCH))["progress_json"])
+        progress = parse_json(store.get_item(course_head_key(view.scope_key, EPOCH))["progress_json"])
         key = placement_key(view.scope_key, "src-place-1003")
         progress.setdefault("completed_placements", []).append(key)
         progress.setdefault("items", {})[key] = {
             "source_id": "src-place-1003", "public_link_id": 1003, "kind": "training",
             "content_version": "training-v1", "completed": True, "passed": True,
         }
-        head = store.get_item(_head_key(view.scope_key, EPOCH))
+        head = store.get_item(course_head_key(view.scope_key, EPOCH))
         head["progress_json"] = json_bytes(progress).decode("utf-8")
         store.seed(head)
-        blocked_view = repo.load_start_view(auth, StartCommand("12000000-0000-4000-8000-000000000001", 501, 101, 1003, bundle.definition_hash))
-        with pytest.raises(CourseError) as raised:
-            repo.start(
-                auth, StartCommand("12000000-0000-4000-8000-000000000001", 501, 101, 1003, bundle.definition_hash),
-                kind="attempt", view=blocked_view,
-                template=AttemptTemplate(
-                    {"attempt_id": "52000000-0000-4000-8000-000000000003", "program_id": "mock-cpr", "target": "adult", "definition_json": "{}"},
-                    template.binding,
-                ),
-            )
-        assert raised.value.code == "ITEM_ALREADY_COMPLETED"
+        # D130: the completed item is started again; the ITEM row keeps its completion.
+        later_view = repo.load_start_view(auth, StartCommand("12000000-0000-4000-8000-000000000001", 501, 101, 1003, bundle.definition_hash))
+        third = repo.start(
+            auth, StartCommand("12000000-0000-4000-8000-000000000001", 501, 101, 1003, bundle.definition_hash),
+            kind="attempt", view=later_view,
+            template=AttemptTemplate(
+                {"attempt_id": "52000000-0000-4000-8000-000000000003", "program_id": "mock-cpr", "target": "adult",
+                 "definition_json": bundle.placements[2].execution_json.decode()},
+                template.binding,
+            ),
+        )
+        assert third.created is True and third.attempt_id == "52000000-0000-4000-8000-000000000003"
+        assert store.get_item(course_item_key(view.scope_key, EPOCH, key))["completed"] is True
 
 
 class TestContentReportAndHistorical:
@@ -340,14 +248,14 @@ class TestContentReportAndHistorical:
             report=ContentReport(REPORT_A, started.start_id, "video-v1", "video_segments", [[0, 10000]]),
         )
         assert parse_json(replay.response_json)["isCompleted"] is False
-        original_keys = [_head_key(view.scope_key, EPOCH), _final_key(view.scope_key, EPOCH),
-                         _item_key(view.scope_key, EPOCH, placement_key(view.scope_key, bundle.placements[0].source_id))]
+        original_keys = [course_head_key(view.scope_key, EPOCH), course_final_key(view.scope_key, EPOCH),
+                         course_item_key(view.scope_key, EPOCH, placement_key(view.scope_key, bundle.placements[0].source_id))]
         original_rows = [store.get_item(key) for key in original_keys]
-        user = store.get_item(_user_key(auth.principal))
+        user = store.get_item(user_key(auth.principal))
         user["epoch"] = "90000000-0000-4000-8000-000000000009"
         user["revision"] = 1
         store.seed(user)
-        session = store.get_item(_session_key(SESSION))
+        session = store.get_item(session_key(SESSION))
         session["revision"] = 1
         store.seed(session)
         late_auth = AuthContext(SESSION, auth.principal, 1, auth.expires_at)
@@ -360,7 +268,7 @@ class TestContentReportAndHistorical:
         assert late["isCompleted"] is None
         assert late["isPassed"] is None
         assert late["courseStatus"] is None
-        current = store.get_item(_head_key(view.scope_key, "90000000-0000-4000-8000-000000000009"))
+        current = store.get_item(course_head_key(view.scope_key, "90000000-0000-4000-8000-000000000009"))
         assert current is None
         assert [store.get_item(key) for key in original_keys] == original_rows
 

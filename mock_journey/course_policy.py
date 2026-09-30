@@ -7,13 +7,14 @@ from mock_journey.course_contracts import (
     require_uuid, scope_identity, learner_identity, validate_availability,
 )
 from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import fail, require_text
 from mock_journey.course_settings import CourseSettings
 from mock_journey.typed import digest, json_bytes, parse_json
 
 
 PUBLIC_SYMBOLS = (
     "CoursePolicy", "learner_key", "scope_key", "placement_key", "merge_intervals",
-    "empty_progress", "progress_receipt",
+    "empty_progress", "progress_receipt", "resting_phase",
 )
 
 
@@ -43,6 +44,17 @@ def merge_intervals(intervals):
         elif end > merged[-1][1]:
             merged[-1][1] = end
     return merged
+
+
+def resting_phase(final_row) -> str:
+    """The FINAL phase an ended, cancelled or released attempt returns to (D131).
+
+    An enrollment that already holds a pass (``passed_attempt_id``) rests at
+    ``passed``; every other enrollment rests at ``free``. Every writer that
+    releases an active final attempt uses this instead of a literal ``free``.
+    """
+    block = final_row if type(final_row) is dict else {}
+    return "passed" if block.get("passed_attempt_id") else "free"
 
 
 def video_fully_covered(merged, duration_ms):
@@ -82,8 +94,11 @@ def progress_receipt(*, start_id, report_id, course_item_link_id, is_completed, 
     }
 
 
-def _fail(code="INVALID_REQUEST"):
-    raise CourseError(code)
+_INVALID = "INVALID_REQUEST"
+
+
+def _fail(code=_INVALID):
+    fail(code)
 
 
 def _progress(value):
@@ -320,13 +335,12 @@ class CoursePolicy:
                 raise CourseError(execution_error)
         elif placement.kind not in {"video", "document"}:
             _fail()
-        # D5 (7) training completed / final passed / role / prerequisites.
+        # D5 (7) role / prerequisites / one final attempt at a time. A completed
+        # training item or a passed final is started again freely (D130); the
+        # earlier completion or pass is kept by the finalizer (D131).
         progress = _progress(view.progress_json)
         _ignore_lease_fields(progress)
         completed = _completed_keys(view.bundle, progress)
-        item_done = _item_key(view.bundle, placement) in completed or _item_record(progress, view.bundle, placement).get("completed") is True
-        if placement.kind == "training" and not is_final and item_done:
-            raise CourseError("ITEM_ALREADY_COMPLETED")
         if is_final:
             for prior in view.bundle.placements[:-1]:
                 if _item_key(view.bundle, prior) not in completed:
@@ -338,18 +352,14 @@ class CoursePolicy:
                 raise CourseError("FINAL_ASSESSMENT_RECOVERY_REQUIRED")
             if phase == "policy_pending":
                 raise CourseError("COMPLETION_POLICY_PENDING")
-            if phase == "passed":
-                raise CourseError("ASSESSMENT_ALREADY_PASSED")
-            if phase != "free":
+            if phase not in ("free", "passed"):
                 _fail()
-            # Only the atomic finalizer/recovery may release a persisted role.
-            # A previous failed evaluation does not unlock a new active attempt.
+            # Only the atomic finalizer/recovery may release a persisted role;
+            # an unresolved goal policy still blocks a new active attempt.
             evaluation = _evaluation(progress)
             judged = _program_pass_from_evaluation(evaluation) if evaluation is not None else None
             if judged == "pending_policy":
                 raise CourseError("COMPLETION_POLICY_PENDING")
-            if judged is True:
-                raise CourseError("ASSESSMENT_ALREADY_PASSED")
         submit = progress.get("submit_arc")
         if type(submit) is dict:
             # D11/V11: disabled/excluded is not a start gate.
@@ -367,9 +377,7 @@ class CoursePolicy:
             raw_link = evidence.get("courseItemLinkId")
         link_id = require_public_id(raw_link)
         kind = evidence.get("kind")
-        start_version = evidence.get("content_version")
-        if type(start_version) is not str or not start_version:
-            _fail()
+        start_version = require_text(evidence.get("content_version"), code=_INVALID, check_utf8=False)
         course_status = evidence.get("course_status") if evidence.get("course_status") in COURSE_STATUSES else "IN_PROGRESS"
         already = evidence.get("completed") is True
         if report.content_version != start_version:
@@ -506,7 +514,9 @@ class CoursePolicy:
             else:
                 all_complete = False
         final = dict(_final_block(progress))
-        enrollment_passed = final.get("phase") == "passed"
+        # D131: a held pass keeps the course, item and final status while a
+        # later re-attempt is active or after it ends worse.
+        enrollment_passed = final.get("phase") == "passed" or final.get("passed_attempt_id") is not None
         bound_final_matches = (
             last is not None
             and final.get("passed_placement_key") == last_key
@@ -516,7 +526,9 @@ class CoursePolicy:
         evaluation = _evaluation(progress)
         judged = _program_pass_from_evaluation(evaluation) if evaluation is not None else None
         if enrollment_passed:
-            # Completion evidence cannot retrospectively release D78's lock.
+            # D131: progress never regresses. A worse later result cannot take
+            # the enrollment pass away; a replacement definition is still not
+            # completed by it (bound_final_matches).
             final["program_completed"] = True
             last_passed = last_passed or bound_final_matches
         elif judged == "pending_policy":
@@ -530,10 +542,9 @@ class CoursePolicy:
             final["program_completed"] = True
             last_passed = last_passed or bound_final_matches
         elif judged is False:
+            # Not reached with phase "passed": that case is enrollment_passed above.
             final["program_completed"] = False
             final["goal_status"] = final.get("goal_status") or "evaluated"
-            if final.get("phase") == "passed":
-                final["phase"] = "free"
             last_passed = False
         else:
             if final.get("phase") == "passed" or progress.get("passed_final") is True:
@@ -602,8 +613,7 @@ class CoursePolicy:
             _fail()
         if type(is_dummy) is not bool:
             _fail()
-        if type(current_epoch) is not str or not current_epoch:
-            _fail()
+        require_text(current_epoch, code=_INVALID, check_utf8=False)
         result = parse_owned(owned_json_bytes(verified_result_json, allow_none=False))
         if type(result) is not dict:
             _fail("CALCULATOR_CONTRACT_MISMATCH")

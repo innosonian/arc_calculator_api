@@ -1,7 +1,5 @@
 """AWS composition with synthetic settings/SDKs; no real AWS destinations used."""
 
-import base64
-from copy import deepcopy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,60 +9,12 @@ import pytest
 
 from mock_journey.aws_runtime import build_runtime
 from mock_journey.aws_settings import AwsSettings
-from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
+from mock_journey.contracts import (
+    CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+)
 from mock_journey.errors import JourneyError
 from mock_journey.execution_definitions import PROJECTION_VERSION
-from tests.mock_storage_support import MemoryS3
-
-
-def configuration(role="api"):
-    sdk = {"connect_timeout": 0.1, "read_timeout": 0.1, "total_max_attempts": 1, "retry_mode": "standard"}
-    result = {"schema": 1, "role": role, "account_id": "123456789012", "partition": "aws",
-              "environment": "synthetic-dev", "region": "us-east-1",
-              "state": {"table_name": "synthetic-journey", "max_conflict_retries": 4}, "sdk": sdk,
-              "logs": {"capacity": 20, "max_bytes": 16384, "flush_budget_ms": 40,
-                       "response_reserve_ms": 20, "sdk": deepcopy(sdk)}}
-    if role != "relay":
-        result.update(storage={"stage": "dev", "bucket": "synthetic-private-bucket", "directory": "calculator_result/arc",
-                               "input_bytes": 1000000, "artifact_bytes": 8000000},
-                      execution={"current_adapter_version": PENDING_GOAL_ADAPTER_VERSION,
-                                 "projection_version": PROJECTION_VERSION,
-                                 "retained_adapter_versions": [RETAINED_PENDING_GOAL_ADAPTER_VERSION]})
-    result[role] = ({"payload_limit": 1400000} if role == "api" else
-                    {"lease_seconds": 1, "retry_seconds": 1, "renewal_interval_seconds": 0.05,
-                     "renewal_timeout_seconds": 0.1, "processing_reserve_ms": 500} if role == "worker" else
-                    {"queue_url": "https://sqs.us-east-1.amazonaws.com/123456789012/synthetic-jobs",
-                     "lease_seconds": 10, "retry_seconds": 1, "page_size": 10, "max_pages": 2,
-                     "processing_reserve_ms": 500})
-    return result
-
-
-def environment(role="api", config=None):
-    value = configuration(role) if config is None else config
-    result = {"ARC_MOCK_ENABLED": "true", "ARC_JOURNEY_CONFIG": json.dumps(value)}
-    if role == "api":
-        result.update(ARC_MOCK_RESUME_KEYS=json.dumps({"v1": base64.b64encode(b"K" * 32).decode()}),
-                      ARC_MOCK_RESUME_KEY_VERSION="v1")
-    return result
-
-
-def context(remaining=10000):
-    return SimpleNamespace(aws_request_id=str(uuid.uuid4()), get_remaining_time_in_millis=lambda: remaining,
-                           invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:synthetic")
-
-
-class FakeSdk:
-    def __init__(self, s3=None):
-        self.calls, self.closed, self.logs = [], [], []
-        self.s3 = s3 or MemoryS3()
-
-    def __call__(self, service, **kwargs):
-        self.calls.append((service, kwargs))
-        if service == "s3":
-            return self.s3
-        return SimpleNamespace(close=lambda: self.closed.append(service),
-                               put_item=lambda **args: self.logs.append(args),
-                               send_message=lambda **args: {"MessageId": "synthetic"})
+from tests.aws_runtime_support import FakeSdk, configuration, context, course_section, environment  # noqa: F401 (re-export)
 
 
 @pytest.mark.parametrize("role,services", [("api", ["dynamodb", "s3"]), ("worker", ["dynamodb", "s3"]),
@@ -81,12 +31,21 @@ def test_real_role_assembly_creates_only_role_clients_and_no_initial_requests(ro
         assert cfg.retries == {"mode": "standard", "total_max_attempts": 1}
         assert cfg.ignore_configured_endpoint_urls is True
     if role == "api":
+        # The API role is always the course_v2 application; there is no
+        # course-less /mock/v1 composition left to fall back to.
+        assert runtime.target.course_mode == "course_v2"
+        assert runtime.target.course_http is not None
+        assert runtime.target.provider.learner.is_dummy is True
         assert runtime.target.calculation is not None
         assert runtime.target.auth.keys == {"v1": b"K" * 32}
     else:
         assert not hasattr(runtime.target, "auth")
+        assert not hasattr(runtime.target, "course_http")
+        assert not hasattr(runtime.target, "provider")
     if role == "worker":
         registry = runtime.target.adapters
+        assert registry.resolve(CURRENT_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
+        # D136: the retained pending-v3 adapter still calculates in-flight attempts.
         assert registry.resolve(PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
         assert not registry.resolve(RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
 
@@ -131,6 +90,100 @@ def test_invalid_configuration_is_sanitized_before_client_creation(change):
     assert not calls and error.value.code == "TEMPORARILY_UNAVAILABLE"
     assert "PRIVATE-MARKER" not in str(error.value)
     assert error.value.__suppress_context__
+
+
+@pytest.mark.parametrize("shape", ["missing", "null"])
+@pytest.mark.parametrize("role", ["api", "worker"])
+def test_api_and_worker_without_course_are_rejected_before_any_client(role, shape, tmp_path, capsys):
+    """API/Worker serve only course_v2: a missing course section is a configuration error."""
+    config = configuration(role)
+    if shape == "missing":
+        config.pop("course")
+    else:
+        config["course"] = None
+    with pytest.raises(ValueError) as parsed:
+        AwsSettings.parse(json.dumps(config), role)
+    assert str(parsed.value) == "Invalid explicit AWS journey configuration."
+    assert parsed.value.__cause__ is None
+    calls = []
+    with pytest.raises(JourneyError) as error:
+        build_runtime(role, environment(role, config), client_factory=lambda *a, **k: calls.append(a))
+    assert calls == [] and error.value.code == "TEMPORARILY_UNAVAILABLE"
+    assert error.value.__suppress_context__
+    from mock_journey.aws_settings import main
+    path = tmp_path / "private-config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    assert main(["--role", role, "--config", str(path)]) == 2
+    assert json.loads(capsys.readouterr().out) == {"status": "configuration_invalid", "aws_access_checked": False}
+    config["course"] = course_section()
+    path.write_text(json.dumps(config), encoding="utf-8")
+    assert main(["--role", role, "--config", str(path)]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "configuration_valid"
+
+
+@pytest.mark.parametrize("with_course", [False, True])
+@pytest.mark.parametrize("stage", ["beta", "production"])
+@pytest.mark.parametrize("role", ["api", "worker"])
+def test_beta_and_production_api_worker_fail_closed_with_or_without_course(role, stage, with_course):
+    """Until G-RELEASE there is no non-Dev course provider: neither shape may assemble."""
+    config = configuration(role)
+    config["storage"]["stage"] = stage
+    if not with_course:
+        config.pop("course")
+    with pytest.raises(ValueError) as parsed:
+        AwsSettings.parse(json.dumps(config), role)
+    assert str(parsed.value) == "Invalid explicit AWS journey configuration."
+    assert parsed.value.__cause__ is None
+    calls = []
+    with pytest.raises(JourneyError) as error:
+        build_runtime(role, environment(role, config), client_factory=lambda *a, **k: calls.append(a))
+    assert calls == [] and error.value.code == "TEMPORARILY_UNAVAILABLE"
+
+
+def test_relay_is_assembled_without_course_and_still_rejects_one(tmp_path, capsys):
+    config = configuration("relay")
+    assert "course" not in config
+    assert AwsSettings.parse(json.dumps(config), "relay").course is None
+    factory = FakeSdk()
+    runtime = build_runtime("relay", environment("relay", config), client_factory=factory)
+    assert [name for name, _ in factory.calls] == ["dynamodb", "sqs"]
+    assert not hasattr(runtime.target, "course_http")
+    config["course"] = course_section()
+    with pytest.raises(ValueError):
+        AwsSettings.parse(json.dumps(config), "relay")
+    calls = []
+    with pytest.raises(JourneyError):
+        build_runtime("relay", environment("relay", config), client_factory=lambda *a, **k: calls.append(a))
+    assert calls == []
+
+
+def test_dummy_course_provider_is_constructed_for_the_api_role_only(monkeypatch):
+    """Worker validates the course section offline but never builds a serving provider."""
+    import mock_journey.dev_course as dev_course
+    original = dev_course.DummyDevCourseProvider
+    built = []
+
+    class Counting(original):
+        def __init__(self, *args, **kwargs):
+            built.append(True)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(dev_course, "DummyDevCourseProvider", Counting)
+    counts = {}
+    for role in ("api", "worker", "relay"):
+        built.clear()
+        settings_only = AwsSettings.parse(json.dumps(configuration(role)), role)
+        parsed = len(built)
+        built.clear()
+        runtime = build_runtime(role, environment(role), client_factory=FakeSdk())
+        counts[role] = len(built) - parsed
+        if role == "api":
+            assert type(runtime.target.provider) is Counting
+            assert runtime.target.provider.learner.is_dummy is True
+        assert settings_only.course == runtime.settings.course
+    # Parsing already validates the complete catalog for API and Worker;
+    # only the API adds the one provider it serves requests with.
+    assert counts == {"api": 1, "worker": 0, "relay": 0}
 
 
 @pytest.mark.parametrize("key,value", [("AWS_REGION", "eu-west-1"), ("STAGE", "prod"),
@@ -207,22 +260,46 @@ def test_public_and_worker_runtime_errors_are_sanitized(monkeypatch, capsys):
 
 
 def test_public_handler_invocation_logs_cannot_change_a_success_response(monkeypatch):
+    """A failing invocation-log writer never changes a real v2 login or rejection response.
+
+    The API is the real AWS composition (course_v2 HTTP, state, auth) on the
+    test-only in-memory DynamoDB table; only the log store fails.
+    """
     from mock_journey.handler import run
     from mock_journey.aws_logs import InvocationLogs
     import mock_journey.runtime as module
-    runtime = build_runtime("api", environment(), client_factory=FakeSdk())
+    from tests.journey_support import DUMMY_LOGIN, JourneyStore
+    store = JourneyStore.memory()
+    sdk = FakeSdk()
+
+    def factory(service, **kwargs):
+        sdk(service, **kwargs)
+        return store.client if service == "dynamodb" else sdk.s3
+
+    config = configuration()
+    config["state"]["table_name"] = store.table
+    runtime = build_runtime("api", environment(config=config), client_factory=factory)
     def failed():
         raise RuntimeError("PRIVATE-MARKER")
     operations = InvocationLogs(failed, role="api", settings=runtime.settings.logs, warning=lambda _: None)
     runtime.operations = runtime.target.operations = operations
-    def login(body):
-        from services.operational_logs import record_event
-        record_event("login_succeeded")
-        return {"created": True}
-    runtime.target.login = login
     monkeypatch.setattr(module, "get_application", lambda: runtime.target)
-    response = run({"httpMethod": "POST", "path": "/mock/v1/sessions", "body": "{}"}, context())
-    assert response["statusCode"] == 201
+    response = run({"httpMethod": "POST", "path": "/api/v2/sessions/", "headers": {"Content-Type": "application/json"},
+                    "body": json.dumps(DUMMY_LOGIN)}, context())
+    assert response["statusCode"] == 201, response["body"]
+    body = json.loads(response["body"])
+    assert body["success"] is True and body["data"]["accessToken"]
+    assert "PRIVATE-MARKER" not in response["body"]
+    assert operations.status()["unconfirmed"] == 1
+    # The committed session is the real one the response announced.
+    token = body["data"]["accessToken"]
+    assert runtime.target.auth.authenticate(token).session_id == body["data"]["sessionId"]
+    rejected = run({"httpMethod": "POST", "path": "/api/v2/sessions/", "headers": {"Content-Type": "application/json"},
+                    "body": "{}"}, context())
+    assert rejected["statusCode"] == 400
+    assert json.loads(rejected["body"])["error"]["code"] == "INVALID_REQUEST"
+    assert "PRIVATE-MARKER" not in rejected["body"]
+    # status() describes the latest invocation: its one login_failed record.
     assert operations.status()["unconfirmed"] == 1
 
 
@@ -263,16 +340,19 @@ def test_composed_private_storage_and_real_core_share_the_injected_s3_only():
     factory = FakeSdk()
     api = build_runtime("api", environment(), client_factory=factory).target
     worker = build_runtime("worker", environment("worker"), client_factory=factory).target
-    definition = typed.parse_json(api.catalog.definition("mock-compression-only", "adult"))
+    # The execution definition the AWS API actually serves for this Dummy course.
+    definition = typed.parse_json(json.dumps(next(
+        row["execution"] for row in api.provider.mapping_document["mappings"].values()
+        if (row["program_id"], row["target"]) == ("mock-compression-only", "adult"))))
     body = {"condition": definition["condition"], "vp_event_list": [], "aed_b64_data": b"",
             "cpr_b64_data": (Path(__file__).parent / "dataset/cco_1.bin").read_bytes()}
     projected = project_input(body, definition, api.calculation.schemas[PROJECTION_VERSION])
     binding = {"attempt_id": str(uuid.uuid4()), "epoch": str(uuid.uuid4()), "input_digest": typed_identity(projected),
-               "adapter_version": PENDING_GOAL_ADAPTER_VERSION, "projection_version": PROJECTION_VERSION}
+               "adapter_version": CURRENT_ADAPTER_VERSION, "projection_version": PROJECTION_VERSION}
     stored = api.calculation.storage.save_input(projected, binding)
     loaded = worker.storage.load_input(stored["manifest_ref"], binding)
     call = {**binding, "job_id": str(uuid.uuid4()), "call_id": str(uuid.uuid4())}
-    adapter = worker.adapters.resolve(PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION)
+    adapter = worker.adapters.resolve(CURRENT_ADAPTER_VERSION, PROJECTION_VERSION)
     raw = adapter.calculate(loaded, call, lambda: None)
     verified = adapter.validate_response(raw, projected, call)
     chart = adapter.get_chart(verified, call, lambda: None)

@@ -1,6 +1,10 @@
 {
   "version": "3.3.1",
   "source": "Existing official DynamoDB Local download used in previous local verification",
+  "archive": {
+    "url": "https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_2026-07-31.tar.gz",
+    "sha256": "f80bcec477f85f57e2c77f8d54aa6b672a8403fceff0c450560aee1cf6c21163"
+  },
   "files": {
     "DynamoDBLocal.jar": "3630bab3785e952e320dc050d026a4c1ca9a8910ae1ace6c0fd6d1177e20d121",
     "DynamoDBLocal_lib/Apache-HttpComponents-HttpClient-4.5.x.jar": "9e61f3835bf3ff1b326778b21cd3e730d85b1339accdec1c6a57cfae8ccb6ed0",

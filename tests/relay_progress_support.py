@@ -1,11 +1,24 @@
-"""Small conditional DynamoDB/Queue doubles for AWS assembly boundary tests."""
+"""Small conditional DynamoDB/Queue doubles for AWS assembly boundary tests.
+
+The relay ``world`` fixture and row helpers (from test_relay_progress_unit.py)
+and ``assembled`` (from test_aws_relay_progress_integration.py) moved here
+unchanged so other test modules no longer import a test module. A test module
+uses ``world`` by importing it explicitly.
+"""
 
 from copy import deepcopy
 from types import SimpleNamespace
+import uuid
 
 from botocore.exceptions import ClientError
+import pytest
 
-from mock_journey.state import _decode, _encode
+from mock_journey.aws_runtime import build_runtime
+from mock_journey.dispatch import OutboxRelay
+from mock_journey.jobs import DynamoJobRepository
+from mock_journey.relay_progress import DynamoRelayProgress, RelayGuardedClient
+from mock_journey.state import DynamoStateRepository, decode_item as _decode, encode_item as _encode
+from tests.aws_runtime_support import environment
 
 
 class RelayDynamo:
@@ -94,3 +107,54 @@ class RelaySdk:
         assert service == "dynamodb"
         return SimpleNamespace(put_item=lambda **request: self.logs.append(deepcopy(request)),
                                close=lambda: self.closed.append("logs"))
+
+
+SCOPE = dict(environment="unit-relay", partition="aws", account_id="000000000000",
+             region="us-east-2", queue_url="https://sqs.us-east-2.amazonaws.com/000000000000/unit-relay")
+
+
+@pytest.fixture
+def world():
+    db, now, remaining, sent = RelayDynamo(), [1000], [100000], []
+    state = DynamoStateRepository(RelayGuardedClient(db), "unit-relay-table", clock=lambda: now[0], max_conflict_retries=2)
+    progress = DynamoRelayProgress(state, **SCOPE)
+    progress.initialize()
+    jobs = DynamoJobRepository(state)
+    context = SimpleNamespace(get_remaining_time_in_millis=lambda: remaining[0])
+
+    def relay():
+        value = OutboxRelay(jobs, SimpleNamespace(send=lambda ident: sent.append(ident)),
+                            progress=DynamoRelayProgress(state, **SCOPE),
+                            lease_seconds=30, retry_seconds=5, page_size=1, max_pages=1,
+                            clock=lambda: now[0])
+        value.processing_reserve_ms = 100
+        return value
+    return SimpleNamespace(db=db, state=state, progress=progress, jobs=jobs, now=now,
+                           remaining=remaining, sent=sent, context=context, relay=relay)
+
+
+def row(kind, number, *, due=100):
+    ident = str(uuid.UUID(int=number))
+    return {"PK": kind + "#" + ident, "SK": "STATE" if kind == "JOB" else "DISPATCH",
+            "GSI1PK": "DUE#" + kind, "GSI1SK": due, "next_due_at": due,
+            "job_id": ident, "lease_until": 0, "state": "queued" if kind == "JOB" else "pending"}
+
+
+def put(world, *rows):
+    for value in rows:
+        world.db.rows[world.db.key(value)] = deepcopy(value)
+
+
+def cursor(value):
+    return {key: value[key] for key in ("PK", "SK", "GSI1PK", "GSI1SK")}
+
+
+def assembled(monkeypatch, *, config=None, initialize=True):
+    import mock_journey.worker_runtime as runtime_module
+    factory = RelaySdk()
+    runtime = build_runtime("relay", environment("relay", config), client_factory=factory)
+    if initialize:
+        factory.db.put_item(**runtime.target.progress.initialization_request())
+    factory.db.calls.clear()
+    monkeypatch.setattr(runtime_module, "get_relay", lambda: runtime.target)
+    return runtime, factory

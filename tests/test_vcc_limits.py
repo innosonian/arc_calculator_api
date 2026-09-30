@@ -1,8 +1,6 @@
 """V22 fixture limit boundaries for course policy and repository. No sleep."""
 
 from copy import deepcopy
-from pathlib import Path
-import sys
 
 import pytest
 
@@ -10,13 +8,12 @@ from mock_journey.course_contracts import ContentReport, StartCommand
 from mock_journey.course_errors import CourseError
 from mock_journey.course_policy import CoursePolicy
 from mock_journey.course_settings import fixture_course_settings
-from mock_journey.course_state import (
-    DynamoCourseRepository, InMemoryBlobStore, InMemoryCourseStore, _action_key, _start_key,
-)
+from mock_journey.course_repo_core import _action_key
+from mock_journey.course_state import DynamoCourseRepository
+from mock_journey.storage_keys import course_start_key
+from tests.course_store_fakes import InMemoryBlobStore, InMemoryCourseStore
 from mock_journey.typed import json_bytes, parse_json
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_vcc_state import EPOCH, REQUEST, START, make_bundle, provision, seed_auth
+from tests.vcc_state_support import EPOCH, REQUEST, START, make_bundle, provision, seed_auth
 
 REPORT = "30000000-0000-4000-8000-000000000001"
 
@@ -160,7 +157,7 @@ class TestV22RepositoryLimits:
             auth, course_id=101, enrollment_id=501, placement_id=1001,
             report=ContentReport(REPORT, started.start_id, "video-v1", "video_segments", [[0, 10000]]),
         )
-        start_row = store.get_item(_start_key(view.scope_key, EPOCH, started.start_id))
+        start_row = store.get_item(course_start_key(view.scope_key, EPOCH, started.start_id))
         start_row["report_count"] = fixture_course_settings().max_reports_per_start
         store.seed(start_row)
         replay = repo.report(

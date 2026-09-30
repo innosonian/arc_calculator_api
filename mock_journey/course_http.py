@@ -1,60 +1,84 @@
-"""VCC course HTTP boundary. Route/method/query/body validation and envelopes.
+"""/api/v2 course HTTP boundary: route/method/query/body validation and envelopes.
 
-W5 hooks
---------
-CourseHttp is not wired into handler.py or local_server (W5). Dispatch accepts an
-API Gateway REST event and returns {statusCode, headers, body}.
+``mock_journey.handler.handle`` hands every REST proxy event to
+``CourseHttp.dispatch``, which returns ``{statusCode, headers, body}``. The API
+is assembled by ``mock_journey.assembly.build_course_application``; the hooks
+are a ``course_contracts.CourseHooks`` value bound in
+``mock_journey.course_wiring.bind_course_http`` (D128), and every hook result is
+one of the frozen records defined next to it. Trailing slashes are required and
+no redirect is issued; any other path is 404.
 
-1. Route wiring: call CourseHttp.dispatch(event) for every APP_ROUTES path after
-   existing /mock/v1 handling is disabled in course_v2 mode. Preserve health and
-   static chart routes. Trailing slash is required; do not add redirects.
+1. measurement_submit(auth, attempt_id, event) -> CalculationRecord
+   Invoked for POST /api/v2/attempts/{attemptId}/calculation/ with the event.
+   This module does not parse CPR binary/multipart. The hook resolves an
+   ambiguous upload Content-Type (400 INVALID_REQUEST) before any attempt read
+   and then reuses CalculationService.submit / the legacy_bridge parser. HTTP
+   maps created/cancelled→409 INVALID_STATE, queued/processing→202 pending,
+   evaluated→200 succeeded, failed→503 CALCULATION_FAILED, outcome_unknown→503
+   CALCULATION_OUTCOME_UNKNOWN. GET calculation_result must not execute
+   calculation or submission.
 
-2. measurement_submit(auth, attempt_id, event) -> dict
-   Invoked for POST /api/v2/attempts/{attemptId}/calculation/ with the raw event.
-   This module does not parse CPR binary/multipart. W5 must reuse the existing
-   CalculationService.submit / legacy_bridge parser. Return
-   {state, calculation, evaluation, progress_application, submit_arc?} or raise
-   CourseError. HTTP maps created/cancelled→409 INVALID_STATE, queued/processing
-   →202 pending, evaluated→200 succeeded, failed→503 CALCULATION_FAILED,
-   outcome_unknown→503 CALCULATION_OUTCOME_UNKNOWN. GET calculation_result must
-   not execute calculation or submission.
-
-3. issue_resume(auth, attempt_id) -> str
+2. issue_resume(auth, attempt_id) -> str
    Called only after ownership checks for attempt create replay and reauthorize.
-   W5 should use AuthManager.prepare_resume / resume_credential. The credential
-   is added to the HTTP response only and must never be written into
-   StartReceipt.response_json.
+   The hook uses AuthManager.resume_credential. The credential is added to the
+   HTTP response only and must never be written into StartReceipt.response_json.
 
-4. authenticate / login / logout / session_reader / load_attempt / reauthorize /
-   cancel / chart_link are the existing AuthManager and JourneyService surfaces
-   adapted to AuthContext and CourseError.
+3. authenticate / login / logout / session_reader / session_check /
+   load_attempt / reauthorize / cancel / chart_link adapt AuthManager, the typed
+   JourneyService commands and CalculationService to AuthContext and CourseError.
+   session_check serves POST /session/refresh/, which reports the availability of
+   its own refresh and therefore never reads the stored course snapshot.
 """
 
 import base64
+import binascii
 import json
 import re
+from types import MappingProxyType
 
+from mock_journey.auth import LOGIN_ID
 from mock_journey.course_contracts import (
-    APP_ROUTES, CANCEL_REASON_WIRE_TO_INTERNAL, CONTENT_EVENT_TYPES, PAGE_DEFAULT,
-    PAGE_SIZE_DEFAULT, PAGE_SIZE_MAX, PUBLIC_ID_MAX, START_REQUEST_FIELDS, ContentReport,
-    StartCommand, require_hash, require_public_id, require_uuid,
+    APP_ROUTES, CANCEL_REASON_WIRE_TO_INTERNAL, CONTENT_EVENT_TYPES, PAGE_DEFAULT, PAGE_SIZE_DEFAULT,
+    PAGE_SIZE_MAX, PUBLIC_ID_MAX, START_REQUEST_FIELDS, UUID_PATTERN, AttemptRecord, CalculationRecord,
+    ContentReport, CourseHooks, StartCommand, require_hash, require_public_id, require_uuid,
 )
 from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import require_text
 from mock_journey.course_response import (
-    aggregate_availability, attempt_view_data, calculation_view_data, chart_link_data,
+    attempt_view_data, availability_or_waiting, calculation_view_data, chart_link_data,
     course_detail_data, error_envelope, parse_receipt_data, session_data, success_envelope,
     utc_timestamp,
 )
-from mock_journey.course_settings import CourseSettings
+from mock_journey.course_settings import require_course_settings
 from mock_journey.errors import JourneyError
 from mock_journey.typed import parse_json
+from services.operational_logs import bound_identifiers, record_event, write_diagnostic
 
 
-_DUMMY_LOGIN = "test@test.com"
-_AUTH_CODES = frozenset({
-    "LOGIN_FAILED", "SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_REVOKED",
-})
+# Every client request check here answers 400 INVALID_REQUEST (D119 per path).
+_INVALID = "INVALID_REQUEST"
+_DUMMY_LOGIN = LOGIN_ID  # D13: the only login routed to the Dummy hook.
 _POSITIVE = re.compile(r"[1-9][0-9]*\Z")
+_LOGIN_ROUTE = next(spec for spec in APP_ROUTES if spec.route_id == "login")
+# Public IDs are 1..PUBLIC_ID_MAX, so at most this many decimal digits. Path
+# segments and query integers longer than that are refused before int().
+_PUBLIC_ID_DIGITS = len(str(PUBLIC_ID_MAX))
+_PATH_ID_PATTERN = rf"[1-9][0-9]{{0,{_PUBLIC_ID_DIGITS - 1}}}"
+# Route rules that are not RouteSpec fields (RouteSpec stays the frozen contract DTO).
+_REQUIRED_QUERY = MappingProxyType({
+    "course_detail": ("enrollmentId",),
+    "item_detail": ("enrollmentId",),
+})
+_QUERY_DEFAULTS = MappingProxyType({
+    "course_list": (("page", PAGE_DEFAULT), ("pageSize", PAGE_SIZE_DEFAULT)),
+})
+# Body kinds read without the control-body byte limit: no body, or the
+# measurement upload handled by the measurement_submit hook.
+_UNLIMITED_BODY_KINDS = frozenset({"none", "measurement"})
+# A measurement upload is only checked here (the parser decodes it once, later);
+# the base64 text is validated in slices of whole quads so the decoded bytes are
+# never held for the whole body.
+_BASE64_SLICE = 64 * 1024
 
 
 def map_cancel_reason(wire_reason):
@@ -77,9 +101,9 @@ def _compile_path(spec):
         name = rest[start + 1:end]
         names.append(name)
         if name == "attemptId":
-            parts.append(r"(?P<attemptId>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+            parts.append(rf"(?P<attemptId>{UUID_PATTERN})")
         else:
-            parts.append(rf"(?P<{name}>[1-9][0-9]{{0,15}})")
+            parts.append(rf"(?P<{name}>{_PATH_ID_PATTERN})")
         rest = rest[end + 1:]
     return re.compile(r"\A" + "".join(parts) + r"\Z"), names, spec
 
@@ -88,42 +112,44 @@ _COMPILED = tuple(_compile_path(spec) for spec in APP_ROUTES)
 
 
 class CourseHttp:
-    def __init__(
-        self, service, settings, *, clock, uuid_factory, authenticate=None, login=None,
-        logout=None, session_reader=None, issue_resume=None, load_attempt=None,
-        reauthorize=None, cancel=None, measurement_submit=None, calculation_result=None,
-        chart_link=None,
-    ):
-        if type(settings) is not CourseSettings:
-            raise CourseError("TEMPORARILY_UNAVAILABLE")
-        if not callable(clock) or not callable(uuid_factory):
+    def __init__(self, service, settings, *, clock, uuid_factory, hooks):
+        require_course_settings(settings, lambda: CourseError("TEMPORARILY_UNAVAILABLE"))
+        if not callable(clock) or not callable(uuid_factory) or type(hooks) is not CourseHooks:
             raise CourseError("TEMPORARILY_UNAVAILABLE")
         self._service = service
         self._settings = settings
         self._clock = clock
         self._uuid_factory = uuid_factory
-        self._authenticate = authenticate
-        self._login = login
-        self._logout = logout
-        self._session_reader = session_reader
-        self._issue_resume = issue_resume
-        self._load_attempt = load_attempt
-        self._reauthorize = reauthorize
-        self._cancel = cancel
-        self._measurement_submit = measurement_submit
-        self._calculation_result = calculation_result
-        self._chart_link = chart_link
+        self._hooks = hooks
 
     def dispatch(self, event):
-        request_id = require_uuid(self._uuid_factory())
-        try:
-            return self._dispatch(event, request_id)
-        except CourseError as error:
-            return self._error(error, request_id)
-        except JourneyError as error:
-            return self._error(CourseError(error.code), request_id)
-        except Exception:
-            return self._error(CourseError("TEMPORARILY_UNAVAILABLE"), request_id)
+        request_id = require_uuid(self._uuid_factory(), code=_INVALID)
+        # Every operational record written for this request, including reused
+        # journey hooks, carries the same id the app receives as X-Request-Id.
+        with bound_identifiers(http_request_id=request_id):
+            try:
+                return self._dispatch(event, request_id)
+            except CourseError as error:
+                response = self._error(error, request_id)
+                self._record_rejection(event, error)
+                return response
+            except JourneyError as error:
+                error = CourseError(error.code)
+                response = self._error(error, request_id)
+                self._record_rejection(event, error)
+                return response
+            except Exception as error:
+                response = self._error(CourseError("TEMPORARILY_UNAVAILABLE"), request_id)
+                self._record_rejection(event, CourseError("TEMPORARILY_UNAVAILABLE"))
+                # Shared diagnostic sanitizer: type and checkout frames only.
+                write_diagnostic("error", "request_failed", {"exception": error})
+                return response
+
+    def _record_rejection(self, event, error):
+        # Fail-open (N05). Only the fixed public code and status.
+        login = (type(event) is dict and event.get("httpMethod") == _LOGIN_ROUTE.method
+                 and event.get("path") == _LOGIN_ROUTE.path)
+        record_event("login_failed" if login else "request_rejected", error_code=error.code, http_status=error.status)
 
     def _dispatch(self, event, request_id):
         if type(event) is not dict:
@@ -203,11 +229,13 @@ class CourseHttp:
             if key not in values:
                 continue
             parsed[key] = self._query_int(values[key], key)
-        if spec.route_id in ("course_detail", "item_detail") and "enrollmentId" not in parsed:
-            raise CourseError("INVALID_REQUEST")
-        if spec.route_id == "course_list":
-            parsed.setdefault("page", PAGE_DEFAULT)
-            parsed.setdefault("pageSize", PAGE_SIZE_DEFAULT)
+        for key in _REQUIRED_QUERY.get(spec.route_id, ()):
+            if key not in parsed:
+                raise CourseError("INVALID_REQUEST")
+        defaults = _QUERY_DEFAULTS.get(spec.route_id)
+        if defaults is not None:
+            for key, value in defaults:
+                parsed.setdefault(key, value)
             if parsed["pageSize"] > PAGE_SIZE_MAX:
                 raise CourseError("INVALID_REQUEST")
         return parsed
@@ -215,7 +243,7 @@ class CourseHttp:
     def _query_int(self, value, key):
         # Reject above-contract integers before Python's decimal conversion
         # limit can turn a malformed client query into a 503 response.
-        if len(value) > len(str(PUBLIC_ID_MAX)) or _POSITIVE.fullmatch(value) is None:
+        if len(value) > _PUBLIC_ID_DIGITS or _POSITIVE.fullmatch(value) is None:
             raise CourseError("INVALID_REQUEST")
         number = int(value)
         if key == "pageSize" and number > PAGE_SIZE_MAX:
@@ -226,14 +254,14 @@ class CourseHttp:
 
     def _body(self, event, spec):
         limit = (self._settings.max_control_body_bytes
-                 if spec.body_kind not in ("none", "measurement") else None)
-        raw = self._raw_body(event, max_bytes=limit)
+                 if spec.body_kind not in _UNLIMITED_BODY_KINDS else None)
+        raw = self._raw_body(event, max_bytes=limit, keep=spec.body_kind != "measurement")
         if spec.body_kind == "none":
             if raw:
                 raise CourseError("INVALID_REQUEST")
             return None
         if spec.body_kind == "measurement":
-            return None
+            return None  # checked by _raw_body; decoded later by the parser
         if len(raw) > self._settings.max_control_body_bytes:
             raise CourseError("PAYLOAD_TOO_LARGE")
         self._require_json_type(event)
@@ -261,7 +289,12 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
         return parsed
 
-    def _raw_body(self, event, *, max_bytes=None):
+    def _raw_body(self, event, *, max_bytes=None, keep=True):
+        """The body bytes, or None when ``keep`` is False and the body was only checked.
+
+        With keep=False (measurement uploads) the same shape and encoding checks
+        run, but the base64 text is validated without keeping the decoded bytes.
+        """
         body = event.get("body")
         if body is None or body == "":
             return b""
@@ -273,6 +306,9 @@ class CourseHttp:
                 # The exact decoded limit is still checked by _body below.
                 if max_bytes is not None and len(body) > 4 * ((max_bytes + 2) // 3):
                     raise CourseError("PAYLOAD_TOO_LARGE")
+                if not keep:
+                    check_base64(body)
+                    return None
                 return base64.b64decode(body, validate=True)
             if type(body) is bytes:
                 return body
@@ -299,24 +335,20 @@ class CourseHttp:
         if type(parsed) is not dict or set(parsed) != {"loginId", "password"}:
             raise CourseError("INVALID_REQUEST")
         login_id, password = parsed["loginId"], parsed["password"]
-        if type(login_id) is not str or type(password) is not str or not login_id or not password:
-            raise CourseError("INVALID_REQUEST")
-        try:
-            login_id.encode("utf-8")
-            password.encode("utf-8")
-        except UnicodeError:
-            raise CourseError("INVALID_REQUEST") from None
+        # parse_json already refuses unencodable text; the UTF-8 check is kept as a guard.
+        require_text(login_id, code=_INVALID, check_utf8=True)
+        require_text(password, code=_INVALID, check_utf8=True)
         return {"loginId": login_id, "password": password}
 
     def _start_body(self, parsed):
         if type(parsed) is not dict or set(parsed) != set(START_REQUEST_FIELDS):
             raise CourseError("INVALID_REQUEST")
         return StartCommand(
-            require_uuid(parsed["clientRequestId"]),
-            require_public_id(parsed["enrollmentId"]),
-            require_public_id(parsed["courseId"]),
-            require_public_id(parsed["courseItemLinkId"]),
-            require_hash(parsed["definitionHash"]),
+            require_uuid(parsed["clientRequestId"], code=_INVALID),
+            require_public_id(parsed["enrollmentId"], code=_INVALID),
+            require_public_id(parsed["courseId"], code=_INVALID),
+            require_public_id(parsed["courseItemLinkId"], code=_INVALID),
+            require_hash(parsed["definitionHash"], code=_INVALID),
         )
 
     def _report_body(self, parsed):
@@ -329,11 +361,11 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
         event_type, intervals, display_id = _parse_event(parsed["event"])
         return {
-            "enrollmentId": require_public_id(parsed["enrollmentId"]),
-            "courseItemLinkId": require_public_id(parsed["courseItemLinkId"]),
+            "enrollmentId": require_public_id(parsed["enrollmentId"], code=_INVALID),
+            "courseItemLinkId": require_public_id(parsed["courseItemLinkId"], code=_INVALID),
             "report": ContentReport(
-                require_uuid(parsed["reportId"]),
-                require_uuid(parsed["startId"]),
+                require_uuid(parsed["reportId"], code=_INVALID),
+                require_uuid(parsed["startId"], code=_INVALID),
                 parsed["contentVersion"],
                 event_type,
                 intervals,
@@ -346,17 +378,12 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
         out = {}
         for key in keys:
-            value = parsed[key]
-            if type(value) is not str or not value:
-                raise CourseError("INVALID_REQUEST")
-            out[key] = value
+            out[key] = require_text(parsed[key], code=_INVALID, check_utf8=False)
         return out
 
     def _require_auth(self, event, *, allow_logout=False):
-        if self._authenticate is None:
-            raise CourseError("TEMPORARILY_UNAVAILABLE")
         token = _bearer(event)
-        return self._authenticate(token, allow_logout_receipt=allow_logout)
+        return self._hooks.authenticate(token, allow_logout_receipt=allow_logout)
 
     def _handle(self, spec, auth, params, query, body, event):
         route = spec.route_id
@@ -367,24 +394,22 @@ class CourseHttp:
         if route == "session_refresh":
             return self._handle_refresh(auth), 200
         if route == "logout":
-            self._hook(self._logout)(auth)
+            self._hooks.logout(auth)
             return None, 204
         if route == "course_list":
-            return parse_json(self._service.list_courses(
-                auth, page=query["page"], page_size=query["pageSize"],
-            )), 200
+            return self._service.list_courses(auth, page=query["page"], page_size=query["pageSize"]), 200
         if route == "course_detail":
             view = self._service.get_course(
                 auth, course_id=_path_id(params["courseId"]), enrollment_id=query["enrollmentId"],
             )
             return course_detail_data(view), 200
         if route == "item_detail":
-            return parse_json(self._service.get_item(
+            return self._service.get_item(
                 auth,
                 course_id=_path_id(params["courseId"]),
                 enrollment_id=query["enrollmentId"],
                 placement_id=_path_id(params["courseItemLinkId"]),
-            )), 200
+            ), 200
         if route == "learning_start":
             receipt = self._service.start_content(auth, body)
             return parse_receipt_data(receipt.response_json), 201 if receipt.created else 200
@@ -403,114 +428,86 @@ class CourseHttp:
             data = {**data, "resumeCredential": self._resume(auth, data["attemptId"])}
             return data, 201 if receipt.created else 200
         if route == "attempt_get":
-            return self._attempt_from_record(self._hook(self._load_attempt)(auth, params["attemptId"]), False), 200
+            return self._attempt_from_record(self._hooks.load_attempt(auth, params["attemptId"])), 200
         if route == "attempt_reauthorize":
-            record = self._hook(self._reauthorize)(auth, params["attemptId"], body["resumeCredential"])
-            data = self._attempt_from_record(record, False)
+            record = self._hooks.reauthorize(auth, params["attemptId"], body["resumeCredential"])
+            data = self._attempt_from_record(record)
             return {**data, "resumeCredential": self._resume(auth, params["attemptId"])}, 200
         if route == "attempt_cancel":
-            self._hook(self._cancel)(auth, params["attemptId"], map_cancel_reason(body["reason"]))
+            self._hooks.cancel(auth, params["attemptId"], map_cancel_reason(body["reason"]))
             return None, 204
         if route == "calculation_post":
-            return self._calculation_http(self._hook(self._measurement_submit)(auth, params["attemptId"], event))
+            return self._calculation_http(self._hooks.measurement_submit(auth, params["attemptId"], event))
         if route == "calculation_get":
-            return self._calculation_http(self._hook(self._calculation_result)(auth, params["attemptId"]))
+            return self._calculation_http(self._hooks.calculation_result(auth, params["attemptId"]))
         if route == "chart_link":
-            record = self._hook(self._chart_link)(auth, params["attemptId"])
-            return chart_link_data(url=record["url"], expires_at=record["expiresAt"]), 200
+            record = self._hooks.chart_link(auth, params["attemptId"])
+            return chart_link_data(url=record.url, expires_at=record.expires_at), 200
         raise CourseError("NOT_FOUND")
 
     def _handle_login(self, body):
         if body["loginId"] != _DUMMY_LOGIN:
             raise CourseError("CONTRACT_PENDING")
-        session = self._hook(self._login)(body["loginId"], body["password"])
-        auth = session["auth"]
-        availability = {"state": "waiting", "reason": "arc_progress_unavailable"}
-        try:
-            availability = aggregate_availability(self._service.refresh_for_session(auth))
-        except CourseError as error:
-            if error.code in _AUTH_CODES:
-                raise
-            if error.code == "CONTRACT_PENDING":
-                availability = {"state": "waiting", "reason": "contract_pending"}
-        expires = session["expires_at"]
-        if type(expires) is not str:
-            expires = utc_timestamp(expires)
+        session = self._hooks.login(body["loginId"], body["password"])
+        # Not absorbed: an unexpected refresh failure stays a 503 response.
+        availability = availability_or_waiting(
+            self._service.refresh_for_session, session.auth, absorb_unexpected=False,
+        )
         return session_data(
-            session_id=session["session_id"], expires_at=expires,
-            learning_availability=availability, access_token=session["access_token"],
+            session_id=session.session_id, expires_at=session.expires_at,
+            learning_availability=availability, access_token=session.access_token,
+            user_name=session.user_name,
         ), 201
 
     def _handle_session(self, auth):
-        snapshot = self._hook(self._session_reader)(auth)
-        expires = snapshot["expires_at"]
-        if type(expires) is not str:
-            expires = utc_timestamp(expires)
+        snapshot = self._hooks.session_reader(auth)
         return session_data(
-            session_id=snapshot["session_id"], expires_at=expires,
-            learning_availability=snapshot["learning_availability"],
+            session_id=snapshot.session_id, expires_at=snapshot.expires_at,
+            learning_availability=snapshot.learning_availability,
         )
 
     def _handle_refresh(self, auth):
-        snapshot = self._hook(self._session_reader)(auth)
-        availability = {"state": "waiting", "reason": "arc_progress_unavailable"}
-        try:
-            availability = aggregate_availability(self._service.refresh_for_session(auth))
-        except CourseError as error:
-            if error.code in _AUTH_CODES:
-                raise
-            if error.code == "CONTRACT_PENDING":
-                availability = {"state": "waiting", "reason": "contract_pending"}
-        expires = snapshot["expires_at"]
-        if type(expires) is not str:
-            expires = utc_timestamp(expires)
+        # The session is checked first; the availability comes from this refresh only.
+        session = self._hooks.session_check(auth)
+        availability = availability_or_waiting(
+            self._service.refresh_for_session, auth, absorb_unexpected=False,
+        )
         return session_data(
-            session_id=snapshot["session_id"], expires_at=expires, learning_availability=availability,
+            session_id=session.session_id, expires_at=session.expires_at, learning_availability=availability,
         )
 
-    def _attempt_from_record(self, record, include_resume):
-        data = attempt_view_data(
-            attempt_id=record["attempt_id"], state=record["state"], created_at=record["created_at"],
-            condition=record["condition"], course_id=record.get("course_id"),
-            enrollment_id=record.get("enrollment_id"), course_item_link_id=record.get("course_item_link_id"),
-            definition_hash=record.get("definition_hash"), role=record.get("role"),
-            legacy=bool(record.get("legacy")),
+    def _attempt_from_record(self, record: AttemptRecord):
+        # A resume credential is added only by the create/reauthorize routes via
+        # issue_resume after ownership checks, never read back from a record.
+        return attempt_view_data(
+            attempt_id=record.attempt_id, state=record.state, created_at=record.created_at,
+            condition=record.condition, course_id=record.course_id,
+            enrollment_id=record.enrollment_id, course_item_link_id=record.course_item_link_id,
+            definition_hash=record.definition_hash, role=record.role,
+            legacy=record.legacy,
         )
-        if include_resume:
-            credential = record.get("resume_credential")
-            if type(credential) is not str or not credential:
-                credential = self._resume(record.get("auth"), record["attempt_id"])
-            data = {**data, "resumeCredential": credential}
-        return data
 
     def _resume(self, auth, attempt_id):
-        value = self._hook(self._issue_resume)(auth, attempt_id)
-        if type(value) is not str or not value:
-            raise CourseError("TEMPORARILY_UNAVAILABLE")
-        return value
+        value = self._hooks.issue_resume(auth, attempt_id)
+        return require_text(value, code="TEMPORARILY_UNAVAILABLE", check_utf8=False)
 
-    def _calculation_http(self, record):
-        state = record["state"]
+    def _calculation_http(self, record: CalculationRecord):
+        state = record.state
         if state in ("created", "cancelled"):
             raise CourseError("INVALID_STATE")
         if state == "failed":
-            raise CourseError(record.get("error_code") or "CALCULATION_FAILED")
+            raise CourseError(record.error_code or "CALCULATION_FAILED")
         if state == "outcome_unknown":
             raise CourseError("CALCULATION_OUTCOME_UNKNOWN")
         if state in ("queued", "processing"):
-            return calculation_view_data(attempt_id=record["attempt_id"], calculation_status="pending"), 202
+            return calculation_view_data(attempt_id=record.attempt_id, calculation_status="pending"), 202
         if state != "evaluated":
             raise CourseError("INVALID_STATE")
         return calculation_view_data(
-            attempt_id=record["attempt_id"], calculation_status="succeeded",
-            calculation=record.get("calculation"), evaluation=record.get("evaluation"),
-            progress_application=record.get("progress_application"), submit_arc=record.get("submit_arc"),
+            attempt_id=record.attempt_id, calculation_status="succeeded",
+            calculation=record.calculation, evaluation=record.evaluation,
+            progress_application=record.progress_application, submit_arc=record.submit_arc,
         ), 200
-
-    def _hook(self, hook):
-        if not callable(hook):
-            raise CourseError("TEMPORARILY_UNAVAILABLE")
-        return hook
 
     def _error(self, error, request_id):
         timestamp = utc_timestamp(self._clock())
@@ -528,8 +525,28 @@ class CourseHttp:
         }
 
 
+def check_base64(text):
+    """Accept exactly what ``base64.b64decode(text, validate=True)`` accepts, slice by slice.
+
+    Slices are whole quads, so every slice but the last must be padding-free
+    alphabet text, and the last slice (at least one quad plus any tail, since
+    the decoder forgives stray padding only after a complete quad) carries the
+    padding verdict; the decoded bytes of each slice are dropped. Raises the
+    decoder's ValueError/binascii error (callers map it to 400 INVALID_REQUEST).
+    """
+    if not text.isascii():
+        raise ValueError("string argument should contain only ASCII characters")
+    last = max(len(text) - 4, 0) // _BASE64_SLICE * _BASE64_SLICE
+    for start in range(0, last, _BASE64_SLICE):
+        piece = text[start:start + _BASE64_SLICE]
+        if "=" in piece:
+            raise binascii.Error("Excess data after padding")
+        base64.b64decode(piece, validate=True)
+    base64.b64decode(text[last:], validate=True)
+
+
 def _path_id(value):
-    return require_public_id(int(value))
+    return require_public_id(int(value), code=_INVALID)
 
 
 def _parse_event(event):
@@ -561,10 +578,20 @@ def _parse_event(event):
         return "document_displayed", (), None
     if set(event) != {"type", "displayReportId"}:
         raise CourseError("INVALID_REQUEST")
-    return "document_confirmed", (), require_uuid(event["displayReportId"])
+    return "document_confirmed", (), require_uuid(event["displayReportId"], code=_INVALID)
 
 
-def _single_header(event, name):
+def header_representation(event, name):
+    """Resolve one REST proxy header's representation without judging its value.
+
+    A header duplicated by letter case (in headers or in multiValueHeaders), a
+    multiValueHeaders entry that is not a list of exactly one item, or a headers
+    value that differs from the multiValueHeaders value is ambiguous
+    (INVALID_REQUEST). Returns (values, multi_only): values is () when the
+    header is absent, else a 1-tuple; multi_only is True when only
+    multiValueHeaders carries it. Shared by _single_header (Authorization, JSON
+    Content-Type) and course_wiring.measurement_event (upload Content-Type).
+    """
     headers, multi = event.get("headers"), event.get("multiValueHeaders")
     headers = {} if headers is None else headers
     multi = {} if multi is None else multi
@@ -574,17 +601,21 @@ def _single_header(event, name):
     multiple = [value for key, value in multi.items() if type(key) is str and key.lower() == name]
     if len(single) > 1 or len(multiple) > 1:
         raise CourseError("INVALID_REQUEST")
-    values = single
-    if multiple:
-        if type(multiple[0]) is not list or len(multiple[0]) != 1:
-            raise CourseError("INVALID_REQUEST")
-        if single and single[0] != multiple[0][0]:
-            raise CourseError("INVALID_REQUEST")
-        values = multiple[0]
+    if not multiple:
+        return tuple(single), False
+    if type(multiple[0]) is not list or len(multiple[0]) != 1:
+        raise CourseError("INVALID_REQUEST")
+    if single and single[0] != multiple[0][0]:
+        raise CourseError("INVALID_REQUEST")
+    return (multiple[0][0],), not single
+
+
+def _single_header(event, name):
+    values, _ = header_representation(event, name)
     if not values:
         return None
-    value = values[0]
-    if type(value) is not str or not value or "\r" in value or "\n" in value:
+    value = require_text(values[0], code=_INVALID, check_utf8=False)
+    if "\r" in value or "\n" in value:
         raise CourseError("INVALID_REQUEST")
     return value
 

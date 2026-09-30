@@ -6,9 +6,10 @@ AWS discovery, migrations, TTL, deletion, or HTTP admin route is provided.
 
 from datetime import datetime
 import hashlib
-import json
 import re
 
+from mock_journey.aws_scope import ENVIRONMENT_PATTERN, TABLE_NAME_PATTERN, environment_namespace
+from mock_journey.typed import strict_loads
 from services.operational_logs import MAX_RECORD_BYTES, validate_record
 
 
@@ -20,14 +21,8 @@ class OperationalLogError(RuntimeError):
 def _parse(raw):
     if type(raw) is not bytes or len(raw) > MAX_RECORD_BYTES:
         raise OperationalLogError()
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise OperationalLogError()
-            result[key] = value
-        return result
-    value = json.loads(raw, object_pairs_hook=pairs)
+    # No nonfinite rejection here: NaN parses and validate_record then refuses it.
+    value = strict_loads(raw, duplicate=OperationalLogError)
     if validate_record(value) != raw:
         raise OperationalLogError()
     return value
@@ -35,11 +30,11 @@ def _parse(raw):
 
 class DynamoLogStore:
     def __init__(self, client, table_name, environment, *, owns_client=True):
-        if (client is None or type(table_name) is not str or not re.fullmatch(r"[A-Za-z0-9_.-]{3,255}", table_name)
-                or type(environment) is not str or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", environment)):
+        if (client is None or type(table_name) is not str or not re.fullmatch(TABLE_NAME_PATTERN, table_name)
+                or type(environment) is not str or not re.fullmatch(ENVIRONMENT_PATTERN, environment)):
             raise OperationalLogError()
         self.client, self.table = client, table_name
-        self.namespace = "OPS#" + hashlib.sha256(environment.encode()).hexdigest()
+        self.namespace = environment_namespace("OPS#", environment)
         self.owns_client = owns_client
 
     def write(self, raw):

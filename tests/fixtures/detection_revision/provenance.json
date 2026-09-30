@@ -1,15 +1,23 @@
 {
   "authority": "docs/DECISIONS.md D38-D46; original oracle and inputs retained byte-for-byte",
   "expectation_method": "tests/detection_oracle.py independent prefix-pair event search, independent source arrays/cycles, endpoint-integrated union; unchanged score/coaching code reused and pinned below. Whole-current-output snapshots are not an oracle.",
+  "repinned": {
+    "decision": "docs/DECISIONS.md D102 (2026-09-28): re-pinned only with result-equivalence evidence",
+    "evidence": "tests/test_repin_equivalence.py (verbatim original functions vs new, seeded random and edge inputs), unchanged goldens, reference parity and this oracle",
+    "files": {
+      "calculators/waveform.py": {"previous_sha256": "c5b144a25f5160f13576ed0456c4c2b8ef16d75532881fca96c2d5878dc50273", "change": "event_run_widths O(n), same widths"},
+      "transformers/part_divider.py": {"previous_sha256": "3c8f772e0e804528323d70b8195ed58afecf9c5a8f553b9f4d2eb06aa5fafcee", "change": "mark_aed_overlapped_rtdata sorted starts + running max end + bisect, same marks"},
+      "config/guidelines.py": {"previous_sha256": "97607677d8fff8298fbc2120b6af5769fb2c461933a02b7dafd0d7cefc45aaf7", "change": "deleted (no importer)"}
+    }
+  },
   "preserved_sha256": {
     "calculators/aed_evaluator.py": "073a4aa47a02cf3aa7ac49845f148b3d02dacb4d0625bbf7919a7113e87098be",
     "calculators/merge_calculator.py": "2f9ef01775ae2082b2d77e103a9589fa2e6d9e409600fbdd72d3bbc852d3a932",
-    "calculators/waveform.py": "c5b144a25f5160f13576ed0456c4c2b8ef16d75532881fca96c2d5878dc50273",
+    "calculators/waveform.py": "4987f6790d143483cdf4500c75427aa43ee18d018436ba7fbdc97ee90185c86b",
     "config/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "config/borders.py": "c61a2041489b5491025d33d936bc5b34497291c569338065196752ae595c1be7",
     "config/calculation_config.py": "f787b2f4df83aa0c1363ecd86c236451258e439281b281289fe4036916de59c1",
     "config/enums.py": "0f9a7961a229c7e5c690895977ce3b4db2db5d2dbba93a42b7d42669bce854a1",
-    "config/guidelines.py": "97607677d8fff8298fbc2120b6af5769fb2c461933a02b7dafd0d7cefc45aaf7",
     "config/score_weight.py": "e26f8374e1f8d18fced7af2dea14b741c891ec9b8744a477a0ed7a869e2b1023",
     "data_handlers/data_parser.py": "9904c54291176c7ea3c2f9b35ed8523ac7ca3044816cff5e48ed85dbdc127c33",
     "data_handlers/vp_action.py": "08b0794b345482e347f36e4818c0f1d5c5f82180135f2f4fcb7c498c7217d698",
@@ -55,7 +63,7 @@
     "tests/fixtures/reference_parity/parity_manifest.json": "f90ddd58aa036141d7edb06d487cb463f14fd691ce9105ba3a3d215c05a9b967",
     "tests/fixtures/reference_parity/parity_report.json": "e6280a31b858d24266a6303efdfa7824c825cd7c065e5802168257e1331a02d7",
     "tests/fixtures/reference_parity/reference_results.json": "e9510bfd57916879fc6881114ccd21fc075df6510c37a64c89f91c7e0b470928",
-    "transformers/part_divider.py": "3c8f772e0e804528323d70b8195ed58afecf9c5a8f553b9f4d2eb06aa5fafcee",
+    "transformers/part_divider.py": "88abdfc83f9cf36eeaa2a7adfa0ebce41393e0658e5a4b452d6ec3b245f03302",
     "util/custom_math.py": "93dc46d171a6c27448e1141b8b1a2db52685b1546039ef1117a42b60bd77882f"
   },
   "preserved_ast_sha256": {

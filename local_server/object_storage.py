@@ -15,15 +15,19 @@ import os
 from pathlib import Path
 import re
 import secrets
-import stat
 import struct
 from threading import RLock
 import uuid
 
 from botocore.exceptions import ClientError
 
+from local_server.constants import CHART_URL_TTL_SECONDS
+from local_server.private_fs import (
+    create_private_file, is_canonical_key, private_directory_violation, private_file_violation,
+    read_small_private_file, reject_symlink_components, sync_directory, unique_pairs, write_private_json,
+)
 from mock_journey import typed
-from util import uploader
+from util import legacy_layout, uploader
 
 
 _MATERIAL = "object-storage.json"
@@ -34,6 +38,12 @@ _IDENT = re.compile(r"[0-9a-f]{32}\Z")
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _OBJECT = re.compile(r"[0-9a-f]{64}\.object\Z")
 _TEMPORARY = re.compile(r"\.object-tmp-[0-9a-f]{32}\Z")
+# Signed chart keys: org / date / stem + chart suffix, under the stage prefix. Groups 1-3 are
+# consumed below; the stem pattern's own groups come after them.
+_CHART_KEY = re.compile(
+    r"(_no_org|[0-9a-fA-F-]{36})/([0-9]{4}-[0-9]{2}-[0-9]{2})/("
+    + legacy_layout.KEY_STEM.pattern.removesuffix(r"\Z") + r")" + re.escape(legacy_layout.CHART_SUFFIX)
+)
 _META_KEYS = frozenset(("arc-binding", "arc-sha256", "arc-chart"))
 
 
@@ -54,8 +64,7 @@ def _fail(code="LOCAL_STORAGE_UNAVAILABLE"):
 
 
 def _file(info):
-    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+    if private_file_violation(info):
         _fail()
 
 
@@ -63,23 +72,15 @@ def _directory(path):
     path = Path(path)
     if not path.is_absolute() or ".." in path.parts:
         _fail()
-    for part in (path, *path.parents):
-        if stat.S_ISLNK(part.lstat().st_mode):
-            _fail()
+    # Leaf first; every failure here is mapped by callers to a fixed code.
+    reject_symlink_components(path, root_first=False, error=LocalObjectError)
     info = path.lstat()
-    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
-            or stat.S_IMODE(info.st_mode) != 0o700):
+    if private_directory_violation(info):
         _fail()
     return path
 
 
-def _pairs(pairs):
-    value = {}
-    for key, nested in pairs:
-        if key in value:
-            _fail("LOCAL_OBJECT_INVALID")
-        value[key] = nested
-    return value
+_pairs = unique_pairs(lambda: LocalObjectError("LOCAL_OBJECT_INVALID"))
 
 
 def _json(body):
@@ -87,53 +88,27 @@ def _json(body):
                       parse_constant=lambda _: _fail("LOCAL_OBJECT_INVALID"))
 
 
-def _sync(path):
-    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
 def _read_material(path):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    try:
-        info = os.fstat(fd)
-        _file(info)
-        if info.st_size > 4096:
-            _fail()
-        with os.fdopen(fd, "rb", closefd=False) as stream:
-            value = _json(stream.read(4097))
-        if (type(value) is not dict or set(value) != {"schema_version", "installation_id", "chart_key", "initialized"}
-                or type(value["schema_version"]) is not int or value["schema_version"] != 1
-                or type(value["installation_id"]) is not str or not _IDENT.fullmatch(value["installation_id"])
-                or type(value["chart_key"]) is not str or type(value["initialized"]) is not bool):
-            _fail()
-        key = base64.b64decode(value["chart_key"], validate=True)
-        if len(key) != 32 or base64.b64encode(key).decode("ascii") != value["chart_key"]:
-            _fail()
-        return value
-    finally:
-        os.close(fd)
+    # No lstat pre-check here (unlike installation.json): O_NOFOLLOW and the
+    # fstat check reject links and non-private files after opening.
+    value = _json(read_small_private_file(path, check=_file, too_large=LocalObjectError, lstat_first=False))
+    if (type(value) is not dict or set(value) != {"schema_version", "installation_id", "chart_key", "initialized"}
+            or type(value["schema_version"]) is not int or value["schema_version"] != 1
+            or type(value["installation_id"]) is not str or not _IDENT.fullmatch(value["installation_id"])
+            or type(value["chart_key"]) is not str or type(value["initialized"]) is not bool):
+        _fail()
+    if not is_canonical_key(value["chart_key"]):
+        _fail()
+    return value
 
 
 def _write_material(path, value, *, first):
-    temporary = path if first else path.with_name(".object-material-" + uuid.uuid4().hex)
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        _file(os.fstat(fd))
-        with os.fdopen(fd, "wb", closefd=False) as stream:
-            stream.write(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-            stream.flush()
-            os.fsync(fd)
-    finally:
-        os.close(fd)
-    if not first:
+    def verify():
         old = _read_material(path)
         if {**old, "initialized": value["initialized"]} != value:
             _fail()
-        os.replace(temporary, path)
-    _sync(path.parent)
+    write_private_json(path, value, check=_file, verify=verify,
+                       temporary=None if first else path.with_name(".object-material-" + uuid.uuid4().hex))
 
 
 @dataclass(frozen=True)
@@ -151,12 +126,12 @@ def prepare_object_material(local_material):
     objects never creates a fresh directory with the old installation identity.
     """
     try:
-        from local_server.database import LocalMaterial, MATERIAL_FILENAME, _read_record
+        from local_server.database import LocalMaterial, MATERIAL_FILENAME, read_installation_record
 
         if type(local_material) is not LocalMaterial:
             _fail()
         data_dir = _directory(local_material.data_dir)
-        parent = _read_record(data_dir / MATERIAL_FILENAME)
+        parent = read_installation_record(data_dir / MATERIAL_FILENAME)
         if (parent["installation_id"] != local_material.installation_id
                 or parent["environment"] != local_material.environment):
             _fail()
@@ -174,7 +149,7 @@ def prepare_object_material(local_material):
             if value["initialized"]:
                 _fail()
             objects.mkdir(mode=0o700)
-            _sync(data_dir)
+            sync_directory(data_dir)
         _directory(objects)
         if not value["initialized"]:
             # A pending installation may recover mkdir, never adopt objects.
@@ -212,7 +187,7 @@ class LocalObjectClient:
                 _fail()
             self.material, self.bucket, self.directory, self.stage = material, bucket, directory, stage
             self.artifact_limit, self.quota_bytes = artifact_limit, quota_bytes
-            self.prefix = f"{directory}/{stage}/"
+            self.prefix = legacy_layout.stage_prefix(directory, stage)
             self._fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             self._lock_fd = os.open("objects.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
                                     0o600, dir_fd=self._fd)
@@ -244,8 +219,7 @@ class LocalObjectClient:
             if self._fd is None or self._lock_fd is None:
                 _fail()
             directory_info = os.fstat(self._fd)
-            if (not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid != os.getuid()
-                    or stat.S_IMODE(directory_info.st_mode) != 0o700):
+            if private_directory_violation(directory_info):
                 _fail()
             _file(os.fstat(self._lock_fd))
             # Reject a replaced lock name: all cooperating processes must lock
@@ -351,18 +325,14 @@ class LocalObjectClient:
                 if self._used() + len(envelope) > self.quota_bytes:
                     _fail("LOCAL_STORAGE_QUOTA_EXCEEDED")
                 temporary = ".object-tmp-" + uuid.uuid4().hex
-                fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o600, dir_fd=self._fd)
                 try:
-                    _file(os.fstat(fd))
-                    with os.fdopen(fd, "wb", closefd=False) as stream:
-                        stream.write(envelope)
-                        stream.flush()
-                        os.fsync(fd)
+                    # Same skeleton as the JSON records (create, fstat check,
+                    # fsync); the binary envelope, dir_fd and the unlink of a
+                    # failed temporary stay here.
+                    create_private_file(temporary, envelope, check=_file, dir_fd=self._fd)
                     os.replace(temporary, ident + ".object", src_dir_fd=self._fd, dst_dir_fd=self._fd)
                     os.fsync(self._fd)
                 finally:
-                    os.close(fd)
                     try:
                         os.unlink(temporary, dir_fd=self._fd)
                     except FileNotFoundError:
@@ -392,7 +362,7 @@ class LocalObjectClient:
             with self._locked():
                 header, body = self._read(ident)
             relative = header["key"][len(self.prefix):]
-            match = re.fullmatch(r"(_no_org|[0-9a-fA-F-]{36})/([0-9]{4}-[0-9]{2}-[0-9]{2})/(CPR-ACTION-[0-9]{10}-[0-9a-f-]{36})\.json", relative)
+            match = re.fullmatch(_CHART_KEY, relative)
             if (not match or uploader.org_prefix(match[1]) != match[1]
                     or uploader.date_prefix(match[3]) != match[2]
                     or str(uuid.UUID(match[3][-36:])) != match[3][-36:]):
@@ -422,20 +392,20 @@ class LocalLegacyBindings:
     def _base(self, stage, key_stem, org, directory):
         if stage != self.client.stage or directory != self.directory:
             _fail()
-        return f"{directory}/{stage}/{org}/{self.date_prefix(key_stem)}/{key_stem}"
+        return legacy_layout.object_base(directory, stage, org, self.date_prefix(key_stem), key_stem)
 
     def upload_raw_input(self, cpr_bytes, aed_bytes, meta, *, stage, key_stem, org, directory):
         base = self._base(stage, key_stem, org, directory)
-        self.client.put_object(Bucket=self.bucket, Key=base + ".bin", Body=cpr_bytes)
-        self.client.put_object(Bucket=self.bucket, Key=base + ".meta.json", Body=typed.json_bytes(meta))
+        self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.RAW_SUFFIX, Body=cpr_bytes)
+        self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.META_SUFFIX, Body=typed.json_bytes(meta))
         if aed_bytes:
-            self.client.put_object(Bucket=self.bucket, Key=base + ".aed.bin", Body=aed_bytes)
+            self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.AED_SUFFIX, Body=aed_bytes)
         return base
 
     def upload_json_file(self, data, *, directory, stage, key_stem, org):
-        key = self._base(stage, key_stem, org, directory) + ".json"
+        key = self._base(stage, key_stem, org, directory) + legacy_layout.CHART_SUFFIX
         self.client.put_object(Bucket=self.bucket, Key=key, Body=typed.json_bytes(data))
         return key
 
-    def create_signed_url(self, key, *, expires_in=300):
+    def create_signed_url(self, key, *, expires_in=CHART_URL_TTL_SECONDS):
         return self.chart_service.create_signed_url(key, expires_in=expires_in)

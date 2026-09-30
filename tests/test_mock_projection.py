@@ -1,6 +1,5 @@
 """Durable projection rejects extra payloads without changing legacy parsing."""
 
-from copy import deepcopy
 import json
 
 import pytest
@@ -9,20 +8,9 @@ from mock_journey.errors import JourneyError
 from mock_journey.legacy_bridge import parse_measurement
 from mock_journey.projection import ProjectionSchema, project_input, typed_identity
 from mock_journey import typed
-from services.http.schemas import DEFAULT_CONDITION
 from services.legacy_response import DocumentSelection, finalize_legacy_response
 from tests._synth import comp_session, condition_json, multipart_event
-
-
-def measurement_fixture():
-    condition = {**DEFAULT_CONDITION, "guideline": "ARC2025"}
-    definition = {"condition": condition, "calculation_profile": {},
-                  "goal": {"kind": "cycles", "required": 3}, "catalog_version": "mock-catalog-v1",
-                  "profile_version": "tester-v1", "adapter_version": "test-adapter-v1", "projection_version": "test-projection-v1"}
-    body = {"cpr_b64_data": b"actual-collected-measurement", "aed_b64_data": b"",
-            "condition": deepcopy(condition), "vp_event_list": []}
-    schema = ProjectionSchema("test-projection-v1", {"CompressionDepth": {"%_Good": "scalar"}})
-    return body, definition, schema
+from tests.projection_storage_support import measurement_fixture  # noqa: F401 (re-export)
 
 
 def test_identity_distinguishes_types_presence_order_and_negative_zero():

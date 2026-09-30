@@ -6,7 +6,7 @@ import pytest
 from mock_journey.aws_settings import AwsSettings
 from mock_journey.aws_storage import AwsLegacyBindings
 from tests.mock_storage_support import MemoryS3
-from tests.test_aws_runtime import configuration
+from tests.aws_runtime_support import configuration
 
 
 def binding():

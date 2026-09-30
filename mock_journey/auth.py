@@ -10,10 +10,13 @@ import uuid
 
 from mock_journey.errors import JourneyError
 from mock_journey.models import AuthContext
+from mock_journey.settings import MAX_ENVIRONMENT_LENGTH
 
 
 PRINCIPAL = "dummy-tester"
 LOGIN_ID = "test@test.com"
+# D129: the Dummy account's display name, returned only by the login response (userName).
+DISPLAY_NAME = "Test User"
 SESSION_SECONDS = 86400
 _TOKEN = re.compile(r"s1\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_-]{43})\Z")
 _VERSION = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
@@ -23,34 +26,9 @@ def _digest(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def extract_bearer(event):
-    """Resolve REST proxy's duplicate representations without accepting duplicates."""
-    headers = event.get("headers") or {}
-    multi = event.get("multiValueHeaders") or {}
-    if type(headers) is not dict or type(multi) is not dict:
-        raise JourneyError("SESSION_REQUIRED")
-    single = [v for k, v in headers.items() if type(k) is str and k.lower() == "authorization"]
-    multiple = [v for k, v in multi.items() if type(k) is str and k.lower() == "authorization"]
-    if len(single) > 1 or len(multiple) > 1:
-        raise JourneyError("SESSION_REQUIRED")
-    values = single
-    if multiple:
-        if type(multiple[0]) is not list or len(multiple[0]) != 1:
-            raise JourneyError("SESSION_REQUIRED")
-        if single and single[0] != multiple[0][0]:
-            raise JourneyError("SESSION_REQUIRED")
-        values = multiple[0]
-    if len(values) != 1 or type(values[0]) is not str:
-        raise JourneyError("SESSION_REQUIRED")
-    match = re.fullmatch(r"(?i:Bearer) (\S+)", values[0])
-    if not match:
-        raise JourneyError("SESSION_REQUIRED")
-    return match[1]
-
-
 class AuthManager:
     def __init__(self, state, environment, keys, current_key_version, *, clock=time.time):
-        if type(environment) is not str or not environment or len(environment) > 128:
+        if type(environment) is not str or not environment or len(environment) > MAX_ENVIRONMENT_LENGTH:
             raise ValueError("Invalid authentication environment.")
         if not keys or current_key_version not in keys or any(
             type(k) is not str or not _VERSION.fullmatch(k)
@@ -63,7 +41,7 @@ class AuthManager:
         self.current_key_version = current_key_version
         self.clock = clock
 
-    def login(self, login_id, password, slot_keys):
+    def login(self, login_id, password):
         if type(login_id) is not str or type(password) is not str:
             raise JourneyError("LOGIN_FAILED")
         valid_id = hmac.compare_digest(login_id.encode(), LOGIN_ID.encode())
@@ -78,7 +56,7 @@ class AuthManager:
             "token_hash": _digest(token), "issued_at": now,
             "expires_at": now + SESSION_SECONDS, "status": "active", "revision": 0,
         }
-        self.state.create_session(session, slot_keys)
+        self.state.create_session(session)
         return session, token
 
     def authenticate(self, token, *, allow_logout_receipt=False):

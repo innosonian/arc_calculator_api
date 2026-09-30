@@ -3,6 +3,29 @@
 The coverage guard compares newly introduced deployment refs with unconditional
 smoke steps, so CI-only introduction and individual dependency PRs remain valid.
 This self-check is review support, not a sandbox against a PR changing the guard.
+
+Where to change together when the CI changes (the yml is pinned here as text,
+so a reviewed CI change touches every copy at once):
+
+* DynamoDB Local archive (URL or digest): both `dynamodb_download` step envs in
+  .github/workflows/validate_actions.yml, DYNAMODB_ARCHIVE below, the `archive`
+  field of docs/local_server/DYNAMODB_DISTRIBUTION_MANIFEST.json (its `files`
+  must be exactly the archive's contents; local_server.cli.verify_distribution
+  checks that on the runner), the literal in tests/test_validate_actions.py
+  (test_distribution_manifest_pins_the_archive_ci_downloads), and the CI
+  paragraphs of docs/DEPLOY_GUIDE.md, docs/LOCAL_RUN.md and docs/VALIDATION.md.
+* Shared DynamoDB Local step bodies (dependencies, JDK, download, verify): the
+  yml (byte-identical in both jobs) and INTEGRATION_RUNS below. The suite step:
+  the yml and SUITE_RUN_TEMPLATE below. The tests mutate a copy of the yml, so
+  they follow the validator.
+* Adding or removing a DynamoDB Local job: DYNAMODB_JOB_IDS below (step ids,
+  suite commands and the `smoke` ref count derive from it), MAX_JOB_MINUTES
+  below, the yml job, a scripts/test_suites.py LOCAL_SUITES entry of the same
+  name, tests/test_ci_suites.py, tests/test_validate_actions.py (`smoke_job`
+  job set and the smoke ref-count test) and docs/DEPLOY_GUIDE.md.
+* Job timeouts: the yml `timeout-minutes` and its header comment (measured
+  duration x3 + 3 min), MAX_JOB_MINUTES below and docs/DEPLOY_GUIDE.md.
+* The offline unit suite selection: scripts/test_suites.py only.
 """
 
 import argparse
@@ -39,6 +62,68 @@ CRITICAL_RUNS = {
                  '  --base-sha "$PR_BASE_SHA" --metadata-dir "$RUNNER_TEMP/action-metadata"',
     "regression": '"$RUNNER_TEMP/actions-venv/bin/python" scripts/run_actions_regression.py',
 }
+# Two parallel DynamoDB Local jobs. Each job id is also the fixed
+# scripts/test_suites.py suite it runs; the two suites are disjoint and, with the
+# offline unit suite of the `validate` job, cover the local `--suite all`.
+DYNAMODB_JOB_IDS = ("integration", "boundary")
+# Steps whose id, body, env and shell are identical in every DynamoDB Local job.
+SHARED_DYNAMODB_STEP_IDS = ("local_dependencies", "jdk", "dynamodb_download", "dynamodb_verify")
+# Per job: its own checkout/Python step ids, the shared steps, then its suite step.
+DYNAMODB_JOBS = {
+    job_id: (job_id + "_checkout", job_id + "_python", *SHARED_DYNAMODB_STEP_IDS, "local_" + job_id)
+    for job_id in DYNAMODB_JOB_IDS
+}
+# Every DynamoDB Local job downloads one digest-pinned archive from the official
+# host, then checks every file against the checked-in distribution manifest.
+# The manifest's `archive` field must name the same URL and digest (checked by
+# `check`), so the digest chain archive -> extracted files is recorded in one
+# reviewed place next to the file fingerprints it belongs to.
+DYNAMODB_ARCHIVE = {
+    "DYNAMODB_LOCAL_URL": "https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_2026-07-31.tar.gz",
+    "DYNAMODB_LOCAL_SHA256": "f80bcec477f85f57e2c77f8d54aa6b672a8403fceff0c450560aee1cf6c21163",
+}
+DISTRIBUTION_MANIFEST = "docs/local_server/DYNAMODB_DISTRIBUTION_MANIFEST.json"
+# (run body, env, shell) per step; no other step keys or alternative bodies.
+# These shared steps are byte-identical in both DynamoDB Local jobs.
+INTEGRATION_RUNS = {
+    "local_dependencies": (
+        'python3 -m venv "$RUNNER_TEMP/integration-venv"\n'
+        '"$RUNNER_TEMP/integration-venv/bin/python" -m pip install --only-binary=:all: \\\n'
+        '  -r requirements-local.txt -r requirements-ci.txt -c constraints-lambda.txt\n'
+        '"$RUNNER_TEMP/integration-venv/bin/python" -m pip freeze', None, None),
+    "jdk": ("java -version\njavac -version", None, None),
+    "dynamodb_download": (
+        "curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 300 --retry 3 \\\n"
+        '  --output "$RUNNER_TEMP/dynamodb_local.tar.gz" "$DYNAMODB_LOCAL_URL"\n'
+        'echo "$DYNAMODB_LOCAL_SHA256  $RUNNER_TEMP/dynamodb_local.tar.gz" | sha256sum --check --strict\n'
+        'mkdir -m 700 "$RUNNER_TEMP/dynamodb-local"\n'
+        'tar -xzf "$RUNNER_TEMP/dynamodb_local.tar.gz" -C "$RUNNER_TEMP/dynamodb-local" --no-same-owner\n'
+        'rm -f -- "$RUNNER_TEMP/dynamodb_local.tar.gz"', DYNAMODB_ARCHIVE, "bash"),
+    "dynamodb_verify": (
+        '"$RUNNER_TEMP/integration-venv/bin/python" -c \'import pathlib, sys; from local_server.cli import '
+        'verify_distribution; verify_distribution(pathlib.Path(sys.argv[1]))\' \\\n'
+        '  "$RUNNER_TEMP/dynamodb-local"', None, None),
+}
+# The last step of each DynamoDB Local job differs only in its fixed suite name,
+# which is the job id.
+SUITE_RUN_TEMPLATE = (
+    '"$RUNNER_TEMP/integration-venv/bin/python" scripts/validate_local_integration.py \\\n'
+    '  --dynamodb-home "$RUNNER_TEMP/dynamodb-local" --suite {suite}'
+)
+SUITE_RUNS = {
+    step_ids[-1]: (SUITE_RUN_TEMPLATE.format(suite=job_id), {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}, None)
+    for job_id, step_ids in DYNAMODB_JOBS.items()
+}
+# Upper bound of `timeout-minutes` per job: the value the yml header derives
+# from the 2026-09-28 local measurement (about 3x the measured suite time plus
+# ~3 min for checkout, installation and downloads, rounded up: 154 s -> 12,
+# 193 s -> 13, 174 s -> 12). A longer timeout needs a new measurement and a
+# reviewed change here, not only in the yml. Each DynamoDB Local job has its
+# own bound; they run in parallel, so this is never a sum.
+MAX_JOB_MINUTES = {"validate": 12, "integration": 13, "boundary": 12}
+MAX_VALIDATE_MINUTES = MAX_JOB_MINUTES["validate"]
+# The loosest DynamoDB Local bound; validate_integration applies the per-job one.
+MAX_INTEGRATION_MINUTES = max(MAX_JOB_MINUTES[job_id] for job_id in DYNAMODB_JOBS)
 
 
 class ValidationError(ValueError):
@@ -161,6 +246,34 @@ def validate_deployment(document):
         require(not any("continue-on-error" in s for _, s in credentials), "DEPLOYMENT_AUTH_INVALID")
 
 
+def validate_integration(job, checkout, python, job_id):
+    """Run one fixed DynamoDB Local suite only through the fixed, verified commands."""
+    require(job_id in DYNAMODB_JOBS, "SMOKE_STRUCTURE_INVALID")
+    step_ids = DYNAMODB_JOBS[job_id]
+    require(isinstance(job, dict), "SMOKE_STRUCTURE_INVALID")
+    require("permissions" not in job, "CI_BOUNDARY_INVALID")
+    require(set(job) <= {"name", "runs-on", "timeout-minutes", "steps"}, "SMOKE_STRUCTURE_INVALID")
+    require(job.get("runs-on") == "ubuntu-latest" and type(job.get("timeout-minutes")) is int
+            and 1 <= job["timeout-minutes"] <= MAX_JOB_MINUTES[job_id], "CI_BOUNDARY_INVALID")
+    steps = job.get("steps")
+    require(isinstance(steps, list) and all(isinstance(s, dict) for s in steps), "SMOKE_STRUCTURE_INVALID")
+    require(tuple(s.get("id") for s in steps) == step_ids, "SMOKE_STRUCTURE_INVALID")
+    selected = dict(zip(step_ids, steps))
+    first, second = selected[step_ids[0]], selected[step_ids[1]]
+    require(set(first) - {"name"} == {"id", "uses", "with"} and first["uses"] == checkout["uses"]
+            and first["with"] == {"persist-credentials": False, "ref": "${{ github.sha }}"},
+            "SMOKE_STRUCTURE_INVALID")
+    require(set(second) - {"name"} == {"id", "uses", "with"} and second["uses"] == python["uses"]
+            and second["with"] == {"python-version": "3.12"}, "SMOKE_STRUCTURE_INVALID")
+    suite_step = step_ids[-1]
+    for step_id, (body, env, shell) in (*INTEGRATION_RUNS.items(), (suite_step, SUITE_RUNS[suite_step])):
+        step = selected[step_id]
+        keys = {"id", "run"} | ({"env"} if env is not None else set()) | ({"shell"} if shell else set())
+        require(set(step) - {"name"} == keys and type(step["run"]) is str and step["run"].strip() == body
+                and step.get("shell") == shell, "SMOKE_STRUCTURE_INVALID")
+        require(step.get("env") == env, "CI_BOUNDARY_INVALID")
+
+
 def validate_workflows(base, deployment, ci):
     # No equality requirement between ALL deployment refs and the smoke refs.
     old_steps, current_steps = action_steps(base), action_steps(deployment)
@@ -190,11 +303,11 @@ def validate_workflows(base, deployment, ci):
     require(ci.get("concurrency", {}).get("cancel-in-progress") is True
             and "github.event.pull_request.number" in ci.get("concurrency", {}).get("group", ""),
             "CI_BOUNDARY_INVALID")
-    require(set(ci.get("jobs", {})) == {"validate"}, "SMOKE_STRUCTURE_INVALID")
+    require(set(ci.get("jobs", {})) == {"validate", *DYNAMODB_JOBS}, "SMOKE_STRUCTURE_INVALID")
     job = ci["jobs"]["validate"]
     require(isinstance(job, dict), "SMOKE_STRUCTURE_INVALID")
     require(job.get("runs-on") == "ubuntu-latest" and type(job.get("timeout-minutes")) is int
-            and 1 <= job["timeout-minutes"] <= 15, "CI_BOUNDARY_INVALID")
+            and 1 <= job["timeout-minutes"] <= MAX_VALIDATE_MINUTES, "CI_BOUNDARY_INVALID")
     require(not any(k in job for k in ("if", "needs", "strategy", "uses", "continue-on-error", "container", "environment")),
             "SMOKE_STRUCTURE_INVALID")
     require("permissions" not in job, "CI_BOUNDARY_INVALID")
@@ -222,8 +335,13 @@ def validate_workflows(base, deployment, ci):
             "SMOKE_STRUCTURE_INVALID")
     require(selected["contracts"].get("env") == {"PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}"},
             "CI_BOUNDARY_INVALID")
-    smoke = {s["uses"] for s in action_steps(ci)}
+    action_steps(ci)
+    # Only the unconditional smoke job counts as coverage; each DynamoDB Local
+    # job must reuse exactly the same refs rather than introduce its own.
+    smoke = {s["uses"] for s in steps if "uses" in s}
     require(smoke == {checkout["uses"], python["uses"]}, "SMOKE_STRUCTURE_INVALID")
+    for job_id in DYNAMODB_JOBS:
+        validate_integration(ci["jobs"][job_id], checkout, python, job_id)
     introduced = {}
     for repo in OWNERS:
         before = {s["uses"] for s in old_steps if action_ref(s["uses"])[0] == repo}
@@ -234,6 +352,17 @@ def validate_workflows(base, deployment, ci):
     validate_deployment(deployment)
     return {"introduced": introduced, "smoke_refs": sorted(smoke),
             "contract_refs": sorted({s["uses"] for s in current_steps} | smoke)}
+
+
+def validate_distribution_manifest(root):
+    """The archive CI downloads must be the one whose files the manifest fingerprints."""
+    manifest = json.loads((root / DISTRIBUTION_MANIFEST).read_text())
+    require(isinstance(manifest, dict) and isinstance(manifest.get("files"), dict) and manifest["files"],
+            "DISTRIBUTION_MANIFEST_INVALID")
+    archive = manifest.get("archive")
+    require(isinstance(archive, dict) and set(archive) == {"url", "sha256"}, "DISTRIBUTION_MANIFEST_INVALID")
+    require(archive == {"url": DYNAMODB_ARCHIVE["DYNAMODB_LOCAL_URL"],
+                        "sha256": DYNAMODB_ARCHIVE["DYNAMODB_LOCAL_SHA256"]}, "DISTRIBUTION_ARCHIVE_MISMATCH")
 
 
 def validate_metadata(ref, raw, record):
@@ -286,7 +415,8 @@ def git_text(root, *args):
 def syntax_check(root):
     shell_files = ("scripts/deploy_arc_lambda.sh", "scripts/deploy_arc_api_gateway.sh")
     python_files = ("scripts/deployment_preflight.py", "scripts/build_mock_artifact.py",
-                    "scripts/validate_actions.py", "scripts/install_actionlint.py", "scripts/run_actions_regression.py")
+                    "scripts/validate_actions.py", "scripts/install_actionlint.py", "scripts/run_actions_regression.py",
+                    "scripts/test_suites.py", "scripts/validate_local_integration.py")
     for name in shell_files:
         result = subprocess.run(["bash", "-n", str(root / name)], capture_output=True, timeout=15)
         require(result.returncode == 0, "SHELL_SYNTAX_INVALID")
@@ -309,6 +439,7 @@ def check(args):
     base = load_yaml(git_text(root, "show", args.base_sha + ":" + DEPLOYMENT))
     deployment, ci = (load_yaml((root / name).read_text()) for name in (DEPLOYMENT, VALIDATION))
     report = validate_workflows(base, deployment, ci)
+    validate_distribution_manifest(root)
     manifest = json.loads((root / MANIFEST).read_text())
     require(manifest.get("schema_version") == 1 and isinstance(manifest.get("actions"), dict)
             and isinstance(manifest.get("contract_candidates"), list) and manifest["contract_candidates"],
@@ -333,7 +464,9 @@ def check(args):
                   metadata={ref: {"sha256": manifest["actions"][ref]["sha256"],
                                   "runtime": metadata[ref]["runs"]["using"]} for ref in refs},
                   source_hashes={name: hashlib.sha256((root / name).read_bytes()).hexdigest()
-                                 for name in (DEPLOYMENT, VALIDATION, MANIFEST, "requirements.txt", "requirements-ci.txt")},
+                                 for name in (DEPLOYMENT, VALIDATION, MANIFEST, DISTRIBUTION_MANIFEST,
+                                              "requirements.txt", "requirements-ci.txt",
+                                              "requirements-local.txt", "scripts/test_suites.py")},
                   aws_action_executed=False, checks="static_contracts_and_syntax_passed")
     print(json.dumps(report, sort_keys=True))
 
@@ -350,7 +483,10 @@ def smoke(args):
             "PYTHON_PATH_MISMATCH")
     workflow = (root / VALIDATION).read_text()
     refs = re.findall(r"^\s*uses:\s*(\S+)", workflow, re.M)
-    require(len(refs) == 2 and {action_ref(ref)[0] for ref in refs} == {CHECKOUT, PYTHON}, "SMOKE_STRUCTURE_INVALID")
+    # The smoke job and every DynamoDB Local job use the same checkout and
+    # Python refs: (1 + len(DYNAMODB_JOBS)) jobs x 2 steps.
+    require(len(refs) == 2 * (1 + len(DYNAMODB_JOBS)) and len(set(refs)) == 2
+            and {action_ref(ref)[0] for ref in refs} == {CHECKOUT, PYTHON}, "SMOKE_STRUCTURE_INVALID")
     evidence = {"checkout_sha": actual, "event_merge_sha": args.expected_sha, "python": sys.version.split()[0],
                 "python_path": str(selected), "action_refs": refs, "aws_action_executed": False}
     if os.environ.get("GITHUB_EVENT_PATH"):

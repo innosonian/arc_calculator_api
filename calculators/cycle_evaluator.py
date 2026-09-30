@@ -1,4 +1,4 @@
-from calculators.waveform import COMP_PEAK_AMP, CompressionEvent, count_depth_peaks, drop_tap_events, segment_compressions
+from calculators.waveform import CompressionEvent, drop_tap_events, segment_compressions
 from calculators.action_timeline import timeline_totals
 from config.borders import fall_linear_get_point, rise_linear_get_point, trapezium_get_point, BaseBorder, dart_get_point
 from config.calculation_config import BaseCalculationConfig

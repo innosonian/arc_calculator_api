@@ -8,17 +8,36 @@ from dataclasses import dataclass, field
 import math
 import multiprocessing
 import os
-from pathlib import Path
 import signal
 import threading
 import time
 
 
+from local_server.constants import (
+    BODY_LIMIT, DEFAULT_ARTIFACT_BYTES, DEFAULT_CALCULATION_BODY_BYTES, DEFAULT_STORAGE_QUOTA_BYTES,
+    DEFAULT_WORKER_LEASE_SECONDS, DEFAULT_WORKER_POLL_SECONDS, DEFAULT_WORKER_RETRY_SECONDS,
+)
+from mock_journey.course_settings import (
+    FIXTURE_MAX_ASSIGNMENTS, FIXTURE_MAX_BUNDLE_BYTES, FIXTURE_MAX_CONFLICT_RETRIES, FIXTURE_MAX_CONTROL_BODY_BYTES,
+    FIXTURE_MAX_COURSE_ITEMS, FIXTURE_MAX_INTERVALS_PER_REPORT, FIXTURE_MAX_MERGED_INTERVALS_PER_START,
+    FIXTURE_MAX_REPORTS_PER_START, FIXTURE_MAX_TRANSACTION_ACTIONS,
+)
 from mock_journey.execution_definitions import PROJECTION_VERSION, execution_catalog
+from mock_journey.settings import base64_body_bytes
 STORAGE_BUCKET = "arc-local-private"
 STORAGE_DIRECTORY = "calculator_result/interpreted_rtdata/arc"
 STORAGE_STAGE = "local"
 _ERROR = "The owned local journey runtime is unavailable."
+# Local role wiring values (not deployment policy). The journey state
+# repository retries a conflicting transaction this many times.
+_STATE_CONFLICT_RETRIES = 4
+# Lease renewal every lease/4 seconds (LocalLeaseGuardFactory requires at
+# most lease/3), each renewal bounded by min(15 s, lease/4).
+_LEASE_RENEWAL_DIVISOR = 4
+_LEASE_RENEWAL_TIMEOUT_CAP_SECONDS = 15
+# Outbox/job reconciliation bounds per worker poll.
+_RELAY_PAGE_SIZE = 20
+_RELAY_MAX_PAGES = 5
 
 
 class RuntimeUnavailable(RuntimeError):
@@ -29,12 +48,12 @@ class RuntimeUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class LocalOptions:
     """Bounded, explicit local starting values; not ARC or deployment policy."""
-    calculation_body_bytes: int = 1_000_000
-    artifact_bytes: int = 8_000_000
-    storage_quota_bytes: int = 1_073_741_824
-    worker_lease_seconds: int = 60
-    worker_retry_seconds: int = 5
-    worker_poll_seconds: float = 0.25
+    calculation_body_bytes: int = DEFAULT_CALCULATION_BODY_BYTES
+    artifact_bytes: int = DEFAULT_ARTIFACT_BYTES
+    storage_quota_bytes: int = DEFAULT_STORAGE_QUOTA_BYTES
+    worker_lease_seconds: int = DEFAULT_WORKER_LEASE_SECONDS
+    worker_retry_seconds: int = DEFAULT_WORKER_RETRY_SECONDS
+    worker_poll_seconds: float = DEFAULT_WORKER_POLL_SECONDS
 
     def __post_init__(self):
         if (any(type(value) is not int or value <= 0 for value in (
@@ -47,18 +66,18 @@ class LocalOptions:
 
     @property
     def payload_limit(self):
-        return 4 * ((self.calculation_body_bytes + 2) // 3)
+        # Encoded event-body limit admitting the whole wire limit after base64.
+        return base64_body_bytes(self.calculation_body_bytes)
 
     @property
     def response_body_limit(self):
         # Leave room for the submission overlay around a maximum stored result.
-        from local_server.http import BODY_LIMIT
         return self.artifact_bytes + BODY_LIMIT
 
 
 def _settings(database, material, options):
     from mock_journey.settings import ApiSettings, StateSettings, StorageSettings, WorkerSettings
-    state = StateSettings(database.table_name, 4)
+    state = StateSettings(database.table_name, _STATE_CONFLICT_RETRIES)
     storage = StorageSettings(STORAGE_STAGE, STORAGE_BUCKET, STORAGE_DIRECTORY,
                               options.calculation_body_bytes, options.artifact_bytes)
     return (ApiSettings(state, storage, material.environment, options.payload_limit),
@@ -85,44 +104,53 @@ def _objects(material, options, host, port, *, object_material=None):
         raise
 
 
-def _course_provider():
-    """Explicit synthetic catalog for --course-v2. Not an ARC assignment source."""
-    from mock_journey.auth import PRINCIPAL
-    from mock_journey.course_contracts import LearnerContext
-    from mock_journey.course_fixture import FixtureCourseProvider
-    from mock_journey.course_settings import fixture_course_settings
-    from mock_journey.typed import parse_json
-
-    root = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "vcc_contract" / "v1"
-    document = parse_json((root / "course_bundle.json").read_bytes())
-    mapping = parse_json((root / "execution_mapping.json").read_bytes())
-    settings = fixture_course_settings()
-    row = document["learners"]["dummy"]
-    learner = LearnerContext(row["provider"], row["tenant_id"], row["learner_id"], PRINCIPAL, True)
-    provider = FixtureCourseProvider(document=document, settings=settings, mapping_document=mapping)
-    return provider, settings, mapping, learner
+# Local implementation defaults for the /api/v2 course limits: the product
+# default equals the course_settings FIXTURE_* values (one definition, D12);
+# not ARC, AWS or operating quotas. No synthetic catalog module is imported.
+LOCAL_COURSE_LIMITS = {
+    "max_course_items": FIXTURE_MAX_COURSE_ITEMS,
+    "max_assignments": FIXTURE_MAX_ASSIGNMENTS,
+    "max_bundle_bytes": FIXTURE_MAX_BUNDLE_BYTES,
+    "max_control_body_bytes": FIXTURE_MAX_CONTROL_BODY_BYTES,
+    "max_intervals_per_report": FIXTURE_MAX_INTERVALS_PER_REPORT,
+    "max_merged_intervals_per_start": FIXTURE_MAX_MERGED_INTERVALS_PER_START,
+    "max_reports_per_start": FIXTURE_MAX_REPORTS_PER_START,
+    "max_transaction_actions": FIXTURE_MAX_TRANSACTION_ACTIONS,
+    "max_conflict_retries": FIXTURE_MAX_CONFLICT_RETRIES,
+}
 
 
-def build_api(database, material, options, host, port, *, course_v2=False):
-    from mock_journey.assembly import build_application, build_course_application
+def local_course_settings():
+    """Explicit local CourseSettings, defined in product code; no test data is read."""
+    from mock_journey.course_settings import CourseSettings
+    return CourseSettings(**LOCAL_COURSE_LIMITS)
+
+
+def build_api(database, material, options, host, port):
+    """The /api/v2 API role over the Dummy Dev catalog, assembled like AWS Dev.
+
+    Dummy login receives the 15 temporary DummyDevCourseProvider courses. The
+    catalog is validated against the local course limits and artifact quota
+    before any private file handle is opened. No dummy learner binding.
+    """
+    from mock_journey.assembly import build_course_application
+    from mock_journey.dev_course import validate_dummy_catalog
 
     api_settings, _ = _settings(database, material, options)
+    execution = execution_catalog()
+    course_settings = local_course_settings()
+    provider = validate_dummy_catalog(course_settings, execution=execution,
+                                      artifact_bytes=options.artifact_bytes)
     objects, charts, legacy = _objects(material, options, host, port)
     try:
-        common = dict(
-            dynamodb_client=database.client, s3_client=objects, legacy_bindings=legacy,
+        service = build_course_application(
+            api_settings, dynamodb_client=database.client, s3_client=objects, legacy_bindings=legacy,
             resume_keys={material.key_version: material.resume_key},
-            current_key_version=material.key_version, execution=execution_catalog(),
+            current_key_version=material.key_version, execution=execution,
+            provider=provider, course_settings=course_settings,
+            mapping_document=provider.mapping_document,
             operations=getattr(database, "operations", None),
         )
-        if course_v2:
-            provider, course_settings, mapping, learner = _course_provider()
-            service = build_course_application(
-                api_settings, provider=provider, course_settings=course_settings,
-                mapping_document=mapping, dummy_learner=learner, **common,
-            )
-        else:
-            service = build_application(api_settings, **common)
         return service, objects, charts
     except BaseException:
         objects.close()
@@ -130,32 +158,35 @@ def build_api(database, material, options, host, port, *, course_v2=False):
 
 
 def build_local_worker(database, material, options, host, port, *, object_material):
-    from mock_journey.assembly import build_worker
-    from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
-    from mock_journey.internal_calculator import InternalCalculator
+    from mock_journey.assembly import build_worker, worker_adapters, worker_required_bindings
+    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS
     from local_server.execution import LocalJobRunner
     from local_server.lease import LocalLeaseGuardFactory
 
     _, worker_settings = _settings(database, material, options)
     objects, charts, legacy = _objects(material, options, host, port, object_material=object_material)
     try:
-        adapter = InternalCalculator(version=PENDING_GOAL_ADAPTER_VERSION,
-                                     projection_version=PROJECTION_VERSION, stage=STORAGE_STAGE,
-                                     allow_pending_cycle_goal=True)
-        retained = InternalCalculator(version=RETAINED_PENDING_GOAL_ADAPTER_VERSION,
-                                      projection_version=PROJECTION_VERSION, stage=STORAGE_STAGE,
-                                      allow_pending_cycle_goal=True)
+        # The whole code registry, as AWS requires of its setting (D127).
+        retained = RETAINED_ADAPTER_VERSIONS
+        adapters = worker_adapters(CURRENT_ADAPTER_VERSION, retained,
+                                   projection=PROJECTION_VERSION, stage=STORAGE_STAGE)
         guard = LocalLeaseGuardFactory(
             lease_seconds=options.worker_lease_seconds,
-            interval_seconds=options.worker_lease_seconds / 4,
-            renewal_timeout_seconds=min(15, options.worker_lease_seconds / 4),
+            interval_seconds=options.worker_lease_seconds / _LEASE_RENEWAL_DIVISOR,
+            renewal_timeout_seconds=min(_LEASE_RENEWAL_TIMEOUT_CAP_SECONDS,
+                                        options.worker_lease_seconds / _LEASE_RENEWAL_DIVISOR),
         )
         worker = build_worker(worker_settings, dynamodb_client=database.client, s3_client=objects,
-                              legacy_bindings=legacy, adapters=[adapter, retained],
-                              required_bindings=execution_catalog().required_bindings,
+                              legacy_bindings=legacy, adapters=adapters,
+                              # Same formula as AWS: every retained binding's
+                              # adapter is registered above, so its startup
+                              # resolve check always succeeds.
+                              required_bindings=worker_required_bindings(execution_catalog(), retained,
+                                                                         projection=PROJECTION_VERSION),
                               lease_guard_factory=guard, operations=getattr(database, "operations", None))
         runner = LocalJobRunner(worker.jobs, worker, lease_seconds=options.worker_lease_seconds,
-                                retry_seconds=options.worker_retry_seconds, page_size=20, max_pages=5)
+                                retry_seconds=options.worker_retry_seconds, page_size=_RELAY_PAGE_SIZE,
+                                max_pages=_RELAY_MAX_PAGES)
         return runner, objects
     except BaseException:
         objects.close()
@@ -224,7 +255,7 @@ def _worker_main(config, stop_connection, ready_connection):
         # Attach has no initialization authority. Missing files/material must
         # fail rather than being re-created by a restarted worker.
         material = config.material
-        database = connect_application(config.endpoint, material, journey=True, initialize=False, operations_role="worker")
+        database = connect_application(config.endpoint, material, initialize=False, operations_role="worker")
         runner, objects = build_local_worker(database, material, config.options, config.host, config.port,
                                              object_material=config.object_material)
         if database.ready() is not True or objects.ready() is not True:
@@ -352,10 +383,9 @@ class OwnedWorker:
 
 class LocalRuntime:
     """Own API files and supervise HTTP/worker health; the CLI still owns DB."""
-    def __init__(self, database, material, options, host, port, db_child, *, course_v2=False):
+    def __init__(self, database, material, options, host, port, db_child):
         self.database, self.db_child, self.options = database, db_child, options
-        self.service, self.objects, self.charts = build_api(
-            database, material, options, host, port, course_v2=course_v2)
+        self.service, self.objects, self.charts = build_api(database, material, options, host, port)
         self.worker = None
         self._closing = threading.Event()
         self._http_done = threading.Event()

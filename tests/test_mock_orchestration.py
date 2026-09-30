@@ -116,22 +116,38 @@ def test_stream_reads_outbox_keys_without_enqueuing_new_image(capsys):
 
 
 def test_calculation_http_preserves_calculated_values_and_authenticates_before_body():
+    from mock_journey.course_settings import fixture_course_settings
+    from mock_journey.course_wiring import COURSE_MODE, bind_course_http
+    from mock_journey import typed
+
     frozen = b'{ "integer":80, "float":80.0, "null":null, "string":"80" }'
     calls = []
     calculation = SimpleNamespace(result=lambda auth, ident: (200, frozen),
-                                  submit=lambda *args: calls.append(args) or (202, {"wait_expired": False}))
+                                  submit=lambda *args: calls.append(args) or (202, {"state": "queued"}))
+    stored = {"attempt_id": JOB, "state": "evaluated", "evaluation": {"program_completed": False},
+              "progress_application": {"applied": False, "applied_epoch": None, "reason": "REQUIREMENTS_NOT_MET"}}
+
     def authenticate(token, **kwargs):
         if token != "valid-test-token":
             raise JourneyError("SESSION_REQUIRED")
         return "authenticated"
-    service = SimpleNamespace(auth=SimpleNamespace(authenticate=authenticate), require_calculation=lambda: calculation)
-    request = {"httpMethod": "GET", "path": f"/mock/v1/attempts/{JOB}/calculation",
+
+    journey = SimpleNamespace(calculation=calculation, auth=SimpleNamespace(authenticate=authenticate),
+                              state=SimpleNamespace(get_attempt=lambda auth, ident: deepcopy(stored)))
+    http = bind_course_http(journey, SimpleNamespace(), fixture_course_settings(), clock=lambda: 1_800_000_000,
+                            uuid_factory=uuid.uuid4)
+    service = SimpleNamespace(course_mode=COURSE_MODE, course_http=http, operations=None)
+    request = {"httpMethod": "GET", "path": f"/api/v2/attempts/{JOB}/calculation/",
                "headers": {"Authorization": "Bearer valid-test-token"}}
     result = api_handle(request, None, service)
     assert result["statusCode"] == 200
-    decoded = json.loads(result["body"])
-    assert decoded.pop("submit_arc") == {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
-    assert json.dumps(decoded) == json.dumps(json.loads(frozen))
+    data = json.loads(result["body"])["data"]
+    assert data["submit_arc"] == {"status": "disabled", "ok": False, "error": "arc_contract_pending",
+                                  "exclusionReasons": []}
+    # Typed equality: 80 and 80.0, null and "80" keep their JSON types.
+    assert typed.canonical_bytes(data["calculation"]) == typed.canonical_bytes(typed.parse_json(frozen))
     assert frozen == b'{ "integer":80, "float":80.0, "null":null, "string":"80" }'
     request.update(httpMethod="POST", body="PRIVATE-MEASUREMENT-MARKER", headers={})
-    assert api_handle(request, None, service)["statusCode"] == 401 and not calls
+    denied = api_handle(request, None, service)
+    assert denied["statusCode"] == 401 and not calls
+    assert "PRIVATE-MEASUREMENT-MARKER" not in denied["body"]

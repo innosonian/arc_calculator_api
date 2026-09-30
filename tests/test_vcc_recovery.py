@@ -8,16 +8,17 @@ import pytest
 from mock_journey.course_contracts import CONTRACT_VERSION, RecoveryEvidence
 from mock_journey.course_errors import CourseError
 from mock_journey.course_recovery import CourseRecovery
-from mock_journey.course_submission import HOOK_REQUESTS, CourseCompletionPlan
+from mock_journey.course_submission import CourseCompletionPlan
 from mock_journey.typed import parse_json, json_bytes
-from tests.test_vcc_submission import LATER, _evaluation, _rows, _template
+from tests.vcc_submission_support import LATER, _evaluation, _rows, _template
+from tests.vcc_hook_requests import COURSE_SUBMISSION_HOOK_REQUESTS as HOOK_REQUESTS
+from tests.vcc_support import EPOCH
 
 
 JOB = "job-1"
 OWNER = "worker-1"
 FENCE = 4
 ATTEMPT = "50000000-0000-4000-8000-000000000001"
-EPOCH = "80000000-0000-4000-8000-000000000001"
 INPUT_DIGEST = "a" * 64
 LATER_EPOCH = LATER
 BINDING = _template(1005).binding

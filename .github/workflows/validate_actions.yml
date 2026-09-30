@@ -16,10 +16,22 @@ env:
   AWS_EC2_METADATA_DISABLED: "true"
   PYTHONDONTWRITEBYTECODE: "1"
 
+# Three parallel jobs; none depends on another. Timeouts assume a GitHub-hosted
+# runner may be 2-3x slower than the local measurement: about 3x the measured
+# suite time plus ~3 min for checkout, installation and downloads (actionlint and
+# action metadata; the DynamoDB Local archive and its fingerprint check), rounded
+# up. Local measurement on 2026-09-28 (Apple Silicon, two sequential runs each;
+# the slower run is used):
+#   validate     offline unit suite                  154/129 s (4093 passed) -> 12 min (unchanged)
+#   integration  DynamoDB Local --suite integration  193/184 s  (303 passed) -> 13 min
+#   boundary     DynamoDB Local --suite boundary     174/168 s  (762 passed) -> 12 min
+# One local `--suite all` run of the same 5158 tests took 709 s.
+# No GitHub runner duration has been measured yet; revisit these limits (D111:
+# about twice the measured duration) once real runner times are known.
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - name: Smoke checkout
         id: checkout_smoke
@@ -72,6 +84,134 @@ jobs:
           "$RUNNER_TEMP/actions-venv/bin/python" scripts/validate_actions.py check \
             --base-sha "$PR_BASE_SHA" --metadata-dir "$RUNNER_TEMP/action-metadata"
 
-      - name: Run offline deployment regressions
+      - name: Run socket-free unit and deployment regressions
         id: regression
         run: '"$RUNNER_TEMP/actions-venv/bin/python" scripts/run_actions_regression.py'
+
+  # Two DynamoDB Local jobs, `integration` and `boundary`, each run one fixed
+  # suite of scripts/test_suites.py against a newly started, owned DynamoDB
+  # Local 3.3.1 child. Together with the offline unit suite of `validate` they
+  # select the same test files as the local `--suite all`; tests/ is not
+  # repeated here. In both jobs the archive digest (from the same official
+  # host's .sha256 file) and every distribution file fingerprint in
+  # docs/local_server/DYNAMODB_DISTRIBUTION_MANIFEST.json must match, or the job
+  # fails before any test runs. Both use the runner image's preinstalled JDK and
+  # byte-identical setup steps; only the checkout/Python step ids and the suite
+  # name differ.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - name: Checkout
+        id: integration_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Python setup
+        id: integration_python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install isolated local integration dependencies
+        id: local_dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/integration-venv"
+          "$RUNNER_TEMP/integration-venv/bin/python" -m pip install --only-binary=:all: \
+            -r requirements-local.txt -r requirements-ci.txt -c constraints-lambda.txt
+          "$RUNNER_TEMP/integration-venv/bin/python" -m pip freeze
+
+      - name: Show the preinstalled JDK
+        id: jdk
+        run: |
+          java -version
+          javac -version
+
+      - name: Download the pinned DynamoDB Local archive
+        id: dynamodb_download
+        shell: bash
+        env:
+          DYNAMODB_LOCAL_URL: https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_2026-07-31.tar.gz
+          DYNAMODB_LOCAL_SHA256: f80bcec477f85f57e2c77f8d54aa6b672a8403fceff0c450560aee1cf6c21163
+        run: |
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 300 --retry 3 \
+            --output "$RUNNER_TEMP/dynamodb_local.tar.gz" "$DYNAMODB_LOCAL_URL"
+          echo "$DYNAMODB_LOCAL_SHA256  $RUNNER_TEMP/dynamodb_local.tar.gz" | sha256sum --check --strict
+          mkdir -m 700 "$RUNNER_TEMP/dynamodb-local"
+          tar -xzf "$RUNNER_TEMP/dynamodb_local.tar.gz" -C "$RUNNER_TEMP/dynamodb-local" --no-same-owner
+          rm -f -- "$RUNNER_TEMP/dynamodb_local.tar.gz"
+
+      - name: Verify every DynamoDB Local file fingerprint
+        id: dynamodb_verify
+        run: |
+          "$RUNNER_TEMP/integration-venv/bin/python" -c 'import pathlib, sys; from local_server.cli import verify_distribution; verify_distribution(pathlib.Path(sys.argv[1]))' \
+            "$RUNNER_TEMP/dynamodb-local"
+
+      - name: Run the local integration suite against an owned DynamoDB Local child
+        id: local_integration
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          "$RUNNER_TEMP/integration-venv/bin/python" scripts/validate_local_integration.py \
+            --dynamodb-home "$RUNNER_TEMP/dynamodb-local" --suite integration
+
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        id: boundary_checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Python setup
+        id: boundary_python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install isolated local integration dependencies
+        id: local_dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/integration-venv"
+          "$RUNNER_TEMP/integration-venv/bin/python" -m pip install --only-binary=:all: \
+            -r requirements-local.txt -r requirements-ci.txt -c constraints-lambda.txt
+          "$RUNNER_TEMP/integration-venv/bin/python" -m pip freeze
+
+      - name: Show the preinstalled JDK
+        id: jdk
+        run: |
+          java -version
+          javac -version
+
+      - name: Download the pinned DynamoDB Local archive
+        id: dynamodb_download
+        shell: bash
+        env:
+          DYNAMODB_LOCAL_URL: https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_2026-07-31.tar.gz
+          DYNAMODB_LOCAL_SHA256: f80bcec477f85f57e2c77f8d54aa6b672a8403fceff0c450560aee1cf6c21163
+        run: |
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 300 --retry 3 \
+            --output "$RUNNER_TEMP/dynamodb_local.tar.gz" "$DYNAMODB_LOCAL_URL"
+          echo "$DYNAMODB_LOCAL_SHA256  $RUNNER_TEMP/dynamodb_local.tar.gz" | sha256sum --check --strict
+          mkdir -m 700 "$RUNNER_TEMP/dynamodb-local"
+          tar -xzf "$RUNNER_TEMP/dynamodb_local.tar.gz" -C "$RUNNER_TEMP/dynamodb-local" --no-same-owner
+          rm -f -- "$RUNNER_TEMP/dynamodb_local.tar.gz"
+
+      - name: Verify every DynamoDB Local file fingerprint
+        id: dynamodb_verify
+        run: |
+          "$RUNNER_TEMP/integration-venv/bin/python" -c 'import pathlib, sys; from local_server.cli import verify_distribution; verify_distribution(pathlib.Path(sys.argv[1]))' \
+            "$RUNNER_TEMP/dynamodb-local"
+
+      - name: Run the local boundary suite against an owned DynamoDB Local child
+        id: local_boundary
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          "$RUNNER_TEMP/integration-venv/bin/python" scripts/validate_local_integration.py \
+            --dynamodb-home "$RUNNER_TEMP/dynamodb-local" --suite boundary

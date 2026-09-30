@@ -10,6 +10,8 @@ import math
 import re
 from pathlib import Path
 
+from config.guideline_registry import SUPPORTED_GUIDELINES, TARGETS, TRAINING_TYPES
+
 
 _ROOT = Path(__file__).resolve().parent.parent
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
@@ -29,9 +31,10 @@ _ENUM_FIELDS = {
     "path": frozenset({"/cpr-analysis"}),
     "http_method": frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}),
     "condition_mode": frozenset({"training", "assessment"}),
-    "condition_target": frozenset({"adult", "child", "infant"}),
-    "condition_training_type": frozenset({"cpr", "compression_only", "ventilation_only"}),
-    "condition_guideline": frozenset({"AHA2020", "ARC2020", "ARC2025", "ERC2020", "STD2015"}),
+    # Same frozenset values as the input validator (config/guideline_registry.py).
+    "condition_target": TARGETS,
+    "condition_training_type": TRAINING_TYPES,
+    "condition_guideline": SUPPORTED_GUIDELINES,
     "condition_cpr_cycle_type": frozenset({"302", "152"}),
     "step": frozenset({"calculate_cpr", "serialize_result", "add_chart_data"}),
 }

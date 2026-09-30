@@ -3,33 +3,33 @@
 This module does not discover providers, open sockets, or enable ARC transmit.
 """
 
-from datetime import datetime, timezone
 import json
 import uuid
 
+from mock_journey.auth import DISPLAY_NAME
 from mock_journey.course_calculation import CourseCalculationBridge
-from mock_journey.course_contracts import CONDITION_KEYS, EXECUTION_KEYS, AttemptTemplate, RefreshResult
+from mock_journey.course_contracts import (
+    CONDITION_KEYS, EXECUTION_KEYS, AttemptRecord, AttemptTemplate, CalculationRecord, ChartLinkRecord,
+    CourseHooks, SessionRecord,
+)
 from mock_journey.course_errors import CourseError
-from mock_journey.course_http import CourseHttp
+from mock_journey.course_http import CourseHttp, header_representation
+from mock_journey.course_mode import COURSE_MODE
 from mock_journey.course_policy import CoursePolicy
+from mock_journey.course_primitives import rfc3339_seconds
 from mock_journey.course_provider import UnavailableCourseProvider
-from mock_journey.course_response import aggregate_availability, submit_arc_data
+from mock_journey.course_response import availability_or_waiting, submit_arc_data
 from mock_journey.course_service import CourseService
 from mock_journey.course_settings import CourseSettings
 from mock_journey.course_state import DynamoCourseRepository
 from mock_journey.course_storage import CourseBlobStore
 from mock_journey.course_submission import CourseCompletionPlan, DisabledArcGateway
-from mock_journey.errors import JourneyError
 from mock_journey.legacy_bridge import MeasurementInputError
 from mock_journey.state import DynamoCourseStore
 from mock_journey.typed import json_bytes, parse_json
 
 
-COURSE_MODE = "course_v2"
-
-
-def _rfc3339(seconds):
-    return datetime.fromtimestamp(int(seconds), timezone.utc).isoformat().replace("+00:00", "Z")
+_rfc3339 = rfc3339_seconds  # the shared whole-second wire formatter (same output)
 
 
 def _uuid_text(factory):
@@ -111,12 +111,11 @@ class AuthBoundCalculationBridge:
 
 
 class CourseApplication:
-    """API role with course_v2 HTTP in front of the existing JourneyService."""
+    """API role: the /api/v2 CourseHttp over the shared auth/state/calculation parts."""
 
     course_mode = COURSE_MODE
 
     def __init__(self, journey, course_http, course_service, *, provider, repository, gateway):
-        self.journey = journey
         self.course_http = course_http
         self.course_service = course_service
         self.provider = provider
@@ -124,54 +123,39 @@ class CourseApplication:
         self.gateway = gateway
         self.auth = journey.auth
         self.state = journey.state
-        self.catalog = journey.catalog
         self.calculation = journey.calculation
         self.operations = journey.operations
-
-    def login(self, body):
-        return self.journey.login(body)
-
-    def session(self, auth):
-        return self.journey.session(auth)
-
-    def require_calculation(self):
-        return self.journey.require_calculation()
 
 
 def _login_hook(journey):
     def login(login_id, password):
-        result = journey.login({"login_id": login_id, "password": password})
-        auth = journey.auth.authenticate(result["session_token"])
-        return {
-            "auth": auth,
-            "session_id": result["session_id"],
-            "access_token": result["session_token"],
-            "expires_at": result["expires_at"],
-        }
+        session, token = journey.login_command(login_id, password)
+        auth = journey.auth.authenticate(token)
+        return SessionRecord(
+            session_id=session["session_id"], expires_at=_rfc3339(session["expires_at"]),
+            auth=auth, access_token=token, user_name=DISPLAY_NAME,
+        )
     return login
 
 
-def _session_reader(journey, provider, repository, service):
+def _session_reader(journey, service):
     def read(auth):
-        journey.session(auth)
-        availability = {"state": "waiting", "reason": "arc_progress_unavailable"}
-        try:
-            availability = aggregate_availability(service.stored_refresh(auth))
-        except CourseError as error:
-            if error.code in {"LOGIN_FAILED", "SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_REVOKED"}:
-                raise
-            if error.code == "CONTRACT_PENDING":
-                availability = {"state": "waiting", "reason": "contract_pending"}
-        except JourneyError:
-            raise
-        except Exception:
-            availability = {"state": "waiting", "reason": "arc_progress_unavailable"}
-        return {
-            "session_id": auth.session_id,
-            "expires_at": _rfc3339(auth.expires_at),
-            "learning_availability": availability,
-        }
+        journey.check_session(auth)
+        # The session read never fails on an unexpected availability error (it waits).
+        availability = availability_or_waiting(service.stored_refresh, auth, absorb_unexpected=True)
+        return SessionRecord(
+            session_id=auth.session_id, expires_at=_rfc3339(auth.expires_at),
+            learning_availability=availability,
+        )
     return read
+
+
+def _session_check(journey):
+    # POST /session/refresh/: the session is checked, nothing stored is read.
+    def check(auth):
+        journey.check_session(auth)
+        return SessionRecord(session_id=auth.session_id, expires_at=_rfc3339(auth.expires_at))
+    return check
 
 
 def _attempt_record(attempt):
@@ -181,47 +165,88 @@ def _attempt_record(attempt):
     if type(created) is int:
         created = _rfc3339(created)
     binding = attempt.get("course_binding")
-    legacy = binding is None
-    return {
-        "attempt_id": attempt["attempt_id"],
-        "state": attempt["state"],
-        "created_at": created,
-        "condition": condition,
-        "course_id": None if legacy else attempt.get("course_id"),
-        "enrollment_id": None if legacy else attempt.get("enrollment_id"),
-        "course_item_link_id": None if legacy else attempt.get("course_item_link_id"),
-        "definition_hash": None if legacy else (attempt.get("definition_hash") or (
-            binding.get("definition_hash") if type(binding) is dict else None
-        )),
-        "role": None if legacy else (
-            (binding.get("start_role") if type(binding) is dict else None) or attempt.get("role")
-        ),
-        "legacy": legacy,
-        "auth": None,
-    }
+    # legacy (D103): a stored v1 attempt has no course_binding; its course fields are null on the wire.
+    if binding is None:
+        return AttemptRecord(
+            attempt_id=attempt["attempt_id"], state=attempt["state"], created_at=created, condition=condition,
+            legacy=True,
+        )
+    binding_row = binding if type(binding) is dict else {}
+    return AttemptRecord(
+        attempt_id=attempt["attempt_id"],
+        state=attempt["state"],
+        created_at=created,
+        condition=condition,
+        course_id=attempt.get("course_id"),
+        enrollment_id=attempt.get("enrollment_id"),
+        course_item_link_id=attempt.get("course_item_link_id"),
+        definition_hash=attempt.get("definition_hash") or binding_row.get("definition_hash"),
+        role=binding_row.get("start_role"),
+    )
 
 
 def _calculation_record(attempt, body):
     if type(body) is bytes:
         body = parse_json(body)
     calculation = body if attempt.get("state") == "evaluated" and type(body) is dict else None
+    if calculation is not None:
+        # The only submission state on the wire is the top-level submit_arc below
+        # (D10). A result stored in an older format may still carry submit_hstm or
+        # another submit_* field; it is left out of the response, never rewritten
+        # in storage (2026-09-28 user decision, recorded under D103).
+        calculation = {key: value for key, value in calculation.items() if not key.startswith("submit_")}
     stored_submit = attempt.get("submit_arc")
     wire_submit = None if stored_submit is None else submit_arc_data(
         status=stored_submit["status"], exclusion_reasons=stored_submit["exclusion_reasons"],
     )
-    return {
-        "attempt_id": attempt["attempt_id"],
-        "state": attempt["state"],
-        "error_code": attempt.get("error_code"),
-        "calculation": calculation,
-        "evaluation": attempt.get("evaluation"),
-        "progress_application": attempt.get("progress_application"),
-        "submit_arc": wire_submit,
-    }
+    return CalculationRecord(
+        attempt_id=attempt["attempt_id"],
+        state=attempt["state"],
+        error_code=attempt.get("error_code"),
+        calculation=calculation,
+        evaluation=attempt.get("evaluation"),
+        progress_application=attempt.get("progress_application"),
+        submit_arc=wire_submit,
+    )
 
 
-def bind_course_http(journey, course_service, settings, *, clock, uuid_factory, provider, repository):
-    calculation = journey.require_calculation()
+def _adoptable(value):
+    # The removed v1 upload adopted only such a value from multiValueHeaders.
+    return (type(value) is str and bool(value) and "," not in value
+            and "\r" not in value and "\n" not in value)
+
+
+def measurement_event(event):
+    """Resolve the upload Content-Type once, before any attempt is read.
+
+    Same meaning as the removed v1 upload check (D103): a Content-Type that is
+    duplicated by letter case, given as more or fewer than one multi-value, or
+    different between headers and multiValueHeaders is ambiguous and refused
+    (INVALID_REQUEST) before the parser runs. The representation rules are
+    course_http.header_representation, the same ones Authorization uses.
+
+    A present Content-Type value must also be one the removed v1 upload
+    accepted (a nonempty str without a comma, CR or LF), whether it came in
+    headers or in multiValueHeaders; otherwise it is INVALID_REQUEST, as in v1.
+    A multi-value-only Content-Type is then copied once into the headers of a
+    new event for the parser. The caller's event is never changed.
+    """
+    if type(event) is not dict:
+        raise CourseError("INVALID_REQUEST")
+    values, multi_only = header_representation(event, "content-type")
+    if not values:
+        return event
+    if not _adoptable(values[0]):
+        raise CourseError("INVALID_REQUEST")
+    if not multi_only:
+        return event
+    headers = event.get("headers")
+    headers = {} if headers is None else headers
+    return {**event, "headers": {**headers, "Content-Type": values[0]}}
+
+
+def bind_course_http(journey, course_service, settings, *, clock, uuid_factory):
+    calculation = journey.calculation
 
     def authenticate(token, *, allow_logout_receipt=False):
         return journey.auth.authenticate(token, allow_logout_receipt=allow_logout_receipt)
@@ -237,11 +262,11 @@ def bind_course_http(journey, course_service, settings, *, clock, uuid_factory, 
         return _attempt_record(journey.state.get_attempt(auth, attempt_id))
 
     def reauthorize(auth, attempt_id, resume_credential):
-        journey.reauthorize(auth, attempt_id, {"resume_credential": resume_credential})
+        journey.reauthorize_command(auth, attempt_id, resume_credential)
         return _attempt_record(journey.state.get_attempt(auth, attempt_id))
 
     def cancel(auth, attempt_id, reason):
-        journey.cancel(auth, attempt_id, {"reason": reason})
+        journey.cancel_command(auth, attempt_id, reason)
 
     def calculation_snapshot(auth, attempt_id, status, body):
         # Keep the status from the same read as the body. A later worker commit
@@ -258,6 +283,8 @@ def bind_course_http(journey, course_service, settings, *, clock, uuid_factory, 
         return _calculation_record(attempt, body)
 
     def measurement_submit(auth, attempt_id, event):
+        # After authentication, before the attempt read and the parser.
+        event = measurement_event(event)
         try:
             status, body = calculation.submit(auth, attempt_id, event)
         except MeasurementInputError:
@@ -270,16 +297,16 @@ def bind_course_http(journey, course_service, settings, *, clock, uuid_factory, 
 
     def chart_link(auth, attempt_id):
         record = calculation.chart_link(auth, attempt_id)
-        return {"url": record["chart_dataset_url"], "expiresAt": record["expires_at"]}
+        return ChartLinkRecord(url=record["chart_dataset_url"], expires_at=record["expires_at"])
 
-    return CourseHttp(
-        course_service, settings, clock=clock, uuid_factory=_uuid_text(uuid_factory),
+    hooks = CourseHooks(
         authenticate=authenticate, login=_login_hook(journey), logout=logout,
-        session_reader=_session_reader(journey, provider, repository, course_service),
+        session_reader=_session_reader(journey, course_service), session_check=_session_check(journey),
         issue_resume=issue_resume, load_attempt=load_attempt, reauthorize=reauthorize,
         cancel=cancel, measurement_submit=measurement_submit,
         calculation_result=calculation_result, chart_link=chart_link,
     )
+    return CourseHttp(course_service, settings, clock=clock, uuid_factory=_uuid_text(uuid_factory), hooks=hooks)
 
 
 def mapping_rows(mapping_document):
@@ -291,6 +318,12 @@ def mapping_rows(mapping_document):
 
 def assemble_course(journey, *, provider, course_settings, clock, uuid_factory,
                     mapping_document=None, dummy_learner=None, blob_store=None):
+    """Course application over an assembled journey.
+
+    ``assembly.build_course_application`` passes the job repository's own
+    ``course_blobs`` as ``blob_store``, so both repositories share one store
+    object by construction; nothing here reassigns the job repository.
+    """
     if type(course_settings) is not CourseSettings:
         raise ValueError("Invalid explicit journey composition.")
     if provider is None:
@@ -304,15 +337,11 @@ def assemble_course(journey, *, provider, course_settings, clock, uuid_factory,
         blob_store if blob_store is not None else CourseBlobStore(journey.calculation.storage),
         clock=clock, uuid_factory=_uuid_text(uuid_factory),
     )
-    journey.calculation.jobs.course_blobs = repository.blob_store
     bridge = AuthBoundCalculationBridge(
         CourseCalculationBridge(), journey.auth, uuid_factory, mapping_rows(mapping_document),
     )
     course_service = CourseService(provider, repository, policy=policy, calculation_bridge=bridge)
-    http = bind_course_http(
-        journey, course_service, course_settings, clock=clock, uuid_factory=uuid_factory,
-        provider=provider, repository=repository,
-    )
+    http = bind_course_http(journey, course_service, course_settings, clock=clock, uuid_factory=uuid_factory)
     return CourseApplication(
         journey, http, course_service, provider=provider, repository=repository,
         gateway=DisabledArcGateway(),

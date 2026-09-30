@@ -38,7 +38,7 @@ def test_private_course_blob_survives_closed_store_and_new_instance(tmp_path):
 
 def test_course_blob_wrong_hash_or_tamper_fails_closed():
     from mock_journey.course_errors import CourseError
-    from tests.test_mock_storage import setup_storage
+    from tests.projection_storage_support import setup_storage
     storage, client, *_ = setup_storage()
     blobs = CourseBlobStore(storage)
     ref = blobs.put_bytes(b'{"course":1}')

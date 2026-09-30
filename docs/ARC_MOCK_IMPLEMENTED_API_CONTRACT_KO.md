@@ -1,26 +1,16 @@
-# 계산 입력·응답 및 기존 Mock API 상세 계약
+# 계산 입력·결과 상세 계약
 
-갱신일: 2026-09-19. 새 `/api/v2`의 현재 요청·응답·오류 계약은 [앱 API Markdown 명세](APP_API.md)에 모았다. 이 문서는 기존 `/mock/v1` 및 공용 측정 파서·계산 JSON의 상세 계약이다. 두 버전의 경로·필드 이름·envelope를 혼용하지 않는다. 과거 VCC 설계 초안과 중복 DTO 표는 제거했다.
+갱신일: 2026-09-28. 앱이 호출하는 `/api/v2`의 경로·요청·응답·오류는 [앱 API Markdown 명세](APP_API.md)에 모았다. 이 문서는 v2 측정 업로드가 함께 쓰는 측정 입력·파서·계산 JSON·호환 문서의 상세 계약과 계산 상태·역할·저장 경계를 설명한다. v2 제어 API의 camelCase 필드와 이 문서의 snake_case 계산 필드를 혼용하지 않는다. 과거 VCC 설계 초안과 중복 DTO 표는 제거했다.
 
-**현재 구현 계약이며 모든 환경의 사용 가능 선언은 아니다.** 기본 `scripts/serve_local.py`는 실제 로컬 DB·파일·계산 실행기와 15개 프로그램/연령 정의를 연결한다. 저장소의 기록된 실측 바이너리로 로그인→생성→업로드→계산 결과·실차트까지 검증했다. Only 완료는 실제 횟수+tester Pass, CPR은 점수와 별도로 `pending_policy`다. 실제 앱·마네킨 현장 인수, AWS 실자원 인수, ARC 제출은 별도다. [로컬 실행](LOCAL_RUN.md), [검증 범위](VALIDATION.md), [미정 정책](DECISIONS.md)을 따른다.
+**현재 구현 계약이며 모든 환경의 사용 가능 선언은 아니다.** 기본 `scripts/serve_local.py`와 AWS Dev는 같은 Dummy Dev 임시 과정 15개(기존 5프로그램×3연령)를 기존 실행 정의로 연결하고 업로드한 실제 바이너리로 계산한다. Only 완료는 실제 횟수+tester Pass, CPR은 점수와 별도로 `pending_policy`다. 실제 앱·마네킨 현장 인수, AWS 운영 인수, ARC 제출은 별도다. [로컬 실행](LOCAL_RUN.md), [검증 범위](VALIDATION.md), [미정 정책](DECISIONS.md)을 따른다.
 
-앞부분은 공개 API·진도 계약이며, 뒤의 **B부**는 기존 파서·계산 응답·호환 문서의 상세 계약이다. 내부 파서가 받는 입력 전체가 현재 Mock의 고정 condition 또는 입력 projection을 통과한다는 뜻은 아니다. 예전 실행 정의로 저장된 v1 결과와 현재 v3 adapter의 완료 근거를 구별한다.
+앞부분은 측정 업로드 입력, 계산 상태·오류, 역할·저장 경계이며 뒤의 **B부**는 기존 파서·계산 응답·호환 문서의 상세 계약이다. 내부 파서가 받는 입력 전체가 과정 시도의 고정 condition 또는 입력 projection을 통과한다는 뜻은 아니다. 예전 실행 정의로 저장된 결과와 현재 v3 adapter의 완료 근거를 구별한다.
 
-근거 파일은 `mock_journey/handler.py`, `service.py`, `calculation.py`, `auth.py`, `catalog.py`, `state.py`, `jobs.py`, `worker.py`, `storage.py`다. 기계 대조용 인벤토리는 [P4C_ROUTE_ROLE_MANIFEST.json](implementation_execution/P4C_ROUTE_ROLE_MANIFEST.json), 시험은 `tests/test_mock_route_contract.py`다. 아래 URL은 호스트가 없는 경로 계약이며 서버 주소를 뜻하지 않는다.
+근거 파일은 `mock_journey/calculation.py`, `legacy_bridge.py`, `state.py`, `jobs.py`, `worker.py`, `storage.py`와 `main.py`, `services/`다. 경로·역할의 기계 대조용 인벤토리는 [P4C_ROUTE_ROLE_MANIFEST.json](implementation_execution/P4C_ROUTE_ROLE_MANIFEST.json)(schema `arc-mock-route-role-v2`, `/api/v2` 전용·D103)이며 `tests/test_vcc_wiring.py`가 코드·APP_API와 대조한다.
 
-## 1. 공통 규칙과 접근 보호
+## 1. 삭제된 `/mock/v1` API
 
-- Gateway가 전달하는 형식은 REST proxy event의 `httpMethod`, `path`, `headers`, `multiValueHeaders`, `body`, `isBase64Encoded`, query maps다. HTTP API v2나 임의 envelope를 자동 변환하지 않는다.
-- 모든 Mock 경로는 팀원별 테스트 접근 보호를 먼저 거쳐야 한다. 이 바깥 보호 계층의 계정 발급·검증은 현재 application handler에 구현되어 있지 않다. 고정 dummy 계정만으로 외부 접근자를 제한할 수 없다. 실제 Gateway·인증 제공자·직접 Lambda 호출 차단은 배포 검증 항목이다.
-- 로그인 이외의 아래 Mock 정상 경로는 `Authorization: Bearer <session_token>`이 필요하다. 별도 로컬 차트 파일 GET은 발급된 capability URL로 인증한다. `Bearer`의 대소문자는 무시한다. 헤더명이 중복되거나 multi-value에 둘 이상 있거나 단일/multi-value 표현이 다르면 `SESSION_REQUIRED`다. 같은 한 값을 Gateway가 두 표현으로 중복 전달한 것은 허용한다.
-- 토큰은 문자열 전체를 그대로 전달한다. dummy 토큰과 attempt의 `resume_credential`은 용도가 다르다. 실제 ARC의 user token·identifier 연동은 아직 구현 계약이 아니다. 내부 계산 함수는 앱 토큰을 다시 검증하거나 저장하지 않는다.
-- 모든 경로에서 비어 있지 않은 query map을 거절한다. query 검사는 routing·세션 인증보다 먼저 한다. 알려진 보호 경로에서는 세션 인증 뒤 제어 JSON이나 측정 body를 처리한다. 알 수 없는 경로는 인증 전에 404가 될 수 있다.
-- 제어 요청은 JSON object이며 해당 경로에 명시된 필드만 허용한다. 각 필드는 비어 있지 않은 문자열이고 UTF-8 기준 최대 256 bytes다. 숫자 `2222`와 문자열 `"2222"`는 다르다. JSON 중복 key·비유한 수치·해석 불가·지나친 중첩은 400이다.
-- 제어 JSON 제한은 Gateway가 넘긴 `event.body` 문자열의 UTF-8 **16,384 bytes**다. `isBase64Encoded`가 참이면 이 크기 검사 뒤 base64/UTF-8 decode한다. 측정 전송에는 별도의 명시 payload 한도를 적용한다. 운영 한도 값은 아직 이 문서에서 정하지 않는다.
-- Mock handler의 성공·오류는 `Content-Type: application/json`, `Cache-Control: no-store`를 반환한다. `/cpr-analysis` 파싱 오류와 HTTP 수신부의 선행 거절은 아래 오류 예외를 따른다. 204는 빈 body다. GET 및 DELETE의 body는 handler에서 읽지 않는다. 현재 handler는 OPTIONS/CORS 응답이나 405를 별도로 만들지 않는다.
-- `{attempt_id}`는 소문자 16진수 `8-4-4-4-12` UUID 형태다. 생성값은 UUID이고 handler는 별도 UUID version을 강제하지 않는다. 경로의 대소문자·끝 `/`를 정규화하지 않는다.
-
-## 2. 기존 11개 경로와 인증된 계산 별칭
+2026-09-28 삭제(D103). 아래 표는 삭제된 경로의 목록(이력)이며 모든 서버에서 `404`다. 대응 v2 경로는 [APP_API §8](APP_API.md#8-기존-앱에서-바뀌는-지점)을 따른다. 이미 저장된 기존 시도는 v2 경로로 조회·재인가·취소·계산 마무리만 호환한다. 삭제 전 202 본문의 `wait_expired`·`status_path`는 v2에 없다. 세션 24시간, 차트 링크 300초, 파일 업로드 시작부터 최대 30초인 앱 대기 규칙은 APP_API를 따른다.
 
 | Method | 경로 | 요청 body | 성공 응답 |
 |---|---|---|---|
@@ -33,91 +23,27 @@
 | POST | `/mock/v1/attempts/{attempt_id}/reauthorize` | `resume_credential` | 200 새 세션으로 연결 |
 | POST | `/mock/v1/attempts/{attempt_id}/cancel` | `reason` | 204 조기 종료 |
 | POST | `/mock/v1/attempts/{attempt_id}/calculation` | 기존 측정 전송 형식 | 200 저장된 기존 계산 JSON 또는 202 처리 중 |
-| POST | `/cpr-analysis` | Bearer와 단일 `X-Attempt-ID`, 기존 측정 전송 형식 | 200 계산 JSON 또는 202 처리 중; 기본 로컬 실행에 연결됨 |
+| POST | `/cpr-analysis` | Bearer와 단일 `X-Attempt-ID`, 기존 측정 전송 형식 | 200 계산 JSON 또는 202 처리 중(시도 계산 경로의 별칭) |
 | GET | `/mock/v1/attempts/{attempt_id}/calculation` | 없음 | 200 저장된 기존 계산 JSON 또는 202 처리 중 |
 | GET | `/mock/v1/attempts/{attempt_id}/chart-link` | 없음 | 200 차트 링크 |
 
 아래 객체 표의 `string`, `int`, `bool`, `object`, `array`, `null`은 실제 JSON 자료형이다. 계산값의 정수·소수·null·누락 여부를 문자열이나 0으로 바꾸지 않는다.
 
-### 로그인·세션
+## 2. 측정 업로드 입력
 
-```json
-{"login_id":"test@test.com","password":"2222"}
-```
-
-위 조합만 로그인한다. 성공 시 매번 별도의 세션을 발급한다. 로그인 자체는 기존 공유 진도를 초기화하지 않는다.
-
-| 필드 | 201 로그인 | 200 현재 세션 |
-|---|---|---|
-| `environment` | string `"mock"` | 동일 |
-| `session_id` | string | 동일 |
-| `session_token` | string, Bearer 인증용 | 필드 없음 |
-| `expires_in` | int `86400` | 필드 없음 |
-| `expires_at` | UTC RFC3339 string, `Z` 끝 | 동일 |
-| `mock_user` | object `{id: "dummy-tester", display_id: "test@test.com"}` | 동일 |
-
-세션은 발급 시점부터 24시간이며 조회로 연장되지 않는다. 앱 재실행 시 재로그인 정책은 서버가 프로세스 재실행을 알아내는 기능을 뜻하지 않는다. API는 별도의 자동 refresh endpoint를 제공하지 않는다.
-
-### 프로그램·공유 진도
-
-`GET /mock/v1/programs`의 최상위는 `catalog_version` string, `progress_epoch` string, `progress_version` int, `profile_name: "tester"`, `guideline: "ARC2025"`, `guideline_basis: "ARC2020"`, `programs` array다. 현재 `catalog_version`은 `mock-catalog-v1`이다. 이 버전과 아래 id를 서버 응답에서 사용한다.
-
-| id | name | `goal.kind` | `goal.required` |
-|---|---|---|---:|
-| `mock-cpr` | CPR Training | `cycles` | 3 |
-| `mock-compression-only` | Chest Compression Only | `compressions` | 60 |
-| `mock-ventilation-only` | Ventilation Only | `ventilations` | 8 |
-| `mock-two-rescuer-cpr` | 2-Rescuer CPR | `cycles` | 8 |
-| `mock-two-rescuer-aed` | 2-Rescuer CPR with AED-T | `cycles` | 10 |
-
-각 프로그램은 `id`, `name`, `is_mock: true`, `supported_targets: ["adult","child","infant"]`, `goal`, `progress_by_target`, `active_attempts_by_target`를 가진다. `goal.required`는 int다. 각 target별 진도는 `"completed"` 또는 `"not_completed"`; active count는 int다. 합계 15개 조합이며 동시에 여러 attempt가 열릴 수 있다. active count는 기기 연결 상태나 heartbeat가 아니라 서버가 집계 중인 attempt 수다. 평가·취소·실패·결과 불명 처리 때 집계에서 제외하며 로그아웃 때 초기화한다. 이후 결과 불명 작업이 복구 중이어도 집계에 다시 추가하지 않으므로 count=0을 모든 결과 확정으로 해석하지 않는다.
-
-프로그램 목록의 ARC2025 표시는 ARC2020을 준용하는 확정 Mock 정책이다. 내부 계산기의 연령별 최소량·null 정책은 유지한다. 현재 기본 로컬에는 15개 실행 정의가 등록되어 있다. 다른 환경의 목록 조회 성공만으로 해당 환경의 실행 구성을 검증한 것은 아니다. 훈련에는 시간 목표가 없으며 실제 마네킨 연결·목표 도달 자동 종료·연결 끊김 감지는 앱이 수행한다.
-
-### Attempt 생성·조회
-
-생성 body는 네 문자열만 받는다.
-
-```json
-{"client_request_id":"app-generated-request-id","catalog_version":"mock-catalog-v1","program_id":"mock-cpr","target":"infant"}
-```
-
-`client_request_id`는 같은 세션 내 생성 재시도의 식별자다. 같은 id·동일 body는 기존 attempt와 같은 resume credential을 200으로 돌려준다. 현재 실행 정의나 카탈로그가 바뀌어도 이미 성공한 생성 응답부터 복구한다. 같은 id에 다른 body는 `IDEMPOTENCY_CONFLICT`다. 새 훈련에는 새 id를 사용한다. 완료된 프로그램·연령에 새 attempt를 생성하면 `PROGRAM_ALREADY_COMPLETED`다. 아직 완료 전에는 같은 조합의 동시 생성이 가능하다.
-
-| 공통 attempt 필드 | 자료형·의미 |
-|---|---|
-| `attempt_id`, `program_id`, `target`, `state` | string |
-| `progress_epoch` | 생성 당시 공유 진도의 string 식별자 |
-| `profile_name` | string `"tester"` |
-| `condition` | 고정 실행 정의의 object, key·값·자료형 그대로 |
-| `calculation_profile` | 고정 실행 정의의 object, null·정수·소수 등 그대로 |
-| `goal` | object `{kind: string, required: int}` |
-| `catalog_version`, `profile_version` | string |
-| `calculation_path` | string, 해당 attempt의 계산 경로 |
-| `evaluation` | 평가 전 null, 평가 후 아래 평가 object |
-| `progress_application` | 반영 전 null, 확정 후 아래 반영 object |
-| `resume_credential` | 생성·생성 재시도 응답에만 string. 일반 조회·reauthorize에는 없음 |
-| `error` | `outcome_unknown` 또는 `failed`에만 `{code: string, message: string}` |
-
-`condition`은 `mode`, `target`, `training_type`, `guideline`, `cpr_cycle_type`, `is_2rescuers`를 사용한다. 서버가 돌려준 고정값을 보존한다. 성인·소아 30:2, 영아 15:2 정책을 위해 앱이 자체 추측한 enum이나 profile을 만드는 계약이 아니다. 내부 계산 binding·projection·profile의 확정 버전은 서버 설정 사항이다. 실행 정의가 없으면 생성은 503 `CALCULATOR_CONTRACT_MISMATCH`다.
-
-공유 진도는 모든 dummy 세션에 보이지만 개별 attempt는 연결된 `bound_session`만 조회·전송·취소할 수 있다. 다른 기기가 같은 dummy 계정으로 로그인했다는 이유만으로 개별 결과 접근이 허용되지 않는다. 존재하지 않거나 소유 세션이 다른 attempt는 404다.
-
-### 실제 측정 데이터 전송
-
-훈련 종료 후 앱이 누적한 전체 실제 측정 데이터를 한 번 전송한다. 서버는 동일 입력 재시도도 수용한다. 서버가 마네킨 binary를 새로 생성하거나 mock 점수를 만드는 흐름은 없다.
+`POST /api/v2/attempts/{attemptId}/calculation/`은 훈련 종료 후 앱이 누적한 전체 실제 측정 데이터를 한 번 받는다. 서버는 동일 입력 재시도도 수용한다. 서버가 마네킨 binary를 새로 생성하거나 가짜 점수를 만드는 흐름은 없다. 앱이 쓰는 기본 part와 호출 예시는 [APP_API §5](APP_API.md#5-측정-시도와-업로드)에 있고, 아래는 공용 파서가 받는 전체 호환 입력이다.
 
 | Multipart part | 내용 |
 |---|---|
 | `rawHexBPfile` | 필수, 누적 CPR/압박/호흡 binary 파일의 bytes |
 | `aedHexBPfile` | 선택, 누적 AED binary bytes |
-| `condition` | JSON object. 생성 응답 condition과 key·값·자료형이 같아야 함 |
+| `condition` | JSON object. 시도 생성 응답 condition과 key·값·자료형이 같아야 함 |
 | `vp_event_list` | JSON array of objects. 해당 이벤트의 `event`, `timestamp`, `last_timestamp`만 projection 가능 |
 | `Custom`, `Open_Skill`, `Usage`, `Organization` | 기존 응답 문맥용 JSON. 허용 leaf만 사용 |
 | `hstm_document` 또는 `hstm_document_b64` | 선택한 기존 호환 문서의 JSON 또는 base64 JSON |
 | 기존 문서의 최상위 section | `DeviceInfo`, `Dummy`, `ResultSummary`, `ResultByCycle`, `CalculationService`, `Certification`, `ResultByCriteria`, `Institution` 등 기존 parser가 받는 JSON section |
 
-`Content-Type: multipart/form-data; boundary=...`를 유지한다. Gateway는 전체 bytes를 손상 없이 전달해야 하며 binary event의 base64 body와 `isBase64Encoded` 일치를 실제 배포에서 확인한다. 로컬 HTTP 수신부도 같은 기존 파서로 연결하며 multipart 파일을 두 번 base64 decode하지 않는다.
+`Content-Type: multipart/form-data; boundary=...`를 유지한다. 헤더가 모호하거나(대소문자 중복·여러 값·두 표현 충돌) 값이 비었거나 쉼표·CR·LF를 포함하면 파서와 시도 조회 전에 `400 INVALID_REQUEST`다([APP_API §5](APP_API.md#5-측정-시도와-업로드)). Gateway는 전체 bytes를 손상 없이 전달해야 하며 binary event의 base64 body와 `isBase64Encoded` 일치를 실제 배포에서 확인한다. 로컬 HTTP 수신부도 같은 기존 파서로 연결하며 multipart 파일을 두 번 base64 decode하지 않는다.
 
 기존 base64 form 방식도 parser 경로로 남아 있다. 논리 필드명은 `cpr_b64_data`, `aed_b64_data`, `condition`, `vp_event_list`와 기존 문서 필드다. CPR/AED 필드 값은 URL-safe base64이고, 외피 parser 순서는 base64 decode → URL unquote → query parse다. 이중 URL 해석으로 `+`, `&`, `%`, `=`가 변형되지 않도록 기존 encoder/배포 전달 방식을 검증해야 한다. 일반 JSON에 bytes나 base64를 넣는 새 전송 형식은 추가하지 않았다.
 
@@ -127,60 +53,7 @@
 
 입력을 고정할 때 binary bytes와 projected 문맥의 자료형까지 식별한다. 같은 attempt에 같은 입력을 다시 보내면 현재 결과/상태를 반환하고 계산 Job을 새로 접수하지 않는다. 다른 입력은 409 `ATTEMPT_INPUT_CONFLICT`다. JSON field 순서 같은 비소비 차이와 숫자·null·누락 등 소비되는 값의 차이를 단순 문자열 비교로 혼동하지 않는다. 아직 접수하지 않은 cancelled attempt는 전송할 수 없다.
 
-### 처리 중·결과·완료 판정
-
-처리 중 응답은 다음 필드만 가진다. `state`는 `queued` 또는 `processing`이다.
-
-```json
-{"attempt_id":"<attempt-id>","state":"queued","wait_expired":false,"status_path":"/mock/v1/attempts/<attempt-id>"}
-```
-
-**현재 구현은 요청 안에서 30초 동안 기다리지 않는다.** 입력·outbox 접수 후 이미 결과가 있으면 200, 없으면 일찍 202를 반환한다. 따라서 `wait_expired`는 false다. 사용자가 정한 계산+ARC 제출 대기는 D54에 따라 **앱의 파일 업로드 시작부터 최대 30초**다. 앱이 관리하는 대기 정책이며 서버가 업로드 시작 시각이나 경과 여부를 판정한다는 뜻은 아니다. 실제 Gateway timeout과 처리 시간 상한은 배포 인수에서 맞춰야 한다. 이 코드만으로 모든 네트워크 요청이 30초 안에 끝난다고 주장하지 않는다. `GET /mock/v1/attempts/{attempt_id}/calculation`으로 계산 JSON, `GET /mock/v1/attempts/{attempt_id}`로 처리 상태·완료 여부를 다시 조회한다. Retry-After나 별도 poll 간격은 현재 응답 계약에 없다.
-
-200 계산 body는 저장된 계산 필드의 값·자료형·null을 유지하고 현재 제출 상태를 응답에서 합성한다. 저장 snapshot 자체는 바꾸지 않지만 응답 전체 JSON bytes는 같지 않을 수 있다. 점수·지표·통계·평균·코칭·차트 등은 기존 결과와 `services/legacy_response.py` 후처리의 계약을 따른다. 조회 때 점수 또는 누락 필드를 다시 계산하거나 새 envelope로 감싸지 않는다. `certification`은 기존 규칙의 object다. 최상위 `submit_hstm`은 제거하고 `submit_arc: {"status":"disabled","ok":false,"error":"arc_contract_pending"}`를 붙인다. 실제 ARC 제출은 수행하지 않는다.
-
-새 완료 정보는 계산 body에 추가하지 않고 attempt 조회로 제공한다.
-
-현재 로컬 v2의 CPR 평가 구조 예시다. 실제 측정 결과의 점수를 뜻하지 않는다.
-
-```json
-{
-  "goal":{"kind":"cycles","required":3,"status":"pending_policy","observed":null,"met":null},
-  "score":{"decision":"pass"},
-  "program_completed":false,
-  "reason_codes":["GOAL_POLICY_UNRESOLVED"]
-}
-```
-
-현재 v3 검출 adapter도 v2에서 도입한 목표 평가 형식을 유지한다. Only는 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR은 완전한 cycle의 정의가 미정이므로 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
-
-목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. 목표 사유가 점수 사유보다 앞선다. 목표를 판단해 충족했고 점수도 Pass인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
-
-`progress_application`은 `{applied: bool, applied_epoch: string|null, reason: string}`다. 계산의 조건 만족과 현재 공유 진도 반영은 별개다.
-
-| reason | 의미 |
-|---|---|
-| `APPLIED` | 목표·Pass 만족, 현재 epoch의 미완료 조합을 완료로 변경. applied=true |
-| `REQUIREMENTS_NOT_MET` | 판단된 목표 또는 Pass 미충족. applied=false |
-| `GOAL_POLICY_UNRESOLVED` | 현재 pending 목표 평가에서 정책 미확정. applied=false |
-| `ALREADY_COMPLETED` | 먼저 끝난 동시 attempt가 이미 완료시킴. 결과는 보관, applied=false |
-| `PROGRESS_RESET` | 로그아웃으로 epoch가 바뀜. 예전 결과는 보관, 새 진도에는 반영하지 않음 |
-
-epoch가 이미 바뀌었다면 `PROGRESS_RESET`이 우선하며 과거 완료 평가를 새 진도에 적용하지 않는다. 성공적으로 처리했다는 `state=evaluated`와 훈련 합격은 다르다. evaluated여도 프로그램이 미완료일 수 있다. 후발 실패 결과로 기존 완료 상태를 되돌리지 않는다.
-
-### 조기 종료·재인증·로그아웃
-
-- `POST /mock/v1/attempts/{attempt_id}/cancel`의 reason은 `user_stopped` 또는 `manikin_disconnected`다. created에서 cancelled로 바꾸고 같은 취소 재시도는 204다. queued 이후 취소는 409 `INVALID_STATE`다. 조기 종료 시 앱은 결과 화면을 열지 않는 것으로 이미 정해졌으며 BE는 화면 전환을 수행하지 않는다.
-- 세션 만료 후에는 dummy 재로그인으로 새 Bearer를 받고 해당 attempt의 `resume_credential`로 `POST /mock/v1/attempts/{attempt_id}/reauthorize`한다. 원래 연결 세션이 만료되었거나 revoked여야 다른 세션으로 이관된다. 아직 활성 세션의 attempt를 빼앗아 오면 409다. 같은 연결 세션의 재요청은 그대로 200이다. cancelled는 다시 살릴 수 없다. proof 필드 누락·빈 문자열·잘못된 JSON 자료형은 400 `INVALID_REQUEST`다. 제어 요청 형식을 통과한 proof가 맞지 않거나 대상 attempt가 없으면 404다. 성공 후 원래 attempt/input/result를 사용하며 새 계산 입력을 별개 훈련처럼 만들지 않는다.
-- 같은 dummy 계정은 동시 로그인할 수 있다. 어느 한 기기의 로그아웃도 전체 15개 조합의 진도·active count를 새 epoch로 초기화한다. 로그아웃한 세션은 revoked가 되고, 다른 기기의 세션은 유지된다. 다른 기기에서 프로그램을 다시 조회하면 초기화된 공유 상태가 보인다.
-- 같은 로그아웃 토큰의 재시도는 저장된 receipt를 확인해 204로 끝나며 두 번째 초기화를 하지 않는다. revoked 토큰을 일반 API에서 쓰면 403이다. 자연 만료만으로 공유 진도를 초기화하지 않는다.
-- 로그아웃은 원본·기존 결과를 지우는 API가 아니다. 예전 epoch의 진행 중 계산이 나중에 끝나면 저장·조회할 수 있지만 새 진도에는 반영하지 않는다. 예전 attempt의 세션이 revoked이면 새 세션에서 resume proof로 이관한 뒤 조회한다. 다른 세션이 계속 활성인 경우 그 세션은 자신의 예전 attempt를 계속 조회한다.
-
-### 차트
-
-`GET /mock/v1/attempts/{attempt_id}/chart-link`는 evaluated 상태에만 가능하다. 응답은 `attempt_id` string, `chart_dataset_url` string|null, `expires_at` UTC RFC3339 string|null이다. 검증된 차트가 없다는 확정 결과라면 URL과 시각이 모두 null이다. 저장 오류나 미확정 원격 차트를 차트 없음으로 바꾸지 않는다.
-
-발급된 링크의 만료는 **300초**다. 로그아웃이 이미 발급한 링크를 즉시 폐기하지 않으며, 300초 만료를 무기한 열림으로 바꾸지 않는다. 새 링크 발급에는 유효한 소유 세션이 필요하다. 기존 계산 200 body 안의 URL은 저장 당시 값이므로 오래된 결과를 재조회할 때 만료되었을 수 있다. 계산 body를 수정하는 대신 이 경로에서 새 링크를 받는다. 현재 로컬의 차트 파일은 발급된 `/local/v1/charts/{opaque-token}` URL 그대로 GET한다. 이 파일 경로는 session Bearer 대신 capability로 인증하고 query·변조·만료·허용되지 않은 접근은 거절한다. 원본·키·임의 파일을 제공하는 경로가 아니다. 이후 AWS의 S3 서명 URL은 같은 300초 정책에 맞춰 실제 객체 읽기 권한·만료를 검증한다. 앱 사용자에게 AWS credential을 발급하는 계약이 아니다.
+**현재 구현은 요청 안에서 30초 동안 기다리지 않는다.** 입력·outbox 접수 후 이미 결과가 있으면 200, 없으면 일찍 202를 반환한다. 계산+ARC 제출 대기는 D54에 따라 **앱의 파일 업로드 시작부터 최대 30초**이며 앱이 관리하는 정책이다. 서버가 업로드 시작 시각이나 경과 여부를 판정한다는 뜻은 아니다. 실제 Gateway timeout과 처리 시간 상한은 배포 인수에서 맞춘다. Retry-After나 별도 poll 간격은 현재 응답 계약에 없다.
 
 ## 3. 상태와 오류
 
@@ -191,11 +64,11 @@ epoch가 이미 바뀌었다면 `PROGRESS_RESET`이 우선하며 과거 완료 �
 | `queued` / `processing` | 접수·처리 중. 계산 조회는 202 |
 | `evaluated` | 계산·평가가 확정 저장됨. 계산 조회는 200 |
 | `outcome_unknown` | 실행·저장 뒤 결과를 확정할 수 없음. 계산 조회는 503, 임의 재호출 안 함 |
-| `failed` | 입력 보관 검증·계약·계산의 확정 오류. 계산 조회는 지정 503 |
+| `failed` | 입력 보관 검증·계약·계산의 확정 오류 또는 계산 재시작 한도 초과(D104). 계산 조회는 지정 503 |
 
-`outcome_unknown`은 반드시 영구 최종 상태라는 뜻이 아니다. 이미 수행한 같은 호출의 저장된 candidate를 찾으면 회복할 수 있지만 계산 성공이나 실패를 추측하여 완료 처리하지 않는다.
+`outcome_unknown`은 반드시 영구 최종 상태라는 뜻이 아니다. 이미 수행한 같은 호출의 저장된 candidate를 찾으면 회복할 수 있지만 계산 성공이나 실패를 추측하여 완료 처리하지 않는다. 계산 중단 뒤 재시작이 5번을 넘으면(6번째 중단) 재계산 없이 `failed`/`CALCULATION_FAILED`로 끝낸다. 교육상 Fail이 아니며 evaluation·진도 반영은 null이다(D104).
 
-일반 Mock 오류 body는 `{ "error": { "code": string, "message": string, "request_id": string } }`다. `/cpr-analysis`의 기존 측정 parser/validator 오류는 400 `{type:"client_error",message:...}`이고, 기존 attempt 계산 경로의 대응 오류는 422 `MEASUREMENT_INPUT_INVALID`다. HTTP 수신부가 먼저 거절한 400/413은 JSON이 아닐 수 있으므로 앱은 HTTP 상태부터 확인한다. `request_id`는 Lambda context 값이며 context가 없으면 `local`이다. 서버 내부 오류 원문·token·upstream body는 응답 메시지에 넣지 않는다. 개별 경로가 아래 오류를 전부 발생시키는 것은 아니며 해당 인증/상태/데이터 조건에 따라 달라진다.
+공개 오류 envelope와 과정 오류를 포함한 전체 코드표는 [APP_API §7](APP_API.md#7-취소복구전체-오류)을 따른다. 아래는 과정 오류와 함께 재사용하는 Journey 오류 코드(`mock_journey/errors.py`)다. `PROGRAM_ALREADY_COMPLETED`는 삭제된 `/mock/v1` 시도 생성의 legacy 이력 코드이며 새 요청에서는 발생하지 않는다. HTTP 수신부가 먼저 거절한 400/413은 JSON이 아닐 수 있으므로 앱은 HTTP 상태부터 확인한다. 서버 내부 오류 원문·token·upstream body는 응답 메시지에 넣지 않는다. 개별 경로가 아래 오류를 전부 발생시키는 것은 아니며 해당 인증/상태/데이터 조건에 따라 달라진다.
 
 | HTTP | code | 고정 message |
 |---:|---|---|
@@ -218,17 +91,49 @@ epoch가 이미 바뀌었다면 `PROGRESS_RESET`이 우선하며 과거 완료 �
 | 503 | `STORED_INPUT_INVALID` | The stored input could not be verified. |
 | 503 | `CALCULATION_FAILED` | The calculation could not be completed. |
 
-`GET /mock/v1/attempts/{attempt_id}`는 failed/unknown도 200 상태 object로 알려준다. 이때 `error`는 code/message만 있고 request_id는 없다. 동일 상태에서 `/calculation`은 해당 503 오류 envelope다. HTTP 503만 보고 모든 오류를 즉시 반복 계산하는 동작은 이 계약에 없다.
+`GET /api/v2/attempts/{attemptId}/`는 `failed`/`outcome_unknown`도 200 상태로 알려준다. 같은 상태에서 계산 GET은 해당 503 오류 envelope다. HTTP 503만 보고 모든 오류를 즉시 반복 계산하는 동작은 이 계약에 없다.
+
+### 평가와 진도 반영
+
+계산 결과 JSON은 저장된 값·자료형·null을 유지한다. 조회 때 점수 또는 누락 필드를 다시 계산하지 않는다. 완료 판정은 계산 JSON 밖의 `evaluation`, 현재 공유 진도 반영은 `progressApplication`으로 제공한다. 아래는 CPR 평가 구조 예시이며 실제 측정 결과의 점수를 뜻하지 않는다.
+
+```json
+{
+  "goal":{"kind":"cycles","required":3,"status":"evaluated","observed":3,"met":true},
+  "score":{"decision":"pass"},
+  "program_completed":true,
+  "reason_codes":[]
+}
+```
+
+현재 v4 검출 adapter(`arc-internal-detection-v4`)는 v2 adapter에서 도입한 목표 평가 형식을 유지하며 모든 종류에서 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR 계열의 `observed`는 계산기가 `cpr`로 분류한 사이클 수다(D136). 이전 pending-v3 adapter로 시작한 진행 중 CPR 시도만 `status="pending_policy"`, `observed=null`, `met=null`이다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
+
+목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. 목표 사유가 점수 사유보다 앞선다. 목표를 판단해 충족했고 점수도 Pass인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1 adapter의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
+
+진도 반영은 `{applied: bool, applied_epoch: string|null, reason: string}`다. 계산의 조건 만족과 현재 공유 진도 반영은 별개다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나이며, 이미 저장된 기존 시도의 계산 마무리에도 같은 순서를 쓴다(D117).
+
+| reason | 의미 |
+|---|---|
+| `APPLIED` | 목표·Pass 만족, 현재 epoch의 미완료 항목(기존 시도는 프로그램·연령 조합)을 완료로 변경. applied=true |
+| `REQUIREMENTS_NOT_MET` | 판단된 목표 또는 Pass 미충족. applied=false |
+| `GOAL_POLICY_UNRESOLVED` | 현재 pending 목표 평가에서 정책 미확정. applied=false |
+| `ALREADY_COMPLETED` | 먼저 끝난 동시 attempt가 이미 완료시켰거나 완료한 항목의 재수행. 기준 미달이어도 이 사유. 결과는 보관, applied=false |
+| `PROGRESS_RESET` | 로그아웃으로 epoch가 바뀜. 예전 결과는 보관, 새 진도에는 반영하지 않음 |
+| `PROGRESS_RECONCILIATION_REQUIRED` | 과정 평가 교체 확인이 필요해 반영 보류. 초기화 전 결과가 아닐 때 위 사유 대신 기록. applied=false |
+
+epoch가 이미 바뀌었다면 `PROGRESS_RESET`이 우선하며 과거 완료 평가를 새 진도에 적용하지 않는다. 성공적으로 처리했다는 `state=evaluated`와 훈련 합격은 다르다. evaluated여도 프로그램이 미완료일 수 있다. 후발 실패 결과로 기존 완료 상태를 되돌리지 않는다.
 
 ## 4. 역할과 저장·배포 경계
 
 | 역할 | 진입점 | 필요한 의존성과 실제 동작 |
 |---|---|---|
-| API | `mock_journey.handler.run` | 세션·진도·attempt·job DB, resume keyring, 실행 정의·projection, 입력/결과 S3. 계산 실행과 분리하여 접수·조회하며 SQS로 직접 발행하지 않음 |
+| API | `mock_journey.handler.run` | 세션·진도·attempt·job DB, resume keyring, 실행 정의·projection, 과정 공급자·한도, 입력/결과 S3. 계산 실행과 분리하여 접수·조회하며 SQS로 직접 발행하지 않음 |
 | Worker | `mock_journey.worker.run` | SQS가 넘긴 job_id, DB 거래·lease, S3 저장, 버전별 검증 adapter. 앱 Bearer/resume keyring은 받지 않음 |
 | Relay | `mock_journey.dispatch.run` | Stream key/sequence 또는 `source=aws.events` 재조정, DB due query/거래, SQS send. S3·계산기·앱 keyring은 요구하지 않음 |
 
-로컬 조립에는 `mock_journey.assembly.build_application`, `build_worker`, `build_relay`를 사용할 수 있다. 호출자가 client·legacy binding·설정·keyring·실행 정의·버전을 명시하며, 각 함수는 해당 역할의 기존 구성 요소를 연결한다. 필요한 client나 legacy binding이 `None`이면 조립 단계에서 거절한다. SDK 연결을 시도하거나 실제 접근 권한을 검사하는 기능은 아니다.
+Gateway가 API에 전달하는 형식은 REST proxy event의 `httpMethod`, `path`, `headers`, `multiValueHeaders`, `body`, `isBase64Encoded`, query maps다. HTTP API v2나 임의 envelope를 자동 변환하지 않는다.
+
+API 조립에는 `mock_journey.assembly.build_course_application`, Worker·Relay 조립에는 `build_worker`, `build_relay`를 사용한다. 로컬 기본 실행과 AWS API는 모두 `build_course_application`으로 `/api/v2`를 조립한다. 호출자가 client·계산 binding·설정·keyring·실행 정의·버전과 과정 공급자·한도를 명시하며, 각 함수는 해당 역할의 기존 구성 요소를 연결한다. 필요한 client나 binding이 없으면 조립 단계에서 거절한다. SDK 연결을 시도하거나 실제 접근 권한을 검사하는 기능은 아니다.
 
 `ExecutionCatalog`는 프로그램·연령의 실행 정의, projection 자료형과 버전 연결을 검사한다. 카탈로그 생성만으로 CPR 완료 정책이나 모든 실행 구성이 검증된 것은 아니다. 현재 로컬 CLI와 명시적 AWS 역할 설정은 승인된 15개 정의와 v3 검출 adapter를 조립하되 CPR 목표를 `pending_policy`로 명시한다. 이전 v2는 저장 후보 복구용이며 새 core로 재계산하지 않는다. [버전 보존 경계](ARCHITECTURE.md#점수와-완료의-버전-경계)를 따른다. 실제 AWS 자원·권한·trigger 검증은 별도다.
 
@@ -307,12 +212,11 @@ HTTP 왕복 테스트는 `urlsafe_b64encode(quote(urlencode(fields), safe="").en
 | `token_expired` | 원래 이름을 bool로 해석한 결과가 None일 때만 별칭 사용. False는 별칭으로 대체하지 않음 |
 
 `condition`이 정상 객체인지, 필수 키가 있는지 등의 실패 동작에는 P1의 기존 ARC 보호 예외가 적용된다.
-`parse_body_as_action` 같은 라이브러리 함수의 존재가 이 POST API에 JSON action 입력 경로를 추가한다는
-뜻은 아니다.
+이 POST API에는 JSON action 입력 경로가 없다. 예전의 미사용 `parse_body_as_action` 함수는 2026-09-28 정리로 삭제했다.
 
 ### 2.3 패킷 검출과 앱 기록 계약
 
-2026-09-11 사용자 확정 D38~D46을 AHA2020/ARC2020/ARC2025/ERC2020/STD2015 모두에 적용한다. guideline별 점수식·최소량과 Mock attempt의 ARC2025 고정 조건은 별개다.
+2026-09-11 사용자 확정 D38~D46을 AHA2020/ARC2020/ARC2025/ERC2020/STD2015 모두에 적용한다. guideline별 점수식·최소량과 과정 시도의 ARC2025 고정 조건은 별개다.
 
 - 첫 패킷은 압박 카운터 기준선이다. 앱은 첫 압박 전에 기준선 패킷을 넣는다. 이후 이전 값과 다른 양수 카운터를1회로 인정하며, 증가 폭으로 유실된 압박을 추정 복원하지 않는다.0은 새 기준선이며 사건을 만들지 않는다.
 - 패킷의 두 호흡량 중 최대값을 사용하고 후보별 최고값을 추적한다. 성인·소아 최고값 대비10mL 이상 하강한 두 연속 패킷에서1회 확정한다. 원본 보정계수10이므로 raw50→49→49가1회다. 영아는 보정계수1, 감소5mL 잠정값이다. 공식 의학·기기 기준으로 확정한 수치가 아니다.
@@ -418,7 +322,7 @@ number/int/string 등의 기호는 자료형이며 전송할 JSON 값이 아니�
 ```
 
 `submit_arc`는 위 비활성 응답으로 고정한다. 이 필드가 있다는 사실은 외부 제출이나
-ARC 과정 완료를 뜻하지 않는다. 생성한 HSTM 문서 전체를 새 응답 키로 노출하는 변경도 승인된 것이 아니다.
+ARC 과정 완료를 뜻하지 않는다. `/api/v2` 응답은 제출 상태를 계산 객체 밖의 `data.submit_arc`로 따로 반환한다([APP_API §6](APP_API.md#6-결과완료차트)). 생성한 HSTM 문서 전체를 새 응답 키로 노출하는 변경도 승인된 것이 아니다.
 
 대표 점수 키는 `score_comp_depth`, `score_comp_rate`, `score_comp_no`, `score_comp_count`,
 `score_recoil`, `score_hand_position`, `score_vent_vol`, `score_vent_rate`, `score_vent_count`,
@@ -521,7 +425,7 @@ P4에 따라 overall=None이면 `JudgResult`와 `hStreamResult`를 Fail로 처�
 
 ## 7. 오류·운영 부작용·검증 한계
 
-P1에 따라 기존 ARC의 입력 검증·오류 정제·Sentry 보호를 유지한다. 내부 회귀 helper의 대표 오류는 `This guideline is not supported.`, `This target is not supported.`, `This training type is not supported.`, `CPR file is required.`, `Invalid request data.`다. 공개 `/cpr-analysis`는 기존 parser/validator 오류에 정제된 400 `{type:"client_error",message:...}`를 유지하고 기존 attempt 경로는 422 `MEASUREMENT_INPUT_INVALID`를 반환한다. 인증·ID·소유권·입력/조건 충돌·크기 오류는 양쪽 모두 Mock 오류 계약이다. 입력 검증 뒤 projection 오류도 Mock 422다. 공개 계산 경계의 실행/저장 오류는 현재 API 계약의 정제된 503이며 내부 helper의 모든 500 표현을 공개 응답으로 약속하지 않는다.
+P1에 따라 기존 ARC의 입력 검증·오류 정제·Sentry 보호를 유지한다. 실제 API·Worker·Relay에서는 Sentry를 켜지 않으며 Sentry 보호는 내부 helper에 남아 있다(D108). 내부 회귀 helper의 대표 오류는 `This guideline is not supported.`, `This target is not supported.`, `This training type is not supported.`, `CPR file is required.`, `Invalid request data.`다. 공개 측정 업로드 경로는 기존 parser/validator 오류에 422 `MEASUREMENT_INPUT_INVALID`를 반환한다. 삭제된 `/cpr-analysis`의 400 `{type:"client_error",...}` 형식은 더 이상 없다(D103). 인증·ID·소유권·입력/조건 충돌·크기 오류는 공개 오류 계약([APP_API §7](APP_API.md#7-취소복구전체-오류))을 따른다. 입력 검증 뒤 projection 오류도 422다. 공개 계산 경계의 실행/저장 오류는 현재 API 계약의 정제된 503이며 내부 helper의 모든 500 표현을 공개 응답으로 약속하지 않는다.
 
 정상적인 multipart가 아닌 요청은 폼 파서로 가므로 비multipart라는 이유만으로400을 반환하지 않는다.
 무한대 합격선의 정수 변환 오류, Sentry 초기화 장애, 응답 직렬화 실패 처리는 기존 ARC 동작을 유지한다.
@@ -538,4 +442,4 @@ P1에 따라 기존 ARC의 입력 검증·오류 정제·Sentry 보호를 유지
 
 ## 새 과정 API 계약의 위치
 
-`/api/v2`는 [APP_API Markdown 명세](APP_API.md)를 따른다. 내부 DTO·저장 거래·복구 불변조건은 [ARCHITECTURE](ARCHITECTURE.md), 확정 정책과 외부 계약 대기는 [DECISIONS](DECISIONS.md)에 둔다. 이 문서의 snake_case 응답과 취소 사유를 v2 camelCase 제어 API에 그대로 사용하지 않는다. `calculation` 안의 기존 계산 JSON은 원래 자료형·null·키를 유지한다.
+`/api/v2`는 [APP_API Markdown 명세](APP_API.md)를 따른다. 내부 DTO·저장 거래·복구 불변조건은 [ARCHITECTURE](ARCHITECTURE.md), 확정 정책과 외부 계약 대기는 [DECISIONS](DECISIONS.md)에 둔다. 이 문서의 snake_case 계산 필드를 v2 camelCase 제어 API 필드와 혼용하지 않는다. `calculation` 안의 기존 계산 JSON은 원래 자료형·null·키를 유지한다.

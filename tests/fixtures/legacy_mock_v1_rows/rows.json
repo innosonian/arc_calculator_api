@@ -1,0 +1,1055 @@
+[
+ {
+  "PK": {
+   "S": "ATTEMPT#87e88f6e-b61a-484a-8830-ad8e2a19ef50"
+  },
+  "SK": {
+   "S": "META"
+  },
+  "active_counted": {
+   "BOOL": true
+  },
+  "attempt_id": {
+   "S": "87e88f6e-b61a-484a-8830-ad8e2a19ef50"
+  },
+  "bound_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "created_at": {
+   "N": "1800000001"
+  },
+  "creator_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "definition_json": {
+   "S": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-pending-v2\", \"adapter_version\": \"arc-internal-detection-pending-v3\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "evaluation": {
+   "NULL": true
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "profile_name": {
+   "S": "tester"
+  },
+  "program_id": {
+   "S": "mock-cpr"
+  },
+  "progress_application": {
+   "NULL": true
+  },
+  "resume_digest": {
+   "S": "0285cd058d549504e80002db7f28a5d06a9689c7b8e064790b3998b4c4e5ff2a"
+  },
+  "resume_key_version": {
+   "S": "v1"
+  },
+  "resume_nonce": {
+   "S": "2X-vcgCRC1idPFDVmrddkIP1yhYEJZwDNAm7fccddyc"
+  },
+  "revision": {
+   "N": "0"
+  },
+  "state": {
+   "S": "created"
+  },
+  "target": {
+   "S": "adult"
+  }
+ },
+ {
+  "PK": {
+   "S": "ATTEMPT#9c26c841-b7a7-46e5-a66f-2390bc295145"
+  },
+  "SK": {
+   "S": "META"
+  },
+  "active_counted": {
+   "BOOL": true
+  },
+  "attempt_id": {
+   "S": "9c26c841-b7a7-46e5-a66f-2390bc295145"
+  },
+  "bound_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "created_at": {
+   "N": "1800000002"
+  },
+  "creator_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "definition_json": {
+   "S": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-pending-v2\", \"adapter_version\": \"arc-internal-detection-pending-v3\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "evaluation": {
+   "NULL": true
+  },
+  "input_digest": {
+   "S": "a4b613b4d2ff30c19574a43b9a11df9fe1fb035f70436800c4ad72161d9412f4"
+  },
+  "input_manifest_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-a88f6ee6-69fb-4049-b702-a787194313bf.request.json"
+    },
+    "sha256": {
+     "S": "52d8c435737c7cd3ff89f5cf7d5d42ddba96d45ade25e555ab2995232717b078"
+    },
+    "size": {
+     "N": "1896"
+    }
+   }
+  },
+  "job_id": {
+   "S": "095f2ed0-db50-42e8-9ede-615759536f6a"
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "profile_name": {
+   "S": "tester"
+  },
+  "program_id": {
+   "S": "mock-compression-only"
+  },
+  "progress_application": {
+   "NULL": true
+  },
+  "resume_digest": {
+   "S": "5c09722088b7eea1e0504f35d4e5d9302eae5b06f6cd9aa0ad5d17212355c831"
+  },
+  "resume_key_version": {
+   "S": "v1"
+  },
+  "resume_nonce": {
+   "S": "_0uSby9NlBTIbgoabTZ5hH4tNJS_szGSCtWdpeWJ7MI"
+  },
+  "revision": {
+   "N": "1"
+  },
+  "state": {
+   "S": "queued"
+  },
+  "target": {
+   "S": "adult"
+  }
+ },
+ {
+  "PK": {
+   "S": "ATTEMPT#e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+  },
+  "SK": {
+   "S": "META"
+  },
+  "active_counted": {
+   "BOOL": false
+  },
+  "attempt_id": {
+   "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+  },
+  "bound_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "chart_publication": {
+   "M": {
+    "adapter_version": {
+     "S": "arc-internal-detection-pending-v3"
+    },
+    "attempt_id": {
+     "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+    },
+    "call_id": {
+     "S": "e88552d7-6969-4a68-9504-843160a4facc"
+    },
+    "epoch": {
+     "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+    },
+    "input_digest": {
+     "S": "972d807ed236ed6324855a0f37b29421b6f8757659fec9d536bc661c54f0a059"
+    },
+    "job_id": {
+     "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-701a5338-45e9-43b9-98d6-8a0b6afd919a.json"
+    },
+    "kind": {
+     "S": "snapshot"
+    },
+    "projection_version": {
+     "S": "arc-local-projection-v1"
+    },
+    "published_body_sha256": {
+     "S": "3b2e8ea7972c92ef1fcd8b554b3a30452018c8ed02618c7ceb58e75018c378c4"
+    },
+    "selection_revision": {
+     "N": "1"
+    }
+   }
+  },
+  "created_at": {
+   "N": "1800000004"
+  },
+  "creator_session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "definition_json": {
+   "S": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-pending-v2\", \"adapter_version\": \"arc-internal-detection-pending-v3\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "evaluation": {
+   "M": {
+    "goal": {
+     "M": {
+      "kind": {
+       "S": "ventilations"
+      },
+      "met": {
+       "BOOL": true
+      },
+      "observed": {
+       "N": "8"
+      },
+      "required": {
+       "N": "8"
+      },
+      "status": {
+       "S": "evaluated"
+      }
+     }
+    },
+    "program_completed": {
+     "BOOL": true
+    },
+    "reason_codes": {
+     "L": []
+    },
+    "score": {
+     "M": {
+      "decision": {
+       "S": "pass"
+      }
+     }
+    }
+   }
+  },
+  "input_digest": {
+   "S": "972d807ed236ed6324855a0f37b29421b6f8757659fec9d536bc661c54f0a059"
+  },
+  "input_manifest_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-701a5338-45e9-43b9-98d6-8a0b6afd919a.request.json"
+    },
+    "sha256": {
+     "S": "9075d214516ef44f45686e938c2336c5525bec2d1d122e7a15c35e4d35b5b0b2"
+    },
+    "size": {
+     "N": "1895"
+    }
+   }
+  },
+  "job_id": {
+   "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "profile_name": {
+   "S": "tester"
+  },
+  "program_id": {
+   "S": "mock-ventilation-only"
+  },
+  "progress_application": {
+   "M": {
+    "applied": {
+     "BOOL": true
+    },
+    "applied_epoch": {
+     "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+    },
+    "reason": {
+     "S": "APPLIED"
+    }
+   }
+  },
+  "result_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_artifacts/b8ad2a3c-d2d4-4293-9e6a-7a152af89283-e88552d7-6969-4a68-9504-843160a4facc-final-1-0bc154e657474454a4c380938b461573.bin"
+    },
+    "sha256": {
+     "S": "f376b6c83c92b619b37abc697929d257372dc2dcd3058cf2dfceca388cdfacdc"
+    },
+    "size": {
+     "N": "4031"
+    }
+   }
+  },
+  "resume_digest": {
+   "S": "8dcb62eca13249745a02c5d025d8658af7433e751f50f416addf86511912f9b5"
+  },
+  "resume_key_version": {
+   "S": "v1"
+  },
+  "resume_nonce": {
+   "S": "S697AjnYLOPKdD-EPKg-Q2DCsnqThDDkPELTY0xlu-4"
+  },
+  "revision": {
+   "N": "3"
+  },
+  "state": {
+   "S": "evaluated"
+  },
+  "target": {
+   "S": "adult"
+  }
+ },
+ {
+  "GSI1PK": {
+   "S": "DUE#JOB"
+  },
+  "GSI1SK": {
+   "N": "1800000003"
+  },
+  "PK": {
+   "S": "JOB#095f2ed0-db50-42e8-9ede-615759536f6a"
+  },
+  "SK": {
+   "S": "STATE"
+  },
+  "adapter_version": {
+   "S": "arc-internal-detection-pending-v3"
+  },
+  "attempt_id": {
+   "S": "9c26c841-b7a7-46e5-a66f-2390bc295145"
+  },
+  "call_id": {
+   "NULL": true
+  },
+  "call_phase": {
+   "S": "not_started"
+  },
+  "candidate_ref": {
+   "NULL": true
+  },
+  "chart_publication": {
+   "NULL": true
+  },
+  "chart_snapshot": {
+   "M": {
+    "kind": {
+     "S": "unset"
+    },
+    "revision": {
+     "N": "0"
+    }
+   }
+  },
+  "created_at": {
+   "N": "1800000003"
+  },
+  "definition_sha256": {
+   "S": "18cb2e410253705872ec294dea55a2f0eda21f3ff88a4dbc893d56a3fc71ff52"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "error_code": {
+   "NULL": true
+  },
+  "execution_fence": {
+   "N": "0"
+  },
+  "fence": {
+   "N": "0"
+  },
+  "final_ref": {
+   "NULL": true
+  },
+  "input_digest": {
+   "S": "a4b613b4d2ff30c19574a43b9a11df9fe1fb035f70436800c4ad72161d9412f4"
+  },
+  "input_manifest_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-a88f6ee6-69fb-4049-b702-a787194313bf.request.json"
+    },
+    "sha256": {
+     "S": "52d8c435737c7cd3ff89f5cf7d5d42ddba96d45ade25e555ab2995232717b078"
+    },
+    "size": {
+     "N": "1896"
+    }
+   }
+  },
+  "job_id": {
+   "S": "095f2ed0-db50-42e8-9ede-615759536f6a"
+  },
+  "lease_until": {
+   "N": "0"
+  },
+  "next_due_at": {
+   "N": "1800000003"
+  },
+  "owner": {
+   "NULL": true
+  },
+  "planned_candidate_ref": {
+   "NULL": true
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "projection_version": {
+   "S": "arc-local-projection-v1"
+  },
+  "revision": {
+   "N": "0"
+  },
+  "state": {
+   "S": "queued"
+  }
+ },
+ {
+  "PK": {
+   "S": "JOB#b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "SK": {
+   "S": "STATE"
+  },
+  "adapter_version": {
+   "S": "arc-internal-detection-pending-v3"
+  },
+  "attempt_id": {
+   "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+  },
+  "call_id": {
+   "S": "e88552d7-6969-4a68-9504-843160a4facc"
+  },
+  "call_phase": {
+   "S": "candidate_saved"
+  },
+  "candidate_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_artifacts/b8ad2a3c-d2d4-4293-9e6a-7a152af89283-e88552d7-6969-4a68-9504-843160a4facc-calculation-0-c2fe8de5c7004738b06b6a5dfc5c0839.bin"
+    },
+    "sha256": {
+     "S": "a8c23dded69da20e6ef7496b0782b5e6e158fe0590768d4aa8efb6a4d46d980c"
+    },
+    "size": {
+     "N": "6277"
+    }
+   }
+  },
+  "chart_publication": {
+   "M": {
+    "adapter_version": {
+     "S": "arc-internal-detection-pending-v3"
+    },
+    "attempt_id": {
+     "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+    },
+    "call_id": {
+     "S": "e88552d7-6969-4a68-9504-843160a4facc"
+    },
+    "epoch": {
+     "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+    },
+    "input_digest": {
+     "S": "972d807ed236ed6324855a0f37b29421b6f8757659fec9d536bc661c54f0a059"
+    },
+    "job_id": {
+     "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-701a5338-45e9-43b9-98d6-8a0b6afd919a.json"
+    },
+    "kind": {
+     "S": "snapshot"
+    },
+    "projection_version": {
+     "S": "arc-local-projection-v1"
+    },
+    "published_body_sha256": {
+     "S": "3b2e8ea7972c92ef1fcd8b554b3a30452018c8ed02618c7ceb58e75018c378c4"
+    },
+    "selection_revision": {
+     "N": "1"
+    }
+   }
+  },
+  "chart_snapshot": {
+   "M": {
+    "adapter_version": {
+     "S": "arc-internal-detection-pending-v3"
+    },
+    "attempt_id": {
+     "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+    },
+    "call_id": {
+     "S": "e88552d7-6969-4a68-9504-843160a4facc"
+    },
+    "epoch": {
+     "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+    },
+    "input_digest": {
+     "S": "972d807ed236ed6324855a0f37b29421b6f8757659fec9d536bc661c54f0a059"
+    },
+    "job_id": {
+     "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+    },
+    "kind": {
+     "S": "snapshot"
+    },
+    "projection_version": {
+     "S": "arc-local-projection-v1"
+    },
+    "published_body_sha256": {
+     "S": "3b2e8ea7972c92ef1fcd8b554b3a30452018c8ed02618c7ceb58e75018c378c4"
+    },
+    "revision": {
+     "N": "1"
+    },
+    "snapshot_ref": {
+     "M": {
+      "bucket": {
+       "S": "brayden-online-v2-api-storage"
+      },
+      "key": {
+       "S": "calculator_result/interpreted_rtdata/arc/development/_artifacts/b8ad2a3c-d2d4-4293-9e6a-7a152af89283-e88552d7-6969-4a68-9504-843160a4facc-chart-1-7c78e34f792d45ff8819b87ec55bd731.bin"
+      },
+      "sha256": {
+       "S": "3b2e8ea7972c92ef1fcd8b554b3a30452018c8ed02618c7ceb58e75018c378c4"
+      },
+      "size": {
+       "N": "1803"
+      }
+     }
+    },
+    "source_sha256": {
+     "S": "3b2e8ea7972c92ef1fcd8b554b3a30452018c8ed02618c7ceb58e75018c378c4"
+    }
+   }
+  },
+  "created_at": {
+   "N": "1800000005"
+  },
+  "definition_sha256": {
+   "S": "ae93390871e4ed80b742d5ac73e2c4443ee05f084d91980f2149108a41a73e31"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "error_code": {
+   "NULL": true
+  },
+  "execution_fence": {
+   "N": "1"
+  },
+  "fence": {
+   "N": "1"
+  },
+  "final_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_artifacts/b8ad2a3c-d2d4-4293-9e6a-7a152af89283-e88552d7-6969-4a68-9504-843160a4facc-final-1-0bc154e657474454a4c380938b461573.bin"
+    },
+    "sha256": {
+     "S": "f376b6c83c92b619b37abc697929d257372dc2dcd3058cf2dfceca388cdfacdc"
+    },
+    "size": {
+     "N": "4031"
+    }
+   }
+  },
+  "input_digest": {
+   "S": "972d807ed236ed6324855a0f37b29421b6f8757659fec9d536bc661c54f0a059"
+  },
+  "input_manifest_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_no_org/2026-09-28/CPR-ACTION-1790563509-701a5338-45e9-43b9-98d6-8a0b6afd919a.request.json"
+    },
+    "sha256": {
+     "S": "9075d214516ef44f45686e938c2336c5525bec2d1d122e7a15c35e4d35b5b0b2"
+    },
+    "size": {
+     "N": "1895"
+    }
+   }
+  },
+  "job_id": {
+   "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "lease_until": {
+   "N": "0"
+  },
+  "owner": {
+   "NULL": true
+  },
+  "planned_candidate_ref": {
+   "M": {
+    "bucket": {
+     "S": "brayden-online-v2-api-storage"
+    },
+    "key": {
+     "S": "calculator_result/interpreted_rtdata/arc/development/_artifacts/b8ad2a3c-d2d4-4293-9e6a-7a152af89283-e88552d7-6969-4a68-9504-843160a4facc-calculation-0-c2fe8de5c7004738b06b6a5dfc5c0839.bin"
+    }
+   }
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "projection_version": {
+   "S": "arc-local-projection-v1"
+  },
+  "revision": {
+   "N": "12"
+  },
+  "state": {
+   "S": "done"
+  }
+ },
+ {
+  "GSI1PK": {
+   "S": "DUE#OUTBOX"
+  },
+  "GSI1SK": {
+   "N": "1800000003"
+  },
+  "PK": {
+   "S": "OUTBOX#095f2ed0-db50-42e8-9ede-615759536f6a"
+  },
+  "SK": {
+   "S": "DISPATCH"
+  },
+  "delivery_attempts": {
+   "N": "0"
+  },
+  "error_code": {
+   "NULL": true
+  },
+  "fence": {
+   "N": "0"
+  },
+  "job_id": {
+   "S": "095f2ed0-db50-42e8-9ede-615759536f6a"
+  },
+  "lease_until": {
+   "N": "0"
+  },
+  "next_due_at": {
+   "N": "1800000003"
+  },
+  "owner": {
+   "NULL": true
+  },
+  "revision": {
+   "N": "0"
+  },
+  "state": {
+   "S": "pending"
+  }
+ },
+ {
+  "PK": {
+   "S": "OUTBOX#b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "SK": {
+   "S": "DISPATCH"
+  },
+  "delivery_attempts": {
+   "N": "1"
+  },
+  "error_code": {
+   "NULL": true
+  },
+  "fence": {
+   "N": "1"
+  },
+  "job_id": {
+   "S": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "lease_until": {
+   "N": "0"
+  },
+  "owner": {
+   "NULL": true
+  },
+  "revision": {
+   "N": "2"
+  },
+  "state": {
+   "S": "sent"
+  }
+ },
+ {
+  "PK": {
+   "S": "SESSION#a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "SK": {
+   "S": "AUTH"
+  },
+  "expires_at": {
+   "N": "1800086400"
+  },
+  "issued_at": {
+   "N": "1800000000"
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "revision": {
+   "N": "0"
+  },
+  "session_id": {
+   "S": "a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "status": {
+   "S": "active"
+  },
+  "token_hash": {
+   "S": "e42e9b38ee1a65e64c51c9081785d305f23ec515b9a3d816899b7fe3f014ba8d"
+  }
+ },
+ {
+  "PK": {
+   "S": "SESSION#a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "SK": {
+   "S": "CREATE#54886da0-147e-4497-9252-7cf4b00c3541"
+  },
+  "attempt_id": {
+   "S": "9c26c841-b7a7-46e5-a66f-2390bc295145"
+  },
+  "request_digest": {
+   "S": "8e419c8b6d74342979c85d5159dd6a97f2abb82c0bbe06a288ac49aa219ccdf3"
+  }
+ },
+ {
+  "PK": {
+   "S": "SESSION#a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "SK": {
+   "S": "CREATE#6fdf55a0-fc83-4ff5-b025-dda84cc6aaac"
+  },
+  "attempt_id": {
+   "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+  },
+  "request_digest": {
+   "S": "c8fd26321d19f22b1c1028a5f272aefb14d1fd08cd64577a7e52d8f17c2bebdd"
+  }
+ },
+ {
+  "PK": {
+   "S": "SESSION#a9ed2aae-021f-4a22-9163-703f3f4a18b2"
+  },
+  "SK": {
+   "S": "CREATE#eb502b7a-1d35-4e49-949a-e687951a46b4"
+  },
+  "attempt_id": {
+   "S": "87e88f6e-b61a-484a-8830-ad8e2a19ef50"
+  },
+  "request_digest": {
+   "S": "db3ea6498783b155f52ab93d3be66dd67dcc087c41c5aac27e4a22f9e54f4451"
+  }
+ },
+ {
+  "PK": {
+   "S": "USER#dummy-tester"
+  },
+  "SK": {
+   "S": "STATE"
+  },
+  "epoch": {
+   "S": "3833dc72-e62e-4f04-8a3b-71b1ec623ef8"
+  },
+  "principal": {
+   "S": "dummy-tester"
+  },
+  "revision": {
+   "N": "4"
+  },
+  "slots": {
+   "M": {
+    "mock-compression-only:adult": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "1"
+      }
+     }
+    },
+    "mock-compression-only:child": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-compression-only:infant": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-cpr:adult": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "1"
+      }
+     }
+    },
+    "mock-cpr:child": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-cpr:infant": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-aed:adult": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-aed:child": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-aed:infant": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-cpr:adult": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-cpr:child": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-two-rescuer-cpr:infant": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-ventilation-only:adult": {
+     "M": {
+      "completed": {
+       "BOOL": true
+      },
+      "completed_at": {
+       "N": "1800000007"
+      },
+      "completed_by_attempt": {
+       "S": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-ventilation-only:child": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    },
+    "mock-ventilation-only:infant": {
+     "M": {
+      "completed": {
+       "BOOL": false
+      },
+      "completed_at": {
+       "NULL": true
+      },
+      "completed_by_attempt": {
+       "NULL": true
+      },
+      "open_attempts": {
+       "N": "0"
+      }
+     }
+    }
+   }
+  },
+  "updated_at": {
+   "N": "1800000007"
+  }
+ }
+]

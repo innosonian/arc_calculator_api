@@ -113,7 +113,3 @@ def calculate_cpr(prepared_data: dict, config: Config) -> CalculationResult:
         comp_count=prepared_data["comp_count"],
         vent_count=prepared_data["vent_count"],
     )
-
-
-def calculate_action(action_list, config) -> list[ActionWithScore]:
-    return ActionEvaluator(config).evaluate_action(action_list)

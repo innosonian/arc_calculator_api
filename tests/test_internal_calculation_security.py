@@ -18,7 +18,7 @@ from mock_journey.state import DynamoStateRepository
 from mock_journey.storage import JourneyStorage
 from tests._synth import comp_session, cpr_session, condition_json
 from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
-from tests.test_mock_state import ScriptedClient, item
+from tests.mock_state_support import ScriptedClient, item
 
 
 VERSION = "security-test-internal-v1"

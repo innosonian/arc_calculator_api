@@ -15,6 +15,8 @@ import threading
 
 import pytest
 
+from tests.network_guard_support import guard_socket_connect, loopback_validator
+
 
 @pytest.fixture(scope="session")
 def local_tls_address():
@@ -57,28 +59,10 @@ def tls_certificates(tmp_path_factory, local_tls_address):
 @pytest.fixture(autouse=True)
 def loopback_only(monkeypatch, local_tls_address):
     allowed = set()
-    original_connect, original_connect_ex = socket.socket.connect, socket.socket.connect_ex
-    original_getaddrinfo = socket.getaddrinfo
-
-    def validate(address):
-        if type(address) is not tuple or address[:2] not in allowed:
-            pytest.fail("TLS integration attempted a connection outside its registered numeric loopback endpoint.")
-
-    def connect(sock, address):
-        validate(address)
-        return original_connect(sock, address)
-
-    def connect_ex(sock, address):
-        validate(address)
-        return original_connect_ex(sock, address)
-
-    def getaddrinfo(host, port, *args, **kwargs):
-        validate((host, port))
-        return original_getaddrinfo(host, port, *args, **kwargs)
-
-    monkeypatch.setattr(socket.socket, "connect", connect)
-    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
-    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    guard_socket_connect(monkeypatch, loopback_validator(
+        allowed, "TLS integration attempted a connection outside its registered numeric loopback endpoint.",
+        exact_type=True,
+    ), resolve=True)
     for name in ("SENTRY_DSN", "SSL_CERT_FILE", "SSL_CERT_DIR", "SSLKEYLOGFILE"):
         monkeypatch.delenv(name, raising=False)
     yield allowed

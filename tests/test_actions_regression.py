@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from scripts import deployment_preflight as preflight
-from tests.test_deployment_preflight import configuration, variables
+from tests.deployment_preflight_support import configuration, variables
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,3 +140,21 @@ def test_failed_preflight_does_not_export_region(tmp_path, capsys):
     visible = capsys.readouterr()
     assert visible.err.strip() == "ENVIRONMENT_NOT_CONFIGURED"
     assert visible.out == ""
+
+
+def test_ci_runner_and_test_guards_audit_one_network_event_set():
+    # The runner installs its hook before importing repository modules, so it
+    # owns the (standard-library only) event set and the test guards import it.
+    from scripts import run_actions_regression as runner
+    from tests import network_guard_support as guard
+
+    expected = frozenset({
+        "socket.connect", "socket.connect_ex", "socket.getaddrinfo",
+        "socket.gethostbyname", "socket.gethostbyaddr", "socket.getnameinfo",
+        "socket.sendto", "socket.sendmsg",
+    })
+    assert runner.NETWORK_AUDIT_EVENTS == expected
+    assert guard.NETWORK_AUDIT_EVENTS is runner.NETWORK_AUDIT_EVENTS
+    # Creating, binding and listening on a loopback socket stay unaudited so the
+    # other directories' owned DynamoDB Local child and HTTP listeners can start.
+    assert not {"socket.__new__", "socket.bind", "socket.listen"} & expected

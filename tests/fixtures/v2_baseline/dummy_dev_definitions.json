@@ -1,0 +1,397 @@
+{
+ "catalog_pairs": [
+  [
+   "mock-cpr",
+   "adult"
+  ],
+  [
+   "mock-cpr",
+   "child"
+  ],
+  [
+   "mock-cpr",
+   "infant"
+  ],
+  [
+   "mock-compression-only",
+   "adult"
+  ],
+  [
+   "mock-compression-only",
+   "child"
+  ],
+  [
+   "mock-compression-only",
+   "infant"
+  ],
+  [
+   "mock-ventilation-only",
+   "adult"
+  ],
+  [
+   "mock-ventilation-only",
+   "child"
+  ],
+  [
+   "mock-ventilation-only",
+   "infant"
+  ],
+  [
+   "mock-two-rescuer-cpr",
+   "adult"
+  ],
+  [
+   "mock-two-rescuer-cpr",
+   "child"
+  ],
+  [
+   "mock-two-rescuer-cpr",
+   "infant"
+  ],
+  [
+   "mock-two-rescuer-aed",
+   "adult"
+  ],
+  [
+   "mock-two-rescuer-aed",
+   "child"
+  ],
+  [
+   "mock-two-rescuer-aed",
+   "infant"
+  ]
+ ],
+ "courses": [
+  {
+   "course_id": 910001,
+   "enrollment_id": 920001,
+   "program_id": "mock-cpr",
+   "target": "adult",
+   "definition_hash": "2b86a7875c3ab81ce5841634620f6683a6ddae14cd62a0a6ee8d3e10dd7f5d21",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-1-1",
+     "public_link_id": 940011,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-1-2",
+     "public_link_id": 940012,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910002,
+   "enrollment_id": 920002,
+   "program_id": "mock-cpr",
+   "target": "child",
+   "definition_hash": "42d7e20a4d4c1d8c741c2cd98f15430f17b871f4e59ed0f13ec5d9b30e831f70",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-2-1",
+     "public_link_id": 940021,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-2-2",
+     "public_link_id": 940022,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910003,
+   "enrollment_id": 920003,
+   "program_id": "mock-cpr",
+   "target": "infant",
+   "definition_hash": "16b8e88d412aac29d52a83ae3f5ef08352780fdea19d12676254a6897ca45013",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-3-1",
+     "public_link_id": 940031,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-3-2",
+     "public_link_id": 940032,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 3}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910004,
+   "enrollment_id": 920004,
+   "program_id": "mock-compression-only",
+   "target": "adult",
+   "definition_hash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-4-1",
+     "public_link_id": 940041,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-4-2",
+     "public_link_id": 940042,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910005,
+   "enrollment_id": 920005,
+   "program_id": "mock-compression-only",
+   "target": "child",
+   "definition_hash": "ac5c9541940fd61c99da8da1c42393839201952857b877dab59a914319911c2f",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-5-1",
+     "public_link_id": 940051,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-5-2",
+     "public_link_id": 940052,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910006,
+   "enrollment_id": 920006,
+   "program_id": "mock-compression-only",
+   "target": "infant",
+   "definition_hash": "5bfee3125abe3edcc5e07091f8ab0332f0d51f7f15f86d8db85dda1b71c700ab",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-6-1",
+     "public_link_id": 940061,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-6-2",
+     "public_link_id": 940062,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"compression_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"compressions\", \"required\": 60}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910007,
+   "enrollment_id": 920007,
+   "program_id": "mock-ventilation-only",
+   "target": "adult",
+   "definition_hash": "3b9cc73aa153b829aefa4f28efa072884d320801275924f811bf60bf0afad5de",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-7-1",
+     "public_link_id": 940071,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-7-2",
+     "public_link_id": 940072,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910008,
+   "enrollment_id": 920008,
+   "program_id": "mock-ventilation-only",
+   "target": "child",
+   "definition_hash": "3d0ad7c75432914ecb3700e13ec97c51d4e3d6280af2e9265c266d0170e2e92f",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-8-1",
+     "public_link_id": 940081,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-8-2",
+     "public_link_id": 940082,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910009,
+   "enrollment_id": 920009,
+   "program_id": "mock-ventilation-only",
+   "target": "infant",
+   "definition_hash": "ac294a42250126c5fe6bfc374289c08162eb04da101ffcbfd300051aa9653bd8",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-9-1",
+     "public_link_id": 940091,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-9-2",
+     "public_link_id": 940092,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"ventilation_only\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": false}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"ventilations\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910010,
+   "enrollment_id": 920010,
+   "program_id": "mock-two-rescuer-cpr",
+   "target": "adult",
+   "definition_hash": "351ca481963c4348060bb836ab41727cae061a354083d53debd8940cde4b09d5",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-10-1",
+     "public_link_id": 940101,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-10-2",
+     "public_link_id": 940102,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910011,
+   "enrollment_id": 920011,
+   "program_id": "mock-two-rescuer-cpr",
+   "target": "child",
+   "definition_hash": "e06ab25910ca12efcc883acb72f786d7b1ab27c058681b573fc70a4b0481bc3c",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-11-1",
+     "public_link_id": 940111,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-11-2",
+     "public_link_id": 940112,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910012,
+   "enrollment_id": 920012,
+   "program_id": "mock-two-rescuer-cpr",
+   "target": "infant",
+   "definition_hash": "3f2c2bc0b7c86e732418aa502dab8c850db3f127e0db4006260efe5e22f4b989",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-12-1",
+     "public_link_id": 940121,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-12-2",
+     "public_link_id": 940122,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 8}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910013,
+   "enrollment_id": 920013,
+   "program_id": "mock-two-rescuer-aed",
+   "target": "adult",
+   "definition_hash": "c59f05cc6d5c6a5fc9257a3c69b0139a4fc42e0ef0bdb2266b5ddb7b6c29f6f1",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-13-1",
+     "public_link_id": 940131,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-13-2",
+     "public_link_id": 940132,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"adult\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910014,
+   "enrollment_id": 920014,
+   "program_id": "mock-two-rescuer-aed",
+   "target": "child",
+   "definition_hash": "689f3f1b5b05b07fb6e78c4f0b18781f4154d695c8b0881bd34be2fc1df935b1",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-14-1",
+     "public_link_id": 940141,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-14-2",
+     "public_link_id": 940142,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"child\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"302\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    }
+   ]
+  },
+  {
+   "course_id": 910015,
+   "enrollment_id": 920015,
+   "program_id": "mock-two-rescuer-aed",
+   "target": "infant",
+   "definition_hash": "31b5cd69a2818add70c32bc32614e24d89189783aed6684fa076410cea736842",
+   "catalog_definition": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}",
+   "placements": [
+    {
+     "source_id": "arc-dummy-dev-v1-placement-15-1",
+     "public_link_id": 940151,
+     "kind": "training",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    },
+    {
+     "source_id": "arc-dummy-dev-v1-placement-15-2",
+     "public_link_id": 940152,
+     "kind": "assessment",
+     "execution_json": "{\"condition\": {\"mode\": \"training\", \"target\": \"infant\", \"training_type\": \"cpr\", \"guideline\": \"ARC2025\", \"cpr_cycle_type\": \"152\", \"is_2rescuers\": true}, \"calculation_profile\": {}, \"profile_version\": \"tester-goal-cycles-v1\", \"adapter_version\": \"arc-internal-detection-v4\", \"projection_version\": \"arc-local-projection-v1\", \"catalog_version\": \"mock-catalog-v1\", \"goal\": {\"kind\": \"cycles\", \"required\": 10}}"
+    }
+   ]
+  }
+ ],
+ "mapping_document_sha256": "cd4c4be695fc1b9db80d893859b9c0731fce29a95d766f4fe0be9c1b8e8252a4"
+}

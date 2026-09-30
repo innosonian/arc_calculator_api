@@ -1,19 +1,25 @@
-"""Independent parser/WSGI and durable relay counterexamples; never open sockets."""
+"""Independent parser/WSGI and durable relay counterexamples; never open sockets.
+
+The real /api/v2 router runs behind the adapter with scripted hooks; every
+event that crosses the transport is recorded before it is routed.
+"""
 
 import base64
-from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
 
 import local_server.http as http
 from local_server.execution import LocalJobRunner
+from local_server_tests.course_stub import StubCourseService, calculation_path
+from local_server_tests.scripted_dynamodb import ScriptedClient, item
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.state import DynamoStateRepository
-from tests.test_mock_state import ScriptedClient, item
 
 
 ATTEMPT = "a1234567-1234-4234-9234-123456789abc"
+PATH = calculation_path(ATTEMPT)
+TOKEN = "synthetic-test"
 WIRE = 32770  # Explicit test fixture, not a runtime recommendation.
 SECRET = "TRANSPORT_PRIVATE_MARKER"
 
@@ -23,21 +29,16 @@ def harness(monkeypatch, *, wire=WIRE, payload=None, peer="127.0.0.1"):
     import waitress.server
     from waitress.task import WSGITask
 
-    observed = []
     options = {}
-
-    def handle(event, context, service):
-        observed.append(deepcopy(event))
-        return {"statusCode": 202, "body": '{"state":"queued"}'}
 
     def no_socket(application, **kwargs):
         options.update(kwargs)
         return SimpleNamespace()
 
-    monkeypatch.setattr(http, "handle", handle)
     monkeypatch.setattr(waitress.server, "create_server", no_socket)
     payload = 4 * ((wire + 2) // 3) if payload is None else payload
-    service = SimpleNamespace(calculation=SimpleNamespace(payload_limit=payload))
+    service = StubCourseService(payload_limit=payload, token=TOKEN)
+    observed = service.dispatched
     app = http.make_application(service, lambda: True, "127.0.0.1", 8000,
                                 ("127.0.0.1",), calculation_body_limit=wire)
     server = http.create_server(app, "127.0.0.1", 8000)
@@ -59,13 +60,12 @@ def harness(monkeypatch, *, wire=WIRE, payload=None, peer="127.0.0.1"):
         return response
 
     return SimpleNamespace(parser=server.channel_class.parser_class, shared=shared,
-                           invoke=invoke, observed=observed, options=options)
+                           invoke=invoke, observed=observed, options=options, service=service)
 
 
-def header(path="/cpr-analysis", *, size=0, extra=b"", method="POST"):
+def header(path=PATH, *, size=0, extra=b"", method="POST"):
     return (f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:8000\r\n"
-            f"Content-Length: {size}\r\nAuthorization: Bearer synthetic-test\r\n"
-            f"X-Attempt-ID: {ATTEMPT}\r\n".encode()
+            f"Content-Length: {size}\r\nAuthorization: Bearer {TOKEN}\r\n".encode()
             + extra + b"\r\n")
 
 
@@ -84,6 +84,7 @@ def test_exact_base64_expansion_is_admitted_and_one_byte_smaller_configuration_i
         value = testing.observed[0]
         assert len(value["body"]) == expected and value["isBase64Encoded"] is True
         assert base64.b64decode(value["body"], validate=True) == body
+        assert testing.service.calls[-1] == ("submit", ATTEMPT)
         assert parser.body_rcv.buf.overflowed is False
     finally:
         parser.close()
@@ -96,7 +97,7 @@ def test_interleaved_parser_objects_cannot_transfer_the_calculation_limit(monkey
     try:
         order = (first, "control" if first == "calculation" else "calculation")
         for name in order:
-            parsers[name].received(header("/cpr-analysis" if name == "calculation" else "/mock/v1/sessions",
+            parsers[name].received(header(PATH if name == "calculation" else "/api/v2/sessions/",
                                           size=WIRE if name == "calculation" else http.BODY_LIMIT))
         assert parsers["calculation"].adj is not parsers["control"].adj
         assert parsers["calculation"].adj is not testing.shared
@@ -119,7 +120,6 @@ def test_interleaved_parser_objects_cannot_transfer_the_calculation_limit(monkey
     (b"Origin: null\r\n", 400),
     (b"Sec-Fetch-Site: cross-site\r\n", 400),
     (b"Authorization: Bearer different\r\n", 401),
-    (f"X-Attempt-ID: {ATTEMPT}\r\n".encode(), 400),
     (b"Content-Type: application/json\r\nContent-Type: application/json\r\n", 400),
     (b"Content-Encoding: gzip\r\n", 400),
 ])
@@ -135,9 +135,10 @@ def test_actual_waitress_header_collapse_does_not_bypass_wsgi_guards(monkeypatch
         parser.close()
 
 
-@pytest.mark.parametrize("path", ["//cpr-analysis", "/cpr%2danalysis", "/cpr-analysis?",
-                                   "/cpr-analysis?token=" + SECRET, "/cpr-analysis#fragment",
-                                   "http://127.0.0.1:8000/cpr-analysis"])
+@pytest.mark.parametrize("path", [PATH.replace("/api/", "//api/"), PATH.replace("calculation", "calcul%61tion"),
+                                  PATH + "?", PATH + "?token=%" + SECRET, PATH + "?token=" + SECRET + "#",
+                                  PATH + "#fragment", "http://127.0.0.1:8000" + PATH,
+                                  PATH.replace("/calculation/", "/calculation//")])
 def test_waitress_uri_normalization_cannot_turn_a_different_original_uri_into_a_route(monkeypatch, path):
     testing = harness(monkeypatch)
     parser = testing.parser(testing.shared)
@@ -147,6 +148,19 @@ def test_waitress_uri_normalization_cannot_turn_a_different_original_uri_into_a_
         assert response["status"] == 400
         assert SECRET.encode() not in response["body"]
         assert testing.observed == []
+    finally:
+        parser.close()
+
+
+def test_well_formed_query_reaches_only_the_v2_allowlist_and_is_not_reflected(monkeypatch):
+    testing = harness(monkeypatch)
+    parser = testing.parser(testing.shared)
+    try:
+        parser.received(header(PATH + "?token=" + SECRET))
+        response = testing.invoke(parser)
+        assert response["status"] == 400
+        assert SECRET.encode() not in response["body"]
+        assert ("submit", ATTEMPT) not in testing.service.calls
     finally:
         parser.close()
 
@@ -180,7 +194,7 @@ def test_declared_large_control_body_cannot_allocate_the_calculation_buffer(monk
     testing = harness(monkeypatch)
     parser = testing.parser(testing.shared)
     try:
-        data = header("/mock/v1/sessions", size=http.BODY_LIMIT + 1) + b"A" * 100
+        data = header("/api/v2/sessions/", size=http.BODY_LIMIT + 1) + b"A" * 100
         consumed = parser.received(data)
         assert consumed < len(data)
         assert parser.completed and parser.error.code == 413
@@ -190,11 +204,7 @@ def test_declared_large_control_body_cannot_allocate_the_calculation_buffer(monk
         parser.close()
 
 
-class QueryClient(ScriptedClient):
-    """Finite expected SDK calls, not an implementation of DynamoDB conditions."""
-
-    def query(self, **kwargs):
-        return self._call("query", kwargs)
+QueryClient = ScriptedClient
 
 
 def test_expired_outbox_ack_is_not_committed_and_next_runner_can_ack_a_terminal_job():

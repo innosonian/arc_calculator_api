@@ -7,7 +7,7 @@ from types import MappingProxyType
 
 from mock_journey.errors import JourneyError
 from services.operational_logs import record_event, bind_identifiers, write_diagnostic
-from mock_journey.worker import call_binding
+from mock_journey.contracts import call_binding
 
 
 class CalculationService:
@@ -42,6 +42,8 @@ class CalculationService:
         if schema is None:
             raise JourneyError("TEMPORARILY_UNAVAILABLE")
         parse_started = time.monotonic()
+        # Fixed diagnostic value kept for operational-record compatibility (Q3);
+        # it is not a route; the old alias route itself was removed (D103).
         write_diagnostic("info", "request_start", {"path": "/cpr-analysis"})
         projected = project_input(parse_measurement(event), definition, schema)
         write_diagnostic("info", "parse_complete", {
@@ -76,7 +78,7 @@ class CalculationService:
             pass  # An accepted job remains accepted if logging metadata fails.
         # Outbox, not an in-process background thread, owns execution. A result
         # that already committed can be returned now; otherwise acknowledge
-        # early, within the configured gateway budget (wait_expired=false).
+        # early (202 pending) within the configured gateway budget.
         return self.result(auth, attempt_id)
 
     def result(self, auth, attempt_id):
@@ -98,10 +100,8 @@ class CalculationService:
             return 200, self.storage.read_final(job["final_ref"], call_binding(job), job["chart_publication"])
         if state not in ("queued", "processing"):
             raise JourneyError("STORED_INPUT_INVALID")
-        return 202, {
-            "attempt_id": attempt_id, "state": state, "wait_expired": False,
-            "status_path": f"/mock/v1/attempts/{attempt_id}",
-        }
+        # Pending: the /api/v2 hook reads only the state from this same read.
+        return 202, {"attempt_id": attempt_id, "state": state}
 
     def chart_link(self, auth, attempt_id):
         attempt = self.state.get_attempt(auth, attempt_id)

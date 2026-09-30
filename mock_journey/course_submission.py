@@ -1,111 +1,34 @@
 """Atomic finalize write-set and launch-only ARC intent. No SDK commit or network."""
 
+from config.guideline_registry import ARC_GUIDELINES as REGISTRY_ARC_GUIDELINES
 from mock_journey.course_contracts import (
     CONTRACT_VERSION, EXCLUSION_REASON_ORDER, EXECUTION_KEYS, FINAL_PHASES, POLICY_VERSION,
-    RECEIPT_FORBIDDEN_KEYS, ArcReceipt, CourseBinding, CourseBundle, WritePlan, parse_owned,
+    RECEIPT_FORBIDDEN_KEYS, RESUME_SECRET_KEYS, ArcReceipt, CourseBinding, CourseBundle, WritePlan, parse_owned,
     require_hash, require_member, require_uuid,
 )
 from mock_journey.course_errors import CourseError
-from mock_journey.course_policy import CoursePolicy, placement_key, scope_key
+from mock_journey.course_policy import CoursePolicy, placement_key, resting_phase, scope_key
+from mock_journey.course_primitives import contains_key, fail, require_text
+from mock_journey import storage_keys
 from mock_journey.typed import digest, json_bytes
 
 
 SUBMISSION_POLICY_VERSION = "vcc-submission-policy-v1"
 WRITE_PLAN_SCHEMA = "vcc-finalize-write-plan-v1"
-ARC_GUIDELINES = frozenset({"ARC2020", "ARC2025"})
+# D91: only the ARC family is ever an ARC submission (config/guideline_registry.py).
+ARC_GUIDELINES = REGISTRY_ARC_GUIDELINES
 _EVALUATION_KEYS = frozenset({"goal", "score", "program_completed", "reason_codes"})
 _TERMINAL_PROGRESS = frozenset({
     "APPLIED", "REQUIREMENTS_NOT_MET", "GOAL_POLICY_UNRESOLVED", "ALREADY_COMPLETED", "PROGRESS_RESET",
     "PROGRESS_RECONCILIATION_REQUIRED",
 })
 
-HOOK_REQUESTS = """
-W5 hooks requested by W4. Do not implement in W4 files. Keep one existing finalize
-transaction; never Mock-slot commit then course commit. V IDs: V12, V18, V19, V20, V21.
 
-1) optional course_binding on the existing attempt template whitelist
-   signature: AuthManager.prepare_resume(template) and DynamoStateRepository.create_attempt
-              continue to require today's _TEMPLATE_FIELDS. Add optional
-              template['course_binding'] only when type is CourseBinding (or its
-              frozen field dict) and branch the whitelist. Do not make the field
-              required on retained rows. Projection exact compare of the six-key
-              condition is unchanged.
-   conditions: CourseCalculationBridge.prepare already froze existing_template_json
-               as 7-key execution + mapping_version, without resume secrets and
-               without ExecutionCatalog.get_definition(course_id).
-   errors: PROFILE_MISMATCH on condition drift; CALCULATOR_CONTRACT_MISMATCH on
-           5-key definitions; EXECUTION_DEFINITION_MISSING/UNSUPPORTED from prepare.
-   V IDs: V18.
-
-2) jobs.finalize injects CourseCompletionPlan.build into the single existing transaction
-   signature: DynamoJobRepository.finalize(job_id, owner, fence, final_ref, evaluation,
-              chart_publication, *, completion_plan: CourseCompletionPlan | None = None)
-              When attempt.course_binding is missing, keep the current legacy branch
-              (WritePlan has no COURSE# / SUBMISSION# writes). When bound, merge
-              plan.actions_json writes/conditions with the existing JOB/ATTEMPT/USER
-              CAS. Do not call a second commit. Do not create an executable submit
-              queue or OUTBOX item for ARC. DisabledArcGateway is not invoked from
-              finalize in the launch version.
-   conditions: owner/fence/lease/candidate/chart publication and USER epoch stay as
-               today. Course ITEM/HEAD/FINAL and SUBMISSION#<attempt>/RESULT#<digest>
-               join the same TransactWrite. Previous attempt.epoch != user.epoch
-               must not Put/Update current COURSE HEAD/ITEM/FINAL. max actions stay
-               inside CourseSettings.max_transaction_actions (fixture finalize=7).
-               rows['bundle'] must be the verified CourseBundle selected by HEAD.bundle_ref.
-               HEAD progress_json/completed_placements/course_complete are one projection.
-               Conditions additionally bind head_definition_hash/final_phase/final_active_attempt_id.
-               Replacement final definitions retain original ITEM and enrollment Pass while
-               current-view completion stays unresolved; no Pass is copied to a new item.
-   errors: TEMPORARILY_UNAVAILABLE after max_conflict_retries; CALCULATOR_CONTRACT_MISMATCH
-           on evaluation shape; existing JobLeaseLost on stale fence.
-   V IDs: V19, V20, V21.
-
-3) DynamoJobRepository.close_course_terminal(job_id, owner, fence, evidence)
-   signature: close_course_terminal(self, job_id: str, owner: object, fence: object,
-              evidence: RecoveryEvidence) -> object
-   conditions: only when evidence.action == 'close_terminal' and every T5 predicate
-               already inspected (proven local terminal error, trusted binding/input,
-               current owner/fence/lease, no committed result, candidate search
-               complete, no recoverable candidate). Same transaction: JOB
-               failed+terminal_seal+evidence_digest+owner=null+due removed; ATTEMPT
-               failed/evaluation=null with file refs preserved; original-epoch FINAL
-               free and active_attempt_id=null only for the self-reference; HEAD
-               revision++. Completion set and scores unchanged. Seal fields:
-               job_id, attempt_id, epoch, call_id, fence, evidence_digest.
-               evidence_digest = typed.digest of the RecoveryEvidence identity
-               (job_id, attempt_id, revisions, epoch, call_id, fence, input_digest,
-               stage, candidate_state, code, action). Same seal re-call is a no-op
-               and must not write a newer FINAL. Previous-epoch closure must not
-               read/write current USER epoch HEAD/ITEM/FINAL.
-   errors: INVALID_STATE when predicates fail; TEMPORARILY_UNAVAILABLE on conflict;
-           never interpret failed/error_code/lease expiry/active_counted=false/app 30s
-           as permission to free FINAL.
-   V IDs: V12, V19.
-
-4) DynamoJobRepository.reopen_course_recovery(job_id, evidence)
-   signature: reopen_course_recovery(self, job_id: str, evidence: RecoveryEvidence) -> object
-   conditions: exact input + valid candidate + adapter verify, no result, FINAL still
-               self-references this attempt, JOB/ATTEMPT/HEAD/FINAL revisions match.
-               Preserve failure history and create recovery due. Next claim issues a
-               new owner/lease and higher fence then resume_candidate (recalc 0).
-               Not for sealed jobs, changed input, or retained Mock failed rows
-               without a valid candidate.
-   errors: INVALID_STATE otherwise. Do not auto-reopen from claim().
-   V IDs: V12, V19.
-
-5) seal checks on claim / begin_calculation / mark_calculation_saved / finalize
-   signature: each existing method; if job.terminal_seal is set, refuse mutation
-              except close_course_terminal no-op on the same seal.
-   conditions: sealed job has no automatic reopen. Late finalize after seal does
-               not change current FINAL. Old worker fence cannot free a new FINAL.
-   errors: INVALID_STATE or JobLeaseLost. CALCULATION_OUTCOME_UNKNOWN stays
-           recovery_required, not close_terminal.
-   V IDs: V12, V19.
-"""
+_INVALID = "INVALID_REQUEST"
 
 
-def _fail(code="INVALID_REQUEST"):
-    raise CourseError(code)
+def _fail(code=_INVALID):
+    fail(code)
 
 
 def _mapping(row):
@@ -215,16 +138,16 @@ def submission_intent_id(attempt_id, input_digest, result_digest, *, policy_vers
     require_uuid(attempt_id)
     require_hash(input_digest)
     require_hash(result_digest)
-    if type(policy_version) is not str or not policy_version:
-        _fail()
+    require_text(policy_version, code=_INVALID, check_utf8=False)
     return digest([attempt_id, input_digest, result_digest, policy_version])
 
 
 def collect_exclusion_reasons(*, is_dummy, guideline, attempt_epoch, current_epoch, already_finalized):
-    if type(is_dummy) is not bool or type(guideline) is not str or not guideline:
+    if type(is_dummy) is not bool:
         _fail()
-    if type(attempt_epoch) is not str or not attempt_epoch or type(current_epoch) is not str or not current_epoch:
-        _fail()
+    require_text(guideline, code=_INVALID, check_utf8=False)
+    require_text(attempt_epoch, code=_INVALID, check_utf8=False)
+    require_text(current_epoch, code=_INVALID, check_utf8=False)
     if type(already_finalized) is not bool:
         _fail()
     found = []
@@ -279,7 +202,9 @@ def final_phase_for_evaluation(evaluation, *, start_role):
     elif payload["program_completed"] is True:
         phase = "passed"
     else:
-        # Score Pass is not enrollment pass. Only 60 observed 59 stays free.
+        # Score Pass is not enrollment pass. Only 60 observed 59 is not a pass.
+        # "free" here means "no pass from this attempt"; _course_writes maps it
+        # to the enrollment's resting phase (a held pass stays passed, D131).
         phase = "free"
     require_member(phase, FINAL_PHASES)
     return phase
@@ -324,26 +249,19 @@ def _item_passed(evaluation, *, completed_write):
     return True if completed_write else False
 
 
+_WRITE_FORBIDDEN_KEYS = RECEIPT_FORBIDDEN_KEYS | RESUME_SECRET_KEYS
+
+
 def _forbid_secrets(value):
-    if type(value) is dict:
-        for key, nested in value.items():
-            if key in RECEIPT_FORBIDDEN_KEYS or key in {
-                "resume_credential", "resume_nonce", "resume_digest", "resume_key_version",
-            }:
-                _fail()
-            _forbid_secrets(nested)
-        return
-    if type(value) is list:
-        for nested in value:
-            _forbid_secrets(nested)
+    if contains_key(value, _WRITE_FORBIDDEN_KEYS):
+        _fail()
 
 
 def _course_keys(binding, epoch):
-    pk = f"COURSE#{binding.scope_key}"
     return {
-        "head": (pk, f"EPOCH#{epoch}#HEAD"),
-        "item": (pk, f"EPOCH#{epoch}#ITEM#{binding.placement_key}"),
-        "final": (pk, f"EPOCH#{epoch}#FINAL"),
+        "head": storage_keys.pair(storage_keys.course_head_key(binding.scope_key, epoch)),
+        "item": storage_keys.pair(storage_keys.course_item_key(binding.scope_key, epoch, binding.placement_key)),
+        "final": storage_keys.pair(storage_keys.course_final_key(binding.scope_key, epoch)),
     }
 
 
@@ -407,7 +325,9 @@ def _course_writes(binding, attempt, rows, evaluation, phase):
         )
     }
     if binding.start_role == "final_assessment":
-        final_update["phase"] = phase
+        # D131: a failed re-attempt returns to the held pass, and a passing
+        # re-attempt becomes the latest pass evidence.
+        final_update["phase"] = resting_phase(final) if phase == "free" else phase
         final_update["active_attempt_id"] = attempt_id if phase == "policy_pending" else None
         if phase == "passed":
             final_update.update(
@@ -480,10 +400,9 @@ class CourseCompletionPlan:
         user_epoch = _get(user, "epoch")
         require_uuid(attempt_id)
         require_hash(input_digest)
-        if type(job_id) is not str or not job_id or type(attempt_epoch) is not str or not attempt_epoch:
-            _fail()
-        if type(user_epoch) is not str or not user_epoch:
-            _fail()
+        require_text(job_id, code=_INVALID, check_utf8=False)
+        require_text(attempt_epoch, code=_INVALID, check_utf8=False)
+        require_text(user_epoch, code=_INVALID, check_utf8=False)
         result_digest = _get(verified_result, "result_digest")
         result_digest = _digest_of(result_digest) if result_digest is not None else digest(evaluation)
         already = _already_finalized(job, attempt)
@@ -536,33 +455,33 @@ class CourseCompletionPlan:
         }
         writes.append({
             "kind": "JOB",
-            "key": [f"JOB#{job_id}", "STATE"],
+            "key": list(storage_keys.pair(storage_keys.job_key(job_id))),
             "set": {"state": "done", "owner": None, "error_code": None},
         })
         writes.append({
             "kind": "ATTEMPT",
-            "key": [f"ATTEMPT#{attempt_id}", "META"],
+            "key": list(storage_keys.pair(storage_keys.attempt_key(attempt_id))),
             "set": {
                 "state": "evaluated", "evaluation": evaluation,
                 "progress_application": progress, "submit_arc": submit,
             },
         })
         affected = [
-            (f"JOB#{job_id}", "STATE"),
-            (f"ATTEMPT#{attempt_id}", "META"),
-            (f"USER#{_get(user, 'principal') or _get(attempt, 'principal')}", "STATE"),
+            storage_keys.pair(storage_keys.job_key(job_id)),
+            storage_keys.pair(storage_keys.attempt_key(attempt_id)),
+            storage_keys.pair(storage_keys.user_key(_get(user, 'principal') or _get(attempt, 'principal'))),
         ]
         if _get(attempt, "active_counted") is True and not reset:
             writes.append({
                 "kind": "USER",
-                "key": [f"USER#{_get(user, 'principal') or _get(attempt, 'principal')}", "STATE"],
+                "key": list(storage_keys.pair(storage_keys.user_key(_get(user, 'principal') or _get(attempt, 'principal')))),
                 "set": {"epoch": user_epoch, "close_active": True},
             })
         if binding is None:
-            branch = "legacy"
+            branch = "legacy"  # legacy (D103): v1 attempt, no course rows or SUBMISSION write
         else:
             branch = "course"
-            submission_key = (f"SUBMISSION#{attempt_id}", f"RESULT#{result_digest}")
+            submission_key = storage_keys.pair(storage_keys.submission_key(attempt_id, result_digest))
             writes.append({
                 "kind": "SUBMISSION",
                 "key": list(submission_key),

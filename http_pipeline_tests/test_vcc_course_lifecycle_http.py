@@ -133,8 +133,13 @@ def test_assigned_course_full_http_lifecycle_and_final_retry_rules(dynamodb_clie
     items = {row["courseItemLinkId"]: row for row in course(env)["courseItems"]}
     assert items[1003]["isCompleted"] is True and items[1004]["isCompleted"] is False
     assert all(row["isCompleted"] is False for row in course(env, enrollment=502)["courseItems"])
-    error = request(env, "POST", "/api/v2/attempts/", body=start_body(env, 1003), expected=409)
-    assert error["code"] == "ITEM_ALREADY_COMPLETED"
+    # D130/D131: the completed training is practised again; a worse result keeps the completion.
+    again, _ = start(env, 1003)
+    assert again["role"] == "training" and again["attemptId"] != practice_a["attemptId"]
+    worse = calculate(env, again, count=2, completed=False)
+    assert worse["progressApplication"] == {"applied": False, "applied_epoch": None, "reason": "ALREADY_COMPLETED"}
+    items = {row["courseItemLinkId"]: row for row in course(env)["courseItems"]}
+    assert items[1003]["isCompleted"] is True and items[1003]["isPassed"] is True
     practice_b, _ = start(env, 1004)
     calculate(env, practice_b, completed=True)
     assert all(row["isCompleted"] is True for row in course(env)["courseItems"][:-1])
@@ -163,10 +168,25 @@ def test_assigned_course_full_http_lifecycle_and_final_retry_rules(dynamodb_clie
     assert finished["courseItems"][-1]["isPassed"] is True
     listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
     assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
-    error = request(env, "POST", "/api/v2/attempts/", body=start_body(env, 1005), expected=409)
-    assert error["code"] == "ASSESSMENT_ALREADY_PASSED"
     replay = request(env, "POST", "/api/v2/attempts/", body=final_body, expected=200)
     assert replay["attemptId"] == final["attemptId"]
+    # D130/D131: the passed final may be retaken; while active and after a worse
+    # result the course stays FINISHED with the last item completed and passed.
+    retake, _ = start(env, 1005)
+    assert retake["role"] == "final_assessment" and retake["attemptId"] != final["attemptId"]
+    error = request(env, "POST", "/api/v2/attempts/", body=start_body(env, 1005), expected=409)
+    assert error["code"] == "FINAL_ASSESSMENT_ACTIVE"
+    during = course(env)
+    assert during["courseItems"][-1]["isCompleted"] is True and during["courseItems"][-1]["isPassed"] is True
+    listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
+    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
+    worse = calculate(env, retake, count=2, completed=False)
+    assert worse["progressApplication"]["reason"] == "ALREADY_COMPLETED"
+    after = course(env)
+    assert all(row["isCompleted"] is True for row in after["courseItems"])
+    assert after["courseItems"][-1]["isPassed"] is True
+    listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
+    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
 
 
 def test_session_and_course_waiting_agree_without_losing_existing_start(dynamodb_client, dynamodb_table, monkeypatch):

@@ -1,12 +1,14 @@
-"""The only Mock import bridge to existing wire parsers and validators."""
+"""The only Mock import bridge to existing wire parsers and validators.
 
-from lambda_handler import (
+The parsers live in the neutral ``services.http.legacy_request`` module, which
+``lambda_handler`` re-exports as the same objects. Importing them from there
+keeps the API/Worker/Relay assembly from loading the Lambda entry module and
+``main`` (and, through them, boto3-backed legacy uploads and Sentry). Tests replace ``ClientError`` and the
+validator names on this module, so they stay bound here.
+"""
+
+from services.http.legacy_request import (
     ClientError,
-    _MSG_CPR_FILE_REQUIRED,
-    _MSG_SANITIZED_CLIENT_ERROR,
-    _MSG_UNSUPPORTED_GUIDELINE,
-    _MSG_UNSUPPORTED_TARGET,
-    _MSG_UNSUPPORTED_TRAINING_TYPE,
     _get_content_type,
     _parse_multipart_body,
     _validate_legacy_document,
@@ -16,21 +18,11 @@ from services.http.service import parse_body
 from mock_journey.errors import JourneyError
 
 
-_SAFE_MESSAGES = frozenset((
-    _MSG_CPR_FILE_REQUIRED, _MSG_SANITIZED_CLIENT_ERROR,
-    _MSG_UNSUPPORTED_GUIDELINE, _MSG_UNSUPPORTED_TARGET,
-    _MSG_UNSUPPORTED_TRAINING_TYPE, "Content-Type must be multipart/form-data", "Empty body",
-))
-
-
 class MeasurementInputError(JourneyError):
-    """One internal error with the existing route-specific safe representations."""
+    """One fixed MEASUREMENT_INPUT_INVALID error; no parser message is kept or echoed."""
 
-    def __init__(self, legacy_message=_MSG_SANITIZED_CLIENT_ERROR):
+    def __init__(self):
         super().__init__("MEASUREMENT_INPUT_INVALID")
-        self.legacy_message = (legacy_message if type(legacy_message) is str
-                               and legacy_message in _SAFE_MESSAGES
-                               else _MSG_SANITIZED_CLIENT_ERROR)
 
 
 def parse_measurement(event):
@@ -51,7 +43,7 @@ def parse_measurement(event):
         if not DataParser()._validate_data_length(body["cpr_b64_data"]):
             raise MeasurementInputError()
         return body
-    except ClientError as error:
-        raise MeasurementInputError(str(error)) from None
+    except ClientError:
+        raise MeasurementInputError() from None
     except (ValueError, TypeError, UnicodeError, RecursionError, AttributeError):
         raise MeasurementInputError() from None

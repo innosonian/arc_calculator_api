@@ -1,7 +1,8 @@
 """Independent L2 chart security over real TCP and the private product store.
 
 This explicitly assembled transport fixture is not the default CLI, a worker,
-or a DynamoDB logout test. The chart signing, files, parser and socket are real.
+or a DynamoDB logout test. The chart signing, files, parser, socket and the
+/api/v2 router are real; only the router's session/result hooks are scripted.
 """
 
 import contextlib
@@ -18,9 +19,14 @@ import pytest
 from local_server.database import prepare_material
 from local_server.cli import installation_lock
 from local_server.http import BODY_LIMIT, HEADER_LIMIT, create_server, make_application
+from local_server_tests.course_stub import SESSION_ID, StubCourseService, calculation_path
 from mock_journey import typed
 from mock_journey.errors import JourneyError
+from tests.loopback_port_support import unused_loopback_port as _port
 from util.uploader import build_key_stem, date_prefix
+
+# Real loopback sockets: opted out of the directory network guard (conftest.py).
+pytestmark = pytest.mark.loopback
 
 
 ARTIFACT_LIMIT = 256 * 1024
@@ -31,36 +37,8 @@ SESSION = "http-chart-test-session"
 SECRET = "CHART-PRIVATE-MARKER-DO-NOT-LOG"
 
 
-class _ControlService:
-    def __init__(self):
-        self.revoked = False
-        self.auth_calls, self.logout_calls = [], []
-        self.snapshot = b'{"integer":80,"float":80.0,"nullable":null}'
-        self.auth = SimpleNamespace(authenticate=self.authenticate)
-        self.state = SimpleNamespace(logout=self.logout)
-        self.calculation = SimpleNamespace(payload_limit=100_000, result=self.result)
-
-    def authenticate(self, token, **kwargs):
-        self.auth_calls.append(token)
-        if token != SESSION or self.revoked:
-            raise JourneyError("SESSION_REQUIRED")
-        return "test-authenticated"
-
-    def logout(self, auth):
-        self.logout_calls.append(auth)
-        self.revoked = True
-
-    def result(self, auth, ident):
-        return 200, self.snapshot
-
-    def require_calculation(self):
-        return self.calculation
-
-
-def _port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def auth_calls(service):
+    return [call for call in service.calls if call[0] == "authenticate"]
 
 
 @contextlib.contextmanager
@@ -87,7 +65,7 @@ def _configured_gateway(data_dir, *, body=None,
     client.put_object(Bucket="local-chart-test", Key=key, Body=body, Metadata={})
     charts = LocalChartService(client, base_url=f"http://{application_host}:{port}", clock=lambda: now[0])
     url = charts.create_signed_url(key, expires_in=300)
-    service = _ControlService()
+    service = StubCourseService(token=SESSION)
     app = make_application(service, lambda: True, application_host, port, clients,
                            chart_service=charts, response_body_limit=RESPONSE_LIMIT)
     server = create_server(app, "127.0.0.1", port)
@@ -155,21 +133,22 @@ def test_real_chart_bytes_download_without_session_and_keep_secure_headers(servi
     assert headers["cache-control"] == "no-store" and headers["x-content-type-options"] == "nosniff"
     assert headers["content-length"] == str(len(body)) and headers["connection"] == "close"
     assert not {"server", "location", "content-disposition", "set-cookie", "accept-ranges"}.intersection(headers)
-    assert serving.service.auth_calls == []
+    assert serving.service.calls == [] and serving.service.dispatched == []
     assert serving.key not in serving.url and DIRECTORY not in serving.url
     assert urlsplit(serving.url).query == ""
 
 
 def test_expiry_at_exact_300_seconds_and_logout_does_not_revoke_chart_capability(serving):
     issued = serving.now[0]
-    assert request(serving, path="/mock/v1/session", method="DELETE",
+    assert request(serving, path="/api/v2/session/", method="DELETE",
                    headers={"Authorization": "Bearer " + SESSION})[0] == 204
-    assert serving.service.logout_calls == ["test-authenticated"]
+    assert ("logout", SESSION_ID) in serving.service.calls
+    assert request(serving, path="/api/v2/session/", headers={"Authorization": "Bearer " + SESSION})[0] == 403
     serving.now[0] = issued + 299
     assert request(serving)[0] == 200
     serving.now[0] = issued + 300
     assert_safe_error(request(serving), statuses=(404,))
-    assert len(serving.service.auth_calls) == 1
+    assert len(auth_calls(serving.service)) == 2
 
 
 @pytest.mark.parametrize("headers", [
@@ -286,11 +265,12 @@ def test_raw_and_diagnostic_objects_cannot_be_signed_or_downloaded(serving, suff
     assert_safe_error(request(serving, path="/local/v1/charts/" + key), statuses=(404,))
 
 
-def test_chart_token_grants_no_session_or_program_access(serving):
+def test_chart_token_grants_no_session_course_or_result_access(serving):
     token = serving.path.rsplit("/", 1)[-1]
-    for path in ("/mock/v1/session", "/mock/v1/programs"):
+    for path in ("/api/v2/session/", "/api/v2/courses/progress/?page=1&pageSize=10", calculation_path()):
         assert request(serving, path=path, headers={"Authorization": "Bearer " + token})[0] == 401
     assert request(serving)[0] == 200
+    assert not [call for call in serving.service.calls if call[0] != "authenticate"]
 
 
 def test_forwarded_headers_do_not_replace_actual_denied_tcp_peer(tmp_path):
@@ -298,7 +278,7 @@ def test_forwarded_headers_do_not_replace_actual_denied_tcp_peer(tmp_path):
         assert_safe_error(request(world, headers={"Host": f"192.168.50.10:{world.port}",
                                                   "X-Forwarded-For": "192.168.50.20",
                                                   "Forwarded": 'for=192.168.50.20'}), statuses=(404,))
-        assert world.service.auth_calls == []
+        assert world.service.calls == [] and world.service.dispatched == []
 
 
 def test_reader_exception_is_a_safe_service_error_not_a_chart_success(serving, monkeypatch, capsys):
@@ -327,20 +307,21 @@ def test_maximum_chart_and_large_calculation_output_never_spill_to_general_temp(
     with gateway(tmp_path, body=body) as world:
         assert world.server.adj.outbuf_overflow > RESPONSE_LIMIT + HEADER_LIMIT
         assert request(world)[2] == body
-        world.service.snapshot = b'{"values":"' + b"y" * (200 * 1024) + b'"}'
-        status, _, response = request(world, path="/mock/v1/attempts/00000000-0000-0000-0000-000000000001/calculation",
+        world.service.snapshot = {"values": "y" * (200 * 1024)}
+        status, _, response = request(world, path=calculation_path(),
                                       headers={"Authorization": "Bearer " + SESSION})
         assert status == 200 and len(response) > 64 * 1024
-        assert json.loads(response)["submit_arc"]["status"] == "disabled"
+        data = json.loads(response)["data"]
+        assert data["calculation"] == world.service.snapshot and data["submit_arc"]["status"] == "disabled"
         assert spill == []
         # This is a response cap, not a relaxation of the control input limit.
-        assert request(world, path="/mock/v1/sessions", method="POST", body=b"x" * (BODY_LIMIT + 1),
+        assert request(world, path="/api/v2/sessions/", method="POST", body=b"x" * (BODY_LIMIT + 1),
                        headers={"Content-Type": "application/json"})[0] == 413
 
 
 def test_oversized_composed_calculation_response_is_rejected_before_output(serving):
-    serving.service.snapshot = b'{"private":"' + SECRET.encode() + b"x" * RESPONSE_LIMIT + b'"}'
-    assert_safe_error(request(serving, path="/mock/v1/attempts/00000000-0000-0000-0000-000000000001/calculation",
+    serving.service.snapshot = {"private": SECRET + "x" * RESPONSE_LIMIT}
+    assert_safe_error(request(serving, path=calculation_path(),
                               headers={"Authorization": "Bearer " + SESSION}), statuses=(503,))
 
 

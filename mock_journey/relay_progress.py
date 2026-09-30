@@ -15,9 +15,14 @@ import uuid
 
 from botocore.exceptions import BotoCoreError, ClientError
 
+from mock_journey.aws_scope import (
+    ACCOUNT_ID_PATTERN, ENVIRONMENT_PATTERN, PARTITIONS, REGION_PATTERN, TABLE_NAME_PATTERN,
+    environment_namespace, partition_matches_region,
+)
 from mock_journey.errors import JourneyError
-from mock_journey.settings import _queue_url
-from mock_journey.state import _decode, _encode, _unavailable
+from mock_journey.settings import check_queue_url
+from mock_journey.state import encode_item, unavailable
+from mock_journey.storage_keys import due_partition
 
 
 _KINDS = ("OUTBOX", "JOB")
@@ -77,21 +82,21 @@ class RelayGuardedClient:
 def _integer(value):
     # DynamoDB numbers support at most 38 significant decimal digits.
     if type(value) is not int or not 0 <= value < 10**38:
-        raise _unavailable()
+        raise unavailable()
     return value
 
 
 def _kind(value):
     if type(value) is not str or value not in _KINDS:
-        raise _unavailable()
+        raise unavailable()
 
 
 def _uuid(value):
     try:
         if type(value) is not str or str(uuid.UUID(value)) != value:
-            raise _unavailable()
+            raise unavailable()
     except (ValueError, AttributeError):
-        raise _unavailable() from None
+        raise unavailable() from None
 
 
 def validate_cursor(value, kind, cutoff):
@@ -101,33 +106,31 @@ def validate_cursor(value, kind, cutoff):
     if value is None:
         return None
     if type(value) is not dict or set(value) != {"PK", "SK", "GSI1PK", "GSI1SK"}:
-        raise _unavailable()
+        raise unavailable()
     prefix = kind + "#"
     if (type(value["PK"]) is not str or not value["PK"].startswith(prefix)
             or value["SK"] != ("DISPATCH" if kind == "OUTBOX" else "STATE")
-            or value["GSI1PK"] != "DUE#" + kind):
-        raise _unavailable()
+            or value["GSI1PK"] != due_partition(kind)):
+        raise unavailable()
     _uuid(value["PK"][len(prefix):])
     if _integer(value["GSI1SK"]) > cutoff:
-        raise _unavailable()
+        raise unavailable()
     return deepcopy(value)
 
 
 class DynamoRelayProgress:
     def __init__(self, state, *, environment, partition, account_id, region, queue_url):
-        checks = ((environment, r"[A-Za-z0-9_.-]{1,128}"),
-                  (account_id, r"[0-9]{12}"),
-                  (region, r"[a-z]{2}(?:-[a-z]+)+-[0-9]+"),
-                  (state.table_name, r"[A-Za-z0-9_.-]{3,255}"))
+        checks = ((environment, ENVIRONMENT_PATTERN),
+                  (account_id, ACCOUNT_ID_PATTERN),
+                  (region, REGION_PATTERN),
+                  (state.table_name, TABLE_NAME_PATTERN))
         if (any(type(v) is not str or not re.fullmatch(pattern, v) for v, pattern in checks)
-                or partition not in ("aws", "aws-cn", "aws-us-gov")
-                or region.startswith("cn-") != (partition == "aws-cn")
-                or region.startswith("us-gov-") != (partition == "aws-us-gov")):
+                or partition not in PARTITIONS
+                or not partition_matches_region(partition, region)):
             raise ValueError("Invalid relay progress scope.")
-        _queue_url(queue_url)
+        check_queue_url(queue_url)
         self.state = state
-        self.key = {"PK": "RELAY_SCAN#" + hashlib.sha256(environment.encode()).hexdigest(),
-                    "SK": "PROGRESS#v1"}
+        self.key = {"PK": environment_namespace("RELAY_SCAN#", environment), "SK": "PROGRESS#v1"}
         binding = [partition, account_id, region, state.table_name, environment, queue_url]
         self.binding_sha256 = hashlib.sha256(
             json.dumps(binding, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
@@ -137,7 +140,7 @@ class DynamoRelayProgress:
         if type(value) is int:
             return _integer(value)
         if type(value) is not float or not math.isfinite(value) or value < 0:
-            raise _unavailable()
+            raise unavailable()
         return _integer(int(value))
 
     def validate(self, row):
@@ -145,34 +148,34 @@ class DynamoRelayProgress:
                 or any(row[k] != v for k, v in self.key.items())
                 or type(row["schema"]) is not int or row["schema"] != 1
                 or row["binding_sha256"] != self.binding_sha256):
-            raise _unavailable()
+            raise unavailable()
         for key in ("revision", "fence", "lease_until"):
             _integer(row[key])
         if row["owner"] is None:
             if row["lease_until"] != 0:
-                raise _unavailable()
+                raise unavailable()
         else:
             _uuid(row["owner"])
             if row["lease_until"] == 0 or row["fence"] == 0:
-                raise _unavailable()
+                raise unavailable()
         if row["revision"] < row["fence"]:
-            raise _unavailable()
+            raise unavailable()
         _kind(row["next_kind"])
         if type(row["scans"]) is not dict or set(row["scans"]) != set(_KINDS):
-            raise _unavailable()
+            raise unavailable()
         for kind in _KINDS:
             scan = row["scans"][kind]
             if type(scan) is not dict or set(scan) != {"cutoff", "cursor"}:
-                raise _unavailable()
+                raise unavailable()
             if scan["cutoff"] is None:
                 if scan["cursor"] is not None:
-                    raise _unavailable()
+                    raise unavailable()
             else:
                 validate_cursor(scan["cursor"], kind, scan["cutoff"])
         # Encoded JSON is a conservative upper bound on this small scalar/map
         # item's DynamoDB storage bytes. The exact shape cannot grow a history.
-        if len(json.dumps(_encode(row), separators=(",", ":")).encode()) >= 400 * 1024:
-            raise _unavailable()
+        if len(json.dumps(encode_item(row), separators=(",", ":")).encode()) >= 400 * 1024:
+            raise unavailable()
         return deepcopy(row)
 
     def initial_item(self):
@@ -182,19 +185,19 @@ class DynamoRelayProgress:
                                   kind: {"cutoff": None, "cursor": None} for kind in _KINDS}})
 
     def initialization_request(self):
-        return {"TableName": self.state.table_name, "Item": _encode(self.initial_item()),
+        return {"TableName": self.state.table_name, "Item": encode_item(self.initial_item()),
                 "ConditionExpression": "attribute_not_exists(PK)"}
 
     def initialize(self):
         """Explicit create-only operation; runtime must never call this."""
         row = self.initial_item()
         if not self._put(self.initialization_request(), row):
-            raise _unavailable()
+            raise unavailable()
         return row
 
     def get(self):
         check_relay_call()
-        return self.validate(self.state._get(self.key))
+        return self.validate(self.state.get_row(self.key))
 
     def _put(self, request, proposed):
         try:
@@ -231,13 +234,13 @@ class DynamoRelayProgress:
             if old["owner"] is None or old["lease_until"] <= now:
                 raise RelayProgressLost()
             expression += " AND #l > :now"
-        return self._put({"TableName": self.state.table_name, "Item": _encode(new),
+        return self._put({"TableName": self.state.table_name, "Item": encode_item(new),
                           "ConditionExpression": expression, "ExpressionAttributeNames": names,
-                          "ExpressionAttributeValues": _encode(values)}, new)
+                          "ExpressionAttributeValues": encode_item(values)}, new)
 
     def acquire(self, *, lease_seconds):
         if _integer(lease_seconds) == 0:
-            raise _unavailable()
+            raise unavailable()
         for _ in range(self.state.max_conflict_retries):
             old = self.get()
             now = self.now()
@@ -251,7 +254,7 @@ class DynamoRelayProgress:
 
     def _owned_update(self, old, new, *, lease_seconds):
         if _integer(lease_seconds) == 0:
-            raise _unavailable()
+            raise unavailable()
         new.update(revision=old["revision"] + 1, lease_until=self.now() + lease_seconds)
         if not self._replace(old, new):
             raise RelayProgressLost()
@@ -260,23 +263,32 @@ class DynamoRelayProgress:
     def renew(self, snapshot, *, lease_seconds):
         return self._owned_update(snapshot, self.validate(snapshot), lease_seconds=lease_seconds)
 
-    def begin_pass(self, snapshot, kind, *, lease_seconds):
-        new = self.validate(snapshot)
+    @staticmethod
+    def _turn(row, kind, out_of_turn):
+        # The persisted kind normally takes the step. The caller may step the
+        # alternate kind only explicitly, once the persisted kind has completed
+        # or used its budget in that invocation. next_kind then keeps its turn.
         _kind(kind)
-        if kind != new["next_kind"] or new["scans"][kind]["cutoff"] is not None:
-            raise _unavailable()
+        if type(out_of_turn) is not bool or (kind == row["next_kind"]) == out_of_turn:
+            raise unavailable()
+
+    def begin_pass(self, snapshot, kind, *, lease_seconds, out_of_turn=False):
+        new = self.validate(snapshot)
+        self._turn(new, kind, out_of_turn)
+        if new["scans"][kind]["cutoff"] is not None:
+            raise unavailable()
         new["scans"][kind]["cutoff"] = self.now()
         return self._owned_update(snapshot, new, lease_seconds=lease_seconds)
 
-    def advance(self, snapshot, kind, cursor, *, lease_seconds):
+    def advance(self, snapshot, kind, cursor, *, lease_seconds, out_of_turn=False):
         new = self.validate(snapshot)
-        _kind(kind)
+        self._turn(new, kind, out_of_turn)
         scan = new["scans"][kind]
-        if kind != new["next_kind"] or scan["cutoff"] is None:
-            raise _unavailable()
+        if scan["cutoff"] is None:
+            raise unavailable()
         cursor = validate_cursor(cursor, kind, scan["cutoff"])
         if cursor is not None and cursor == scan["cursor"]:
-            raise _unavailable()
+            raise unavailable()
         new["scans"][kind] = {"cutoff": scan["cutoff"] if cursor is not None else None, "cursor": cursor}
         new["next_kind"] = "JOB" if kind == "OUTBOX" else "OUTBOX"
         return self._owned_update(snapshot, new, lease_seconds=lease_seconds)

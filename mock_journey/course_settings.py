@@ -1,6 +1,6 @@
 """Explicit fixture limits for VCC course tests. These are not operating quotas."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 
 _ERROR = "Invalid course settings."
@@ -15,6 +15,8 @@ FIXTURE_MAX_MERGED_INTERVALS_PER_START = 512
 FIXTURE_MAX_REPORTS_PER_START = 4096
 FIXTURE_MAX_TRANSACTION_ACTIONS = 20
 FIXTURE_MAX_CONFLICT_RETRIES = 4
+# Conflict retries stay inside the existing journey bound (settings.py, state.py).
+MAX_CONFLICT_RETRIES_BOUND = 8
 
 
 def _invalid():
@@ -40,15 +42,18 @@ class CourseSettings:
     max_conflict_retries: int
 
     def __post_init__(self):
-        for name in (
-            "max_course_items", "max_assignments", "max_bundle_bytes", "max_control_body_bytes",
-            "max_intervals_per_report", "max_merged_intervals_per_start", "max_reports_per_start",
-            "max_transaction_actions", "max_conflict_retries",
-        ):
-            _positive(getattr(self, name))
-        # Conflict retries stay inside the existing journey bound of 8.
-        if self.max_conflict_retries > 8:
+        # Every field is a positive int limit, checked in declaration order.
+        for field in fields(self):
+            _positive(getattr(self, field.name))
+        if self.max_conflict_retries > MAX_CONFLICT_RETRIES_BOUND:
             raise _invalid()
+
+
+def require_course_settings(value, error_factory):
+    """Exact CourseSettings or ``raise error_factory()``; each caller keeps its own error."""
+    if type(value) is not CourseSettings:
+        raise error_factory()
+    return value
 
 
 def fixture_course_settings():

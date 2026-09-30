@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 
 from mock_journey.errors import JourneyError
+from mock_journey.projection import DEFINITION_CORE_KEYS
 
 
 TARGETS = ("adult", "child", "infant")
@@ -16,8 +17,14 @@ PROGRAMS = (
 )
 
 
-def slot_key(program_id, target):
+def definition_key(program_id, target):
+    """Execution definition key, "program:target" (the stored legacy slot key format)."""
     return f"{program_id}:{target}"
+
+
+def definition_keys():
+    """The 15 approved execution definition keys, in PROGRAMS x TARGETS order."""
+    return tuple(definition_key(program[0], target) for program in PROGRAMS for target in TARGETS)
 
 
 class Catalog:
@@ -27,21 +34,11 @@ class Catalog:
         # No runtime sample definition: unavailable contracts fail at creation.
         self.execution_definitions = execution_definitions
 
-    @property
-    def slot_keys(self):
-        return tuple(slot_key(program[0], target) for program in PROGRAMS for target in TARGETS)
-
-    def validate_selection(self, program_id, target, catalog_version):
-        if catalog_version != self.version:
-            raise JourneyError("PROFILE_MISMATCH")
-        if program_id not in {p[0] for p in PROGRAMS} or target not in TARGETS:
-            raise JourneyError("INVALID_REQUEST")
-
     def definition(self, program_id, target):
         if self.execution_definitions is None:
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         value = deepcopy(self.execution_definitions.get_definition(program_id, target))
-        required = {"condition", "calculation_profile", "profile_version", "adapter_version", "projection_version"}
+        required = set(DEFINITION_CORE_KEYS)
         if type(value) is not dict or set(value) != required:
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         if type(value["condition"]) is not dict or type(value["calculation_profile"]) is not dict:
@@ -56,24 +53,3 @@ class Catalog:
             return json.dumps(value, allow_nan=False)
         except (TypeError, ValueError):
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH") from None
-
-    def programs_view(self, progress):
-        return {
-            "catalog_version": self.version, "progress_epoch": progress["epoch"],
-            "progress_version": progress["revision"], "profile_name": "tester",
-            "guideline": "ARC2025", "guideline_basis": "ARC2020",
-            "programs": [
-                {
-                    "id": ident, "name": name, "is_mock": True,
-                    "supported_targets": list(TARGETS), "goal": {"kind": kind, "required": required},
-                    "progress_by_target": {
-                        target: "completed" if progress["slots"][slot_key(ident, target)]["completed"] else "not_completed"
-                        for target in TARGETS
-                    },
-                    "active_attempts_by_target": {
-                        target: progress["slots"][slot_key(ident, target)]["open_attempts"] for target in TARGETS
-                    },
-                }
-                for ident, name, kind, required in PROGRAMS
-            ],
-        }

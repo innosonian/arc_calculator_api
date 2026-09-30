@@ -7,14 +7,6 @@ import lambda_handler
 from tests._synth import WEAK_RAMP, comp_session, condition_json, cpr_session, multipart_event
 
 
-@pytest.fixture(autouse=True)
-def _lambda_env(monkeypatch):
-    # stage=test → S3 선저장/차트 업로드 skip. 제출 Lambda env 미설정 → 제출 invoke skip(스펙 §4.1).
-    monkeypatch.setenv("STAGE", "test")
-    monkeypatch.delenv("ARC_SUBMIT_LAMBDA_NAME", raising=False)
-    monkeypatch.delenv("SENTRY_DSN", raising=False)
-
-
 def _post(parts):
     response = lambda_handler._run_trusted_calculation(multipart_event(parts), None)
     return response["statusCode"], json.loads(response["body"])

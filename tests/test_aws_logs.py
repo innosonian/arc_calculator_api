@@ -11,7 +11,7 @@ import pytest
 from mock_journey.aws_logs import InvocationLogs
 from mock_journey.aws_settings import AwsSettings
 from services.operational_logs import record_event, write_diagnostic
-from tests.test_aws_runtime import configuration, context
+from tests.aws_runtime_support import configuration, context
 
 
 def settings():

@@ -1,0 +1,201 @@
+{
+ "flow": {
+  "USER#dummy-tester/STATE": {
+   "slots_present": false
+  }
+ },
+ "legacy_active_session": {
+  "USER#dummy-tester/STATE": {
+   "slots_present": true,
+   "slots": {
+    "mock-compression-only:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-compression-only:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-compression-only:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    }
+   }
+  }
+ },
+ "legacy_new_session": {
+  "USER#dummy-tester/STATE": {
+   "slots_present": true,
+   "slots": {
+    "mock-compression-only:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-compression-only:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-compression-only:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-cpr:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-aed:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-two-rescuer-cpr:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:adult": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:child": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    },
+    "mock-ventilation-only:infant": {
+     "completed": false,
+     "completed_by_attempt": null,
+     "completed_at": null,
+     "open_attempts": 0
+    }
+   }
+  }
+ }
+}

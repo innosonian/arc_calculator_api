@@ -15,6 +15,7 @@ import sys
 import threading
 import uuid
 
+from config.guideline_registry import TARGETS
 from services.observability import sanitize_log_record
 
 MAX_RECORD_BYTES = 16_384
@@ -27,16 +28,22 @@ EVENTS = frozenset({
 })
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\Z")
-_CONTEXT_FIELDS = frozenset({"request_id", "attempt_id", "job_id", "session_id", "progress_epoch"})
+# request_id is the runtime (Lambda/local adapter) id. http_request_id is the
+# course_v2 X-Request-Id header value, so an app inquiry can find its records.
+_CONTEXT_FIELDS = frozenset({"request_id", "http_request_id", "attempt_id", "job_id", "session_id", "progress_epoch"})
 _ENUM_FIELDS = {
     "reason": frozenset({"user_stopped", "manikin_disconnected", "APPLIED", "PROGRESS_RESET",
                          "REQUIREMENTS_NOT_MET", "ALREADY_COMPLETED", "GOAL_POLICY_UNRESOLVED"}),
     "state": frozenset({"created", "cancelled", "queued", "processing", "evaluated", "failed", "outcome_unknown"}),
     "program_id": frozenset({"mock-cpr", "mock-compression-only", "mock-ventilation-only",
                               "mock-two-rescuer-cpr", "mock-two-rescuer-aed"}),
-    "target": frozenset({"adult", "child", "infant"}),
+    "target": TARGETS,  # same frozenset values as the input validator (config/guideline_registry.py)
+    # Why a calculation was sealed as failed without another restart (Q4 limit).
+    "failure_basis": frozenset({"calculation_restart_limit"}),
 }
 _SCOPE = ContextVar("arc_operational_log_scope", default=(None, {}))
+# A stored diagnostic stack frame, as sanitize_log_record formats it.
+_STACK_FRAME = re.compile(r"[A-Za-z0-9_./-]{1,512}:[1-9][0-9]{0,8} in [A-Za-z_][A-Za-z0-9_]{0,127}\Z")
 
 
 def _context(fields):
@@ -45,17 +52,23 @@ def _context(fields):
 
 
 def _operation_fields(fields):
-    from mock_journey.errors import _ERRORS
+    # Imported on every call, as before: this module is loaded by the calculator
+    # core, which must not import the application package at import time.
+    # Public names only (COURSE_ERROR_CODES is the merged JourneyError +
+    # course_v2 code set), not the private mock_journey.errors._ERRORS.
+    from mock_journey.course_errors import COURSE_ERROR_CODES
     clean = _context(fields)
     for key, allowed in _ENUM_FIELDS.items():
         if type(fields.get(key)) is str and fields[key] in allowed:
             clean[key] = fields[key]
-    if type(fields.get("error_code")) is str and fields["error_code"] in _ERRORS:
+    # Only fixed public codes: the JourneyError table and course_v2's own table.
+    if type(fields.get("error_code")) is str and fields["error_code"] in COURSE_ERROR_CODES:
         clean["error_code"] = fields["error_code"]
     for key in ("replayed", "applied", "program_completed", "scan_exhausted", "progress_busy", "continuation"):
         if type(fields.get(key)) is bool:
             clean[key] = fields[key]
-    for key in ("http_status", "elapsed_ms", "outbox_wakes", "job_wakes", "failures", "passes_completed", "query_steps"):
+    for key in ("http_status", "elapsed_ms", "outbox_wakes", "job_wakes", "failures", "passes_completed", "query_steps",
+                "calculation_restarts"):
         value = fields.get(key)
         if type(value) is int and 0 <= value < 2**63:
             clean[key] = value
@@ -75,6 +88,17 @@ def log_context(recorder, **identifiers):
 def bind_identifiers(**identifiers):
     recorder, context = _SCOPE.get()
     _SCOPE.set((recorder, {**context, **_context(identifiers)}))
+
+
+@contextmanager
+def bound_identifiers(**identifiers):
+    """Add identifiers to the current binding for one block, then restore it."""
+    recorder, context = _SCOPE.get()
+    token = _SCOPE.set((recorder, {**context, **_context(identifiers)}))
+    try:
+        yield
+    finally:
+        _SCOPE.reset(token)
 
 
 def record_event(name, **fields):
@@ -122,9 +146,9 @@ def validate_record(value):
         # not accept arbitrary exception strings when reading a stored record.
         stack = fields.get("stacktrace")
         if stack is not None:
-            frame = re.compile(r"[A-Za-z0-9_./-]{1,512}:[1-9][0-9]{0,8} in [A-Za-z_][A-Za-z0-9_]{0,127}\Z")
             if (type(stack) is not list or not 1 <= len(stack) <= 64
-                    or any(type(s) is not str or not (s == "Exception details redacted." or frame.fullmatch(s)) for s in stack)):
+                    or any(type(s) is not str or not (s == "Exception details redacted." or _STACK_FRAME.fullmatch(s))
+                           for s in stack)):
                 raise ValueError("Invalid operational log record.")
             clean["stacktrace"] = stack
         clean.update(_context(fields))

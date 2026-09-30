@@ -4,9 +4,21 @@ from dataclasses import dataclass
 import json
 import math
 import re
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit
 
-from mock_journey.settings import StateSettings, StorageSettings, ApiSettings, WorkerSettings, RelaySettings
+from mock_journey.aws_scope import (
+    ACCOUNT_ID_PATTERN, ENVIRONMENT_PATTERN, PARTITIONS, REGION_PATTERN, TABLE_NAME_PATTERN,
+    partition_matches_region,
+)
+from mock_journey.settings import (
+    StateSettings, StorageSettings, ApiSettings, WorkerSettings, RelaySettings, base64_body_bytes,
+    lease_renewal_exceeds, require_positive,
+)
+from mock_journey.typed import strict_loads
+
+if TYPE_CHECKING:  # annotation only; no import-time dependency
+    from mock_journey.course_settings import CourseSettings
 
 
 def invalid():
@@ -19,10 +31,7 @@ def _object(value, fields):
 
 
 def _positive(value, *, integer=False):
-    if (type(value) not in ((int,) if integer else (int, float))
-            or not math.isfinite(value) or value <= 0):
-        raise invalid()
-    return value
+    return require_positive(value, invalid, number=not integer, finite=True)
 
 
 def _text(value, pattern):
@@ -32,20 +41,31 @@ def _text(value, pattern):
 
 
 def strict_json(raw):
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise invalid()
-            result[key] = value
-        return result
     try:
         if type(raw) is not str:
             raise invalid()
-        return json.loads(raw, object_pairs_hook=pairs,
-                          parse_constant=lambda _: (_ for _ in ()).throw(invalid()))
+        return strict_loads(raw, duplicate=invalid, nonfinite=invalid)
     except Exception:
         raise invalid() from None
+
+
+class WorkerTiming(NamedTuple):
+    """Worker lease renewal and admission timing (a tuple: indexes 0..2 keep their meaning)."""
+    renewal_interval_seconds: float
+    renewal_timeout_seconds: float
+    processing_reserve_ms: int
+
+
+class RelayTiming(NamedTuple):
+    """Relay admission timing (a one-item tuple)."""
+    processing_reserve_ms: int
+
+
+class ExecutionVersions(NamedTuple):
+    """API/Worker adapter binding: (current, projection, retained) in this order."""
+    current_adapter_version: str
+    projection_version: str
+    retained_adapter_versions: tuple
 
 
 @dataclass(frozen=True)
@@ -141,15 +161,17 @@ class AwsSettings:
     role_settings: object
     sdk: SdkSettings
     logs: LogSettings
-    execution: tuple | None
-    timing: tuple | None
-    course: object | None = None
+    execution: tuple | None  # ExecutionVersions (API/Worker) or None (Relay)
+    timing: tuple | None  # WorkerTiming, RelayTiming or None (API)
+    # Required for API/Worker (the Dummy Dev course section); always None for Relay.
+    course: "CourseSettings | None" = None
 
     @property
     def relay_budget(self):
         if self.role != "relay":
             raise invalid()
-        return RelayBudget.derive(self.sdk, self.state, self.role_settings, self.logs, self.timing[0])
+        return RelayBudget.derive(self.sdk, self.state, self.role_settings, self.logs,
+                                  self.timing.processing_reserve_ms)
 
     @classmethod
     def parse(cls, raw, role):
@@ -157,22 +179,22 @@ class AwsSettings:
             value = strict_json(raw)
             if role not in ("api", "worker", "relay"):
                 raise invalid()
-            extra = "storage execution " if role != "relay" else ""
-            course_fields = " course" if type(value) is dict and "course" in value and role != "relay" else ""
-            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role + course_fields)
+            # API and Worker serve only the course_v2 contract, so the explicit
+            # Dummy course section is mandatory there. Relay never takes it.
+            extra = "storage execution course " if role != "relay" else ""
+            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role)
             if type(value["schema"]) is not int or value["schema"] != 1 or value["role"] != role:
                 raise invalid()
-            account = _text(value["account_id"], r"[0-9]{12}")
+            account = _text(value["account_id"], ACCOUNT_ID_PATTERN)
             partition = value["partition"]
-            if partition not in ("aws", "aws-cn", "aws-us-gov"):
+            if partition not in PARTITIONS:
                 raise invalid()
-            region = _text(value["region"], r"[a-z]{2}(?:-[a-z]+)+-[0-9]+")
-            if (region.startswith("cn-") != (partition == "aws-cn")
-                    or region.startswith("us-gov-") != (partition == "aws-us-gov")):
+            region = _text(value["region"], REGION_PATTERN)
+            if not partition_matches_region(partition, region):
                 raise invalid()
-            environment = _text(value["environment"], r"[A-Za-z0-9_.-]{1,128}")
+            environment = _text(value["environment"], ENVIRONMENT_PATTERN)
             _object(value["state"], "table_name max_conflict_retries")
-            _text(value["state"]["table_name"], r"[A-Za-z0-9_.-]{3,255}")
+            _text(value["state"]["table_name"], TABLE_NAME_PATTERN)
             state = StateSettings(**value["state"])
             sdk, logs = SdkSettings.parse(value["sdk"]), LogSettings.parse(value["logs"])
             execution = timing = course = None
@@ -184,55 +206,59 @@ class AwsSettings:
                 storage = StorageSettings(**value["storage"])
                 if storage.stage in ("test", "local"):
                     raise invalid()
-                from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
+                from mock_journey.contracts import CURRENT_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS
                 from mock_journey.execution_definitions import PROJECTION_VERSION
                 supplied = value["execution"]
                 _object(supplied, "current_adapter_version projection_version retained_adapter_versions")
                 retained = supplied["retained_adapter_versions"]
-                if (supplied["current_adapter_version"] != PENDING_GOAL_ADAPTER_VERSION
+                # D127: the operator's retained list must equal the code registry
+                # exactly (same versions, same order). An empty or partial list
+                # would leave stored candidates of a retained version unverifiable;
+                # the order is compared because the registry tuple is the order the
+                # Worker registers adapters in and the bundle check compares the
+                # roles' ExecutionVersions tuples position by position.
+                if (supplied["current_adapter_version"] != CURRENT_ADAPTER_VERSION
                         or supplied["projection_version"] != PROJECTION_VERSION
                         or type(retained) is not list or any(type(v) is not str for v in retained)
-                        or len(retained) != len(set(retained))
-                        or any(v != RETAINED_PENDING_GOAL_ADAPTER_VERSION for v in retained)):
+                        or tuple(retained) != RETAINED_ADAPTER_VERSIONS):
                     raise invalid()
-                execution = (supplied["current_adapter_version"], supplied["projection_version"], tuple(retained))
-                if course_fields:
-                    from mock_journey.course_settings import CourseSettings
-                    from mock_journey.dev_course import CATALOG_VERSION, MODE, DummyDevCourseProvider
-                    from mock_journey.execution_definitions import execution_catalog
-                    supplied_course = value["course"]
-                    _object(supplied_course, "mode catalog_version settings")
-                    if (supplied_course["mode"] != MODE or supplied_course["catalog_version"] != CATALOG_VERSION
-                            or storage.stage not in ("dev", "development")):
-                        raise invalid()
-                    _object(supplied_course["settings"], " ".join(CourseSettings.__dataclass_fields__))
-                    course = CourseSettings(**supplied_course["settings"])
-                    # Offline validation proves that explicit limits can hold
-                    # the complete synthetic catalog; no SDK or file I/O.
-                    if course.max_transaction_actions < 7:
-                        raise invalid()
-                    provider = DummyDevCourseProvider(settings=course, execution=execution_catalog())
-                    from mock_journey.course_state import bundle_record
-                    from mock_journey.typed import json_bytes
-                    # CourseSettings bounds the logical bundle fields. Storage
-                    # persists the complete serialized snapshot, including its
-                    # scope/IDs/hash, which must also fit the operator's quota.
-                    if any(len(json_bytes(bundle_record(provider.fetch_bundle(binding)))) > storage.artifact_bytes
-                           for binding in provider.list_assignments(provider.learner)):
-                        raise invalid()
+                execution = ExecutionVersions(supplied["current_adapter_version"], supplied["projection_version"],
+                                              tuple(retained))
+                from mock_journey.course_settings import CourseSettings
+                from mock_journey.dev_course import CATALOG_VERSION, MODE, validate_dummy_catalog
+                from mock_journey.execution_definitions import execution_catalog
+                supplied_course = value["course"]
+                _object(supplied_course, "mode catalog_version settings")
+                if (supplied_course["mode"] != MODE or supplied_course["catalog_version"] != CATALOG_VERSION
+                        or storage.stage not in ("dev", "development")):
+                    raise invalid()
+                _object(supplied_course["settings"], " ".join(CourseSettings.__dataclass_fields__))
+                course = CourseSettings(**supplied_course["settings"])
+                # Offline validation (shared with the local server) proves that
+                # explicit limits can hold the complete synthetic catalog: the
+                # transaction action lower bound (D105, a final assessment start
+                # writes 8) and every serialized bundle snapshot within the
+                # operator's artifact quota. No SDK or file I/O; any failure is
+                # the same configuration error.
+                validate_dummy_catalog(course, execution=execution_catalog(),
+                                       artifact_bytes=storage.artifact_bytes)
             if role == "api":
                 _object(value[role], "payload_limit")
                 role_settings = ApiSettings(state, storage, environment, **value[role])
+                # payload_limit bounds the encoded body; it must at least hold
+                # the base64 form of the decoded CPR+AED input quota.
+                if role_settings.payload_limit < base64_body_bytes(storage.input_bytes):
+                    raise invalid()
             elif role == "worker":
                 _object(value[role], "lease_seconds retry_seconds renewal_interval_seconds renewal_timeout_seconds processing_reserve_ms")
                 options = value[role]
                 for key in options:
                     _positive(options[key], integer=key in ("lease_seconds", "retry_seconds", "processing_reserve_ms"))
                 interval, timeout = options["renewal_interval_seconds"], options["renewal_timeout_seconds"]
-                if interval > options["lease_seconds"] / 3 or interval + timeout >= options["lease_seconds"]:
+                if lease_renewal_exceeds(options["lease_seconds"], interval, timeout):
                     raise invalid()
                 role_settings = WorkerSettings(state, storage, options["lease_seconds"], options["retry_seconds"])
-                timing = (interval, timeout, options["processing_reserve_ms"])
+                timing = WorkerTiming(interval, timeout, options["processing_reserve_ms"])
             else:
                 _object(value[role], "queue_url lease_seconds retry_seconds page_size max_pages processing_reserve_ms")
                 options = value[role]
@@ -244,7 +270,7 @@ class AwsSettings:
                         or not re.fullmatch(r"/" + account + r"/[A-Za-z0-9_-]{1,80}", url.path)):
                     raise invalid()
                 role_settings = RelaySettings(state, **{k: v for k, v in options.items() if k != "processing_reserve_ms"})
-                timing = (options["processing_reserve_ms"],)
+                timing = RelayTiming(options["processing_reserve_ms"])
                 RelayBudget.derive(sdk, state, role_settings, logs, options["processing_reserve_ms"])
             return cls(role, account, partition, environment, region, state, role_settings, sdk, logs, execution, timing, course)
         except Exception:

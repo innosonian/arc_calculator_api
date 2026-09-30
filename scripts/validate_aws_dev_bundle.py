@@ -1,4 +1,4 @@
-"""Offline cross-role checks for the explicitly selected Dummy course dev release.
+"""Offline cross-role checks for the Dummy course dev release (API/Worker require course).
 
 This does not contact AWS, verify permissions, read keys, or deploy resources.
 Actual Lambda timeouts and SQS settings must be supplied by the operator.
@@ -40,9 +40,11 @@ def validate_bundle(documents, *, api_timeout, worker_timeout, relay_timeout,
             raise BundleError("STATE_TABLE_MISMATCH")
     if api.role_settings.storage != worker.role_settings.storage:
         raise BundleError("STORAGE_MISMATCH")
-    if api.execution != worker.execution:
-        raise BundleError("EXECUTION_VERSION_MISMATCH")
-    if api.course is None or api.course != worker.course:
+    # D135: API/Worker execution versions are all fixed by AwsSettings.parse
+    # (D127), so a cross-role execution mismatch cannot occur here.
+    # AwsSettings.parse already rejects an API/Worker document without the
+    # course section (ROLE_CONFIGURATION_INVALID); both must hold the same one.
+    if api.course != worker.course:
         raise BundleError("DUMMY_COURSE_CONFIGURATION_MISMATCH")
     timeouts = (api_timeout, worker_timeout, relay_timeout)
     if any(type(value) is not int or not 1 <= value <= 900 for value in timeouts):
@@ -57,7 +59,7 @@ def validate_bundle(documents, *, api_timeout, worker_timeout, relay_timeout,
     for role, seconds in zip((api, worker, relay), timeouts):
         reserve = role.logs.flush_budget_ms + role.logs.response_reserve_ms
         if role.role == "worker":
-            reserve += role.timing[2]
+            reserve += role.timing.processing_reserve_ms
         elif role.role == "relay":
             budget = role.relay_budget
             reserve = budget.acquire_ms + budget.step_ms + budget.reserve_ms

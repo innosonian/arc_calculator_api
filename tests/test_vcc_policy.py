@@ -7,7 +7,7 @@ import pytest
 
 from mock_journey.course_contracts import (
     CONTRACT_VERSION, POLICY_VERSION, AssignmentBinding, ContentReport, CourseBinding, CourseBundle,
-    CourseScope, CourseView, GateView, InventoryView, LearnerContext, Placement, PublicIds,
+    CourseScope, CourseView, GateView, InventoryView, PublicIds,
     StartCommand, definition_digest, learner_identity, parse_owned, sealed_bundle, scope_identity,
 )
 from mock_journey.course_errors import CourseError
@@ -16,37 +16,17 @@ from mock_journey.course_policy import (
 )
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.typed import digest, json_bytes, parse_json
+from tests.vcc_contract_support import learner_from, placement_from  # (E-15: one copy of the fixture builders)
+from tests.vcc_policy_support import completed_progress, item_key  # noqa: F401 (re-export)
+from tests.vcc_support import EPOCH
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_DOC = parse_json((ROOT / "tests" / "fixtures" / "vcc_contract" / "v1" / "course_bundle.json").read_bytes())
-EPOCH = "80000000-0000-4000-8000-000000000001"
 REQUEST = "10000000-0000-4000-8000-000000000001"
 START = "40000000-0000-4000-8000-000000000001"
 REPORT_A = "20000000-0000-4000-8000-000000000001"
 REPORT_B = "30000000-0000-4000-8000-000000000001"
-
-
-def learner_from(doc):
-    return LearnerContext(**doc)
-
-
-def placement_from(doc, **overrides):
-    payload = {
-        "source_id": doc["source_id"],
-        "public_link_id": doc["public_link_id"],
-        "public_item_id": doc["public_item_id"],
-        "position": doc["position"],
-        "kind": doc["kind"],
-        "content_version": doc["content_version"],
-        "content_identity_json": deepcopy(doc["content_identity"]),
-        "detail_json": deepcopy(doc["detail"]),
-        "execution_json": deepcopy(doc["execution"]),
-        "execution_status": doc["execution_status"],
-        "duration_ms": doc["duration_ms"],
-    }
-    payload.update(overrides)
-    return Placement(**payload)
 
 
 def bundle_from(assignment, *, placements=None):
@@ -98,33 +78,6 @@ def command(bundle, placement_id, request_id=REQUEST):
     return StartCommand(request_id, bundle.public_ids.enrollment_id, bundle.public_ids.course_id, placement_id, bundle.definition_hash)
 
 
-def item_key(bundle, public_link_id):
-    item = next(row for row in bundle.placements if row.public_link_id == public_link_id)
-    return placement_key(scope_key(bundle.scope), item.source_id)
-
-
-def completed_progress(bundle, *link_ids, final=None, evaluation=None):
-    payload = empty_progress()
-    keys = [item_key(bundle, link) for link in link_ids]
-    payload["completed_placements"] = keys
-    payload["items"] = {
-        item_key(bundle, item.public_link_id): {
-            "source_id": item.source_id,
-            "public_link_id": item.public_link_id,
-            "kind": item.kind,
-            "content_version": item.content_version,
-            "completed": item.public_link_id in link_ids,
-            "passed": True if item.kind == "assessment" and item.public_link_id in link_ids else (False if item.kind == "training" and item.public_link_id in link_ids else None),
-        }
-        for item in bundle.placements
-    }
-    if final is not None:
-        payload["final"].update(final)
-    if evaluation is not None:
-        payload["evaluation"] = evaluation
-    return payload
-
-
 class TestContractAndKeys:
     def test_versions_and_w0_digests(self):
         assert CONTRACT_VERSION == "vcc-internal-v1"
@@ -158,14 +111,12 @@ class TestV09Isolation:
         assert item_key(second, 1003) not in aggregated["completed_placements"]
         assert item_key(second, 1003) != key_1003
 
-    def test_can_start_1004_after_1003_complete(self):
+    def test_can_start_1004_after_1003_complete_and_1003_again(self):
         bundle = bundle_from(assignment_doc(501))
         current = view_for(bundle, progress=completed_progress(bundle, 1003))
         policy().can_start(current, command(bundle, 1004), "training")
-        with pytest.raises(CourseError) as raised:
-            policy().can_start(current, command(bundle, 1003), "training")
-        assert raised.value.code == "ITEM_ALREADY_COMPLETED"
-        assert raised.value.status == 409
+        # D130: a completed training item may be practised again.
+        policy().can_start(current, command(bundle, 1003), "training")
 
 
 class TestV11FinalAndOnly:
@@ -181,15 +132,19 @@ class TestV11FinalAndOnly:
         progress = completed_progress(bundle, 1001, 1002, 1003, 1004, final={"phase": "free"})
         policy().can_start(view_for(bundle, progress=progress), command(bundle, 1005), "final_assessment")
 
-    def test_active_and_recovery_and_passed_and_pending_policy(self):
+    def test_active_and_recovery_and_pending_policy_block_while_passed_allows(self):
         bundle = bundle_from(assignment_doc(501))
         prior = completed_progress(bundle, 1001, 1002, 1003, 1004)
         cases = [
             ({"phase": "active"}, "FINAL_ASSESSMENT_ACTIVE"),
             ({"phase": "recovery_required"}, "FINAL_ASSESSMENT_RECOVERY_REQUIRED"),
             ({"phase": "policy_pending"}, "COMPLETION_POLICY_PENDING"),
-            ({"phase": "passed"}, "ASSESSMENT_ALREADY_PASSED"),
         ]
+        # D130: a passed final (with or without its pass evidence) may be taken again.
+        for passed_final in ({"phase": "passed"}, {"phase": "passed", "passed_attempt_id": "50000000-0000-4000-8000-000000000001"}):
+            passed = deepcopy(prior)
+            passed["final"].update(passed_final)
+            policy().can_start(view_for(bundle, progress=passed), command(bundle, 1005), "final_assessment")
         for final, code in cases:
             progress = deepcopy(prior)
             progress["final"].update(final)
@@ -206,7 +161,7 @@ class TestV11FinalAndOnly:
             policy().can_start(view_for(bundle, progress=pending), command(bundle, 1005), "final_assessment")
         assert raised.value.code == "COMPLETION_POLICY_PENDING"
 
-    def test_evaluated_false_allows_retry_true_blocks(self):
+    def test_evaluated_false_and_true_both_allow_retry(self):
         bundle = bundle_from(assignment_doc(501))
         prior = completed_progress(bundle, 1001, 1002, 1003, 1004)
         retry = deepcopy(prior)
@@ -223,9 +178,8 @@ class TestV11FinalAndOnly:
             "score": {"decision": "pass"},
             "program_completed": True,
         }
-        with pytest.raises(CourseError) as raised:
-            policy().can_start(view_for(bundle, progress=passed), command(bundle, 1005), "final_assessment")
-        assert raised.value.code == "ASSESSMENT_ALREADY_PASSED"
+        # D130: a judged pass no longer blocks a new attempt.
+        policy().can_start(view_for(bundle, progress=passed), command(bundle, 1005), "final_assessment")
 
     def test_only_60_observed_59_score_pass_is_free(self):
         bundle = bundle_from(assignment_doc(501))
@@ -396,14 +350,10 @@ class TestV13SnapshotVersusNewVersion:
         assert aggregated["final"]["phase"] == "passed"
         assert aggregated["course_status"] != "CERTIFIED"
         assert aggregated["course_complete"] is False
-        with pytest.raises(CourseError) as raised:
-            policy().can_start(view_for(revised, progress=progress), command(revised, 1005), "final_assessment")
-        assert raised.value.code == "ASSESSMENT_ALREADY_PASSED"
-        # Same enrollment FINAL pass still blocks even if the last placement version changed.
-        matching = view_for(bundle, progress=progress)
-        with pytest.raises(CourseError) as raised:
-            policy().can_start(matching, command(bundle, 1005), "final_assessment")
-        assert raised.value.code == "ASSESSMENT_ALREADY_PASSED"
+        # D130: the replacement assessment and the unchanged one may both be attempted
+        # after the enrollment pass; the pass itself is not completion of the replacement.
+        policy().can_start(view_for(revised, progress=progress), command(revised, 1005), "final_assessment")
+        policy().can_start(view_for(bundle, progress=progress), command(bundle, 1005), "final_assessment")
 
     def test_pending_reconciliation_does_not_erase_completion(self):
         evidence = {
@@ -431,9 +381,8 @@ class TestAggregateAndClassify:
         assert current["passed"] is None
         assert aggregated["final"]["phase"] == "passed"
         assert aggregated["course_complete"] is False
-        with pytest.raises(CourseError) as raised:
-            policy().can_start(view_for(revised, progress=aggregated), command(revised, 1005), "final_assessment")
-        assert raised.value.code == "ASSESSMENT_ALREADY_PASSED"
+        # D130: the replacement may be attempted; the old pass does not complete it.
+        policy().can_start(view_for(revised, progress=aggregated), command(revised, 1005), "final_assessment")
 
     def test_finished_requires_all_items_and_final_pass(self):
         bundle = bundle_from(assignment_doc(501))

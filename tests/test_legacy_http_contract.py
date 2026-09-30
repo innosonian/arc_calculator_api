@@ -9,7 +9,7 @@ import pytest
 import lambda_handler
 import services.legacy_response as legacy_response
 from tests._synth import comp_session, condition_json, cpr_session, multipart_event
-from tests.test_reference_http_contract import _form_event
+from tests.request_support import form_event as _form_event
 
 
 def _event(parts, wire):

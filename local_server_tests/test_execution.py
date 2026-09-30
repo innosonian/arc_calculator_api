@@ -1,75 +1,22 @@
-"""Offline execution wiring/supervision checks; no real SDK operations."""
+"""Offline local job runner supervision checks; no real SDK operations.
 
-from dataclasses import replace
+The local API/worker composition itself is checked in test_runtime.py
+(runtime.build_api + runtime.build_local_worker, as the CLI assembles them).
+"""
+
 from types import SimpleNamespace
 
 import pytest
 
-from local_server.execution import LocalJobRunner, build_local_execution
-from mock_journey.assembly import ExecutionCatalog
+from local_server import execution
+from local_server.execution import LocalJobRunner
 from mock_journey.errors import JourneyError
-from mock_journey.internal_calculator import InternalCalculator
 from mock_journey.jobs import JobLeaseLost
-from mock_journey.settings import WorkerSettings
-from tests.test_mock_assembly import NoClientCalls, configuration, definitions, schemas
 
 
-def components(**overrides):
-    _, bindings, settings = configuration()
-    arguments = dict(
-        dynamodb_client=NoClientCalls(), s3_client=NoClientCalls(), legacy_bindings=bindings,
-        resume_keys={"v1": b"synthetic-test-only-key-material!!"}, current_key_version="v1",
-        execution=ExecutionCatalog(definitions(), schemas()),
-        adapters=[InternalCalculator(version="test-adapter", projection_version="test-projection",
-                                     stage=settings.storage.stage)],
-        relay_lease_seconds=60, relay_retry_seconds=5, page_size=2, max_pages=1, clock=lambda: 1000,
-    )
-    arguments.update(overrides)
-    return settings, WorkerSettings(settings.state, settings.storage, 60, 5), arguments
-
-
-def test_explicit_factory_builds_same_scope_without_sdk_calls_or_starting_worker():
-    api, worker_settings, arguments = components()
-    built = build_local_execution(api, worker_settings, **arguments)
-    assert built.service.calculation.payload_limit == api.payload_limit
-    assert built.service.state.client is built.worker.jobs.state.client is arguments["dynamodb_client"]
-    assert built.service.state.table_name == built.worker.jobs.state.table_name
-    assert built.service.calculation.storage.bucket == built.worker.storage.bucket
-    assert built.service.calculation.storage.prefix == built.worker.storage.prefix
-    assert type(built.runner) is LocalJobRunner
-    assert not hasattr(built.worker, "auth")
-    assert built.worker.adapters.resolve("test-adapter", "test-projection") is arguments["adapters"][0]
-    assert arguments["adapters"][0].cycle_goal_resolver is None
-
-
-@pytest.mark.parametrize("change", ["state", "storage", "unsupported_adapter", "stage", "duplicate", "missing_adapter", "keys"])
-def test_factory_rejects_mismatched_state_storage_or_noninternal_calculator(change):
-    api, worker_settings, arguments = components()
-    if change == "state":
-        worker_settings = replace(worker_settings, state=replace(worker_settings.state, table_name="different"))
-    elif change == "storage":
-        worker_settings = replace(worker_settings, storage=replace(worker_settings.storage, bucket="different"))
-    elif change == "unsupported_adapter":
-        arguments["adapters"] = [SimpleNamespace(version="test-adapter", projection_version="test-projection")]
-    elif change == "stage":
-        arguments["adapters"][0].stage = "different"
-    elif change == "duplicate":
-        arguments["adapters"] *= 2
-    elif change == "missing_adapter":
-        arguments["adapters"] = []
-    elif change == "keys":
-        arguments["resume_keys"] = {"v1": b"secret-marker"}
-    with pytest.raises(ValueError, match="Invalid explicit local execution configuration") as error:
-        build_local_execution(api, worker_settings, **arguments)
-    assert "secret-marker" not in str(error.value)
-
-
-def test_factory_retains_explicit_old_internal_adapter_versions():
-    api, worker_settings, arguments = components()
-    old = InternalCalculator(version="old", projection_version="old-projection", stage=api.storage.stage)
-    arguments["adapters"].append(old)
-    built = build_local_execution(api, worker_settings, **arguments)
-    assert built.worker.adapters.resolve("old", "old-projection") is old
+def test_module_offers_only_the_runner_not_a_second_api_assembly():
+    assert not hasattr(execution, "build_local_execution")
+    assert not hasattr(execution, "build_application")
 
 
 class Jobs:

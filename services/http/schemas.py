@@ -14,20 +14,42 @@ class ConditionType(TypedDict):
 
 
 class RequestBody(TypedDict):
+    """Keys returned by both legacy wire parsers (타입 주석 전용; 런타임 검사 없음).
+
+    Parsed JSON values are not type-checked here; lambda_handler/legacy_request
+    validators decide which shapes are accepted.
+    """
+
     cpr_b64_data: bytes
     aed_b64_data: bytes
-    condition: ConditionType | None
+    condition: ConditionType | dict | None
     vp_event_list: list[dict]
-
-
-class ActionRequestBody(TypedDict):
-    action_list: list[dict]
-    aed_part_list: list[dict]
-    vp_action_list: list[dict]
+    hstm_document: dict | None
+    DeviceInfo: dict | None
+    Organization: dict | None
+    Dummy: dict | None
+    Open_Skill: dict | None
+    ResultSummary: dict | None
+    Custom: dict | None
+    ResultByCycle: dict | None
+    CalculationService: dict | None
+    Certification: dict | None
+    Usage: dict | None
+    ResultByCriteria: dict | None
+    Institution: dict | None
+    access_token: str | None
+    refresh_token: str | None
+    client_id: str | None
+    client_secret: str | None
+    token_expired: bool | None
+    access_token_url: str | None
+    send_result_url: str | None
+    source_endpoint: str | None
 
 
 class VPEvent(TypedDict):
-    # 원본 hstm_v2 services/http/schemas.py:26-28
+    # 원본 hstm_v2 services/http/schemas.py:26-28. 실제 검증기는 last_timestamp(우선)와
+    # float·bool 값도 허용한다(services/http/legacy_request._validate_request).
     event: int
     timestamp: int
 

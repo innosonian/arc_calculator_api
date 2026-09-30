@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from mock_journey.handler import handle
 from tests.vcc_support import event
-from integration_tests.test_vcc_state_dynamodb import application, login
+from tests.vcc_application_support import application, login
 
 
 CONTEXT = SimpleNamespace(aws_request_id="vcc-calc-http")

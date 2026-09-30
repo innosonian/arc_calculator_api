@@ -8,7 +8,7 @@ import pytest
 
 from mock_journey.aws_lease import AwsLeaseGuardFactory
 from mock_journey.jobs import JobLeaseLost
-from tests.test_aws_runtime import context
+from tests.aws_runtime_support import context
 
 
 def factory():

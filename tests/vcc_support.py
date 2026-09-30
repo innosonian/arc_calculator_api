@@ -13,6 +13,8 @@ from mock_journey.typed import parse_json
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "vcc_contract" / "v1"
+# The fixture epoch the course unit tests share (it was repeated in six files).
+EPOCH = "80000000-0000-4000-8000-000000000001"
 OLD_ROUTES = (
     ("POST", "/mock/v1/sessions"),
     ("GET", "/mock/v1/session"),

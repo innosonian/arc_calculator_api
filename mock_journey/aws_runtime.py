@@ -40,6 +40,18 @@ class AwsRoleRuntime:
         self.settings, self.target, self.clients = settings, target, tuple(clients)
         self.operations, self.guard = operations, guard
 
+    def bind_target(self):
+        """Attach this runtime to its already assembled target, before any invocation.
+
+        The target is built before its runtime, so this back-reference cannot be
+        a constructor argument. ``invocation(target, context)`` reads
+        ``target.aws_runtime``. ``target.invocation`` has no reader in this
+        repository; it is kept unchanged pending the S9-05 question.
+        """
+        self.target.aws_runtime = self
+        self.target.invocation = self.invocation
+        return self
+
     @contextmanager
     def invocation(self, context):
         try:
@@ -64,10 +76,12 @@ def build_runtime(role, environ, *, client_factory=None):
         if role != "relay":
             from mock_journey.execution_definitions import execution_catalog
             execution = execution_catalog()
-            if settings.course is not None:
-                from mock_journey.dev_course import DummyDevCourseProvider
-                course_provider = DummyDevCourseProvider(settings=settings.course, execution=execution)
-        from mock_journey.assembly import build_application, build_course_application, build_worker, build_relay
+        if role == "api":
+            # AwsSettings.parse already required and validated the Dummy course
+            # section for API/Worker; only the API serves course_v2 HTTP.
+            from mock_journey.dev_course import DummyDevCourseProvider
+            course_provider = DummyDevCourseProvider(settings=settings.course, execution=execution)
+        from mock_journey.assembly import build_course_application, build_worker, build_relay
         from mock_journey.aws_storage import AwsLegacyBindings
         from mock_journey.aws_logs import InvocationLogs
         from mock_journey.log_storage import DynamoLogStore
@@ -98,42 +112,36 @@ def build_runtime(role, environ, *, client_factory=None):
                                  progress_scope={"environment": settings.environment,
                                                  "partition": settings.partition,
                                                  "account_id": settings.account_id,
-                                                 "region": settings.region})
-            target.processing_reserve_ms = settings.timing[0]
-            target.relay_budget = settings.relay_budget
+                                                 "region": settings.region},
+                                 processing_reserve_ms=settings.timing.processing_reserve_ms,
+                                 relay_budget=settings.relay_budget)
         else:
             s3 = client("s3", settings.sdk)
             clients.append(s3)
             legacy = AwsLegacyBindings(s3, settings.role_settings.storage)
             if role == "api":
-                builder = build_application if course_provider is None else build_course_application
-                options = {} if course_provider is None else {
-                    "provider": course_provider, "course_settings": settings.course,
-                    "mapping_document": course_provider.mapping_document,
-                }
-                target = builder(settings.role_settings, dynamodb_client=dynamodb, s3_client=s3,
-                                 legacy_bindings=legacy, resume_keys=keys[0], current_key_version=keys[1],
-                                 execution=execution, operations=operations, **options)
+                target = build_course_application(
+                    settings.role_settings, dynamodb_client=dynamodb, s3_client=s3,
+                    legacy_bindings=legacy, resume_keys=keys[0], current_key_version=keys[1],
+                    execution=execution, operations=operations, provider=course_provider,
+                    course_settings=settings.course, mapping_document=course_provider.mapping_document)
             else:
-                from mock_journey.internal_calculator import InternalCalculator
+                from mock_journey.assembly import worker_adapters, worker_required_bindings
                 from mock_journey.aws_lease import AwsLeaseGuardFactory
                 current, projection, retained = settings.execution
-                adapters = [InternalCalculator(version=version, projection_version=projection,
-                                               stage=settings.role_settings.storage.stage, allow_pending_cycle_goal=True)
-                            for version in (current, *retained)]
+                adapters = worker_adapters(current, retained, projection=projection,
+                                           stage=settings.role_settings.storage.stage)
                 guard = AwsLeaseGuardFactory(lease_seconds=settings.role_settings.lease_seconds,
-                                            interval_seconds=settings.timing[0], renewal_timeout_seconds=settings.timing[1],
+                                            interval_seconds=settings.timing.renewal_interval_seconds,
+                                            renewal_timeout_seconds=settings.timing.renewal_timeout_seconds,
                                             response_reserve_ms=settings.logs.response_reserve_ms)
                 target = build_worker(settings.role_settings, dynamodb_client=dynamodb, s3_client=s3,
                                       legacy_bindings=legacy, adapters=adapters,
-                                      required_bindings=execution.required_bindings + tuple((v, projection) for v in retained),
-                                      lease_guard_factory=guard, operations=operations)
-                target.processing_reserve_ms = settings.timing[2]
-        runtime = AwsRoleRuntime(settings, target, clients, operations, guard)
-        target.aws_runtime = runtime
-        # Relay has no handler-owned log scope, so expose the invocation wrapper.
-        target.invocation = runtime.invocation
-        return runtime
+                                      required_bindings=worker_required_bindings(execution, retained,
+                                                                                 projection=projection),
+                                      lease_guard_factory=guard, operations=operations,
+                                      processing_reserve_ms=settings.timing.processing_reserve_ms)
+        return AwsRoleRuntime(settings, target, clients, operations, guard).bind_target()
     except Exception:
         for owned in reversed(clients):
             _close(owned)

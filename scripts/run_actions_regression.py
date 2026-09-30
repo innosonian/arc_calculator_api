@@ -1,5 +1,6 @@
 """Run the selected Actions regressions with collection-time AWS/network guards.
 
+Without arguments this runs the socket-free unit suite from test_suites.py.
 Dependency installation happens separately. These guards cover this Python
 process; the existing deployment tests supply their own fake CLI subprocesses.
 This is not an operating-system egress firewall or an AWS authentication test.
@@ -12,25 +13,12 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TESTS = (
-    "tests/test_deployment_preflight.py",
-    "tests/test_deployment_preflight_security.py",
-    "tests/test_mock_artifact.py",
-    "tests/test_aws_runtime.py",
-    "tests/test_aws_dev_course.py",
-    "tests/test_aws_dev_bundle.py",
-    "tests/test_vcc_http_ingress_security.py",
-    "tests/test_aws_lease.py",
-    "tests/test_aws_storage.py",
-    "tests/test_aws_logs.py",
-    "tests/test_aws_relay_entrypoint.py",
-    "tests/test_aws_relay_budget.py",
-    "tests/test_validate_actions.py",
-    "tests/test_actions_regression.py",
-)
 AWS_FORBIDDEN = "ACTIONS_REGRESSION_AWS_FORBIDDEN"
 NETWORK_FORBIDDEN = "ACTIONS_REGRESSION_NETWORK_FORBIDDEN"
-_NETWORK_EVENTS = frozenset((
+# The one audited event set. This module stays standard-library only at import
+# time because the hook is installed before any repository or SDK module; the
+# per-directory test guards (tests/network_guard_support.py) import it from here.
+NETWORK_AUDIT_EVENTS = frozenset((
     "socket.connect", "socket.connect_ex", "socket.getaddrinfo",
     "socket.gethostbyname", "socket.gethostbyaddr", "socket.getnameinfo",
     "socket.sendto", "socket.sendmsg",
@@ -63,7 +51,7 @@ def _prepare_environment():
 
 
 def _network_audit(event, _args):
-    if event in _NETWORK_EVENTS:
+    if event in NETWORK_AUDIT_EVENTS:
         # Never include destination addresses or other potentially private data.
         raise OfflineGuardViolation(NETWORK_FORBIDDEN)
 
@@ -97,9 +85,16 @@ def main(argv=None):
     _prepare_environment()
     sys.addaudithook(_network_audit)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="*", help="Explicit pytest file paths; defaults to the Actions regressions")
+    parser.add_argument("paths", nargs="*", help="Explicit pytest file paths; defaults to the offline unit suite")
     args = parser.parse_args(argv)
-    paths = args.paths or DEFAULT_TESTS
+    sys.path.insert(0, str(ROOT))
+    if args.paths:
+        paths = args.paths
+    else:
+        # Standard library only; imported after the audit hook, before any SDK.
+        from scripts.test_suites import offline_unit_tests
+
+        paths = offline_unit_tests(ROOT)
     # Only accept file selections, not arbitrary pytest options or directory
     # discovery. Absolute temporary files support isolated collection probes.
     selected = []
@@ -110,7 +105,6 @@ def main(argv=None):
         if source.suffix != ".py" or not source.is_file():
             parser.error("Every selection must name an existing Python test file")
         selected.append(str(source) + (separator + node_id if separator else ""))
-    sys.path.insert(0, str(ROOT))
     _install_sdk_guards()
     import pytest
 

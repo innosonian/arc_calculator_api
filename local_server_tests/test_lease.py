@@ -1,6 +1,5 @@
 """Local lease ownership thread lifecycle; no database/network evidence."""
 
-import socket
 import threading
 import time
 from types import SimpleNamespace
@@ -10,14 +9,6 @@ import pytest
 from local_server.lease import LocalLeaseGuardFactory, LocalLeaseGuardShutdown
 from mock_journey.jobs import JobLeaseLost
 from mock_journey.worker import JourneyWorker
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("Lease unit test attempted a network connection.")
-    monkeypatch.setattr(socket.socket, "connect", forbidden)
-    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
 
 
 def factory(**overrides):
@@ -253,12 +244,3 @@ def test_invalid_factory_result_never_calculates_or_finalizes(returned, capsys):
                            lease_guard_factory=lambda heartbeat: returned)
     assert worker.process("job") is False
     assert "PRIVATE-GUARD-MARKER" not in capsys.readouterr().out
-
-
-def test_local_assembly_passes_explicit_factory_without_starting_it():
-    from local_server_tests.test_execution import components
-    from local_server.execution import build_local_execution
-    api, settings, arguments = components()
-    guard_factory = factory(lease_seconds=60)
-    execution = build_local_execution(api, settings, **arguments, lease_guard_factory=guard_factory)
-    assert execution.worker.lease_guard_factory is guard_factory

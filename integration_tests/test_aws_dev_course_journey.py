@@ -11,8 +11,7 @@ import lambda_handler
 from mock_journey import runtime as api_entry, worker as worker_entry, worker_runtime
 from mock_journey.aws_runtime import build_runtime
 from tests.mock_storage_support import MemoryS3
-from tests.test_aws_dev_course import course_configuration
-from tests.test_aws_runtime import context, environment
+from tests.aws_runtime_support import context, course_configuration, environment
 from tests.vcc_runtime_support import measurement_event
 from tests.vcc_support import event
 
@@ -41,7 +40,10 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
         config["state"]["table_name"] = dynamodb_table
         config["logs"].update(capacity=256, flush_budget_ms=1000)
         if role == "worker":
-            config["worker"]["lease_seconds"] = 60
+            # Real DynamoDB Local calls: the unit-test renewal timing (0.05 s interval,
+            # 0.1 s timeout) made a slow renewal under suite load lose the lease and
+            # defer the job. These values still satisfy the lease-renewal rule.
+            config["worker"].update(lease_seconds=60, renewal_interval_seconds=5, renewal_timeout_seconds=10)
         return build_runtime(role, environment(role, config=config), client_factory=factory)
 
     api, worker = build("api"), build("worker")
@@ -61,6 +63,7 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
     login = request("POST", "/api/v2/sessions/", 201,
                     body={"loginId": "test@test.com", "password": "2222"})
     token = login["accessToken"]
+    assert login["userName"] == "Test User"  # D129
     listing = request("GET", "/api/v2/courses/progress/")
     assert listing["count"] == 15
     assert all(row["status"] == "NOT_STARTED" for row in listing["results"])
@@ -103,7 +106,12 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
             "error": None, "exclusionReasons": ["dummy"]}
         results.append((upload["path"], result))
 
-    assert start(final_id, 409)["code"] == "ASSESSMENT_ALREADY_PASSED"
+    # D130: the passed final may be started again; the pass is kept while the retake is active (D131).
+    retake = start(final_id)
+    assert retake["role"] == "final_assessment" and retake["attemptId"] != attempt_id
+    assert start(final_id, 409)["code"] == "FINAL_ASSESSMENT_ACTIVE"
+    assert all(item["isCompleted"] for item in request("GET", path, query=query)["courseItems"])
+    request("POST", f"/api/v2/attempts/{retake['attemptId']}/cancel/", 204, body={"reason": "user_cancelled"})
     assert all(item["isCompleted"] for item in request("GET", path, query=query)["courseItems"])
     before = {key: value["Body"] for key, value in objects.objects.items()}
     rebuilt = build("api")

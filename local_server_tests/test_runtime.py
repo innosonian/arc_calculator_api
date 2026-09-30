@@ -4,12 +4,15 @@ from dataclasses import replace
 import io
 import json
 from types import SimpleNamespace
+import signal
 import threading
+import time
 
 import pytest
 
 from local_server import cli, runtime
 from local_server.runtime import LocalOptions, OwnedWorker, RuntimeUnavailable
+from local_server_tests.course_stub import StubCourseService, calculation_path
 
 
 @pytest.mark.parametrize("field,value", [
@@ -24,27 +27,194 @@ def test_limits_reject_unbounded_or_type_coerced_configuration(field, value):
         replace(LocalOptions(), **{field: value})
 
 
-def test_cli_default_is_journey_and_explicit_control_remains_available():
+def test_cli_defaults_are_the_v2_journey_limits_and_removed_modes_are_unknown():
     args = cli.argument_parser().parse_args([])
-    assert args.control_only is False
     limits = LocalOptions(args.calculation_body_bytes, args.artifact_bytes, args.storage_quota_bytes,
                           args.worker_lease_seconds, args.worker_retry_seconds, args.worker_poll_seconds)
     assert limits.payload_limit == 1_333_336
     assert limits.response_body_limit == 8_016_384
-    assert args.course_v2 is False
-    assert cli.argument_parser().parse_args(["--course-v2"]).course_v2 is True
-    assert cli.argument_parser().parse_args(["--control-only"]).control_only is True
+    assert not hasattr(args, "course_v2") and not hasattr(args, "control_only")
     assert cli.argument_parser().parse_args(["--artifact-bytes", "9000000"]).artifact_bytes == 9_000_000
-    assert cli.main(["--course-v2", "--control-only"]) == 1
+    usage = cli.argument_parser().format_help()
+    assert "--course-v2" not in usage and "--control-only" not in usage
+    assert "/api/v2" in usage and "/mock/v1" not in usage
 
 
-def test_all_fifteen_definitions_use_real_enums_and_explicit_pending_policy():
+@pytest.mark.parametrize("argv", [["--control-only"], ["--course-v2"], ["--control-only", "--course-v2"],
+                                  ["--course-v2", "--port", "80"]])
+def test_removed_flags_are_argparse_errors_before_isolation_or_any_file_or_port(monkeypatch, capsys, tmp_path, argv):
+    # D123: the removed modes are unknown arguments; argparse exits with its
+    # usage error (status 2) before main() isolates, locks or binds anything.
+    for name in ("isolated_environment", "ensure_port_free", "verify_distribution", "installation_lock"):
+        monkeypatch.setattr(cli, name, lambda *a, **k: pytest.fail("Removed flag reached startup."))
+    monkeypatch.setattr(cli.signal, "signal", lambda *a: pytest.fail("Removed flag installed handlers."))
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(argv + ["--data-dir", str(tmp_path / "never")])
+    assert exit_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unrecognized arguments" in captured.err and argv[0] in captured.err
+    assert not (tmp_path / "never").exists()
+    # The accepted argument set still starts normally (port 80 is refused by validation, status 1).
+    monkeypatch.setattr(cli, "isolated_environment", lambda: None)
+    monkeypatch.setattr(cli.signal, "signal", lambda *a: None)
+    assert cli.main(["--port", "80", "--data-dir", str(tmp_path / "never")]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "Local server could not start: API and DB ports must be different numbers between 1024 and 65535.")
+
+
+def test_ready_banner_names_v2_dummy_courses_cycle_rule_and_disabled_submission():
+    text = "\n".join(cli.READY_BANNER)
+    assert "/api/v2" in text and "15 temporary Dummy courses" in text
+    assert "CPR completion follows the cycle rule (D136)" in text and "ARC submission remains disabled" in text
+    assert "/mock/v1" not in text and "control" not in text.lower()
+
+
+def test_local_course_settings_are_the_former_course_v2_values_defined_in_product_code():
+    from mock_journey.course_settings import CourseSettings, fixture_course_settings
+    from local_server_tests.test_local_module_boundaries import loaded_after
+    settings = runtime.local_course_settings()
+    assert type(settings) is CourseSettings
+    # Same values the former --course-v2 option passed (fixture_course_settings()).
+    assert settings == fixture_course_settings()
+    assert runtime.LOCAL_COURSE_LIMITS == {
+        "max_course_items": 64, "max_assignments": 100, "max_bundle_bytes": 262144,
+        "max_control_body_bytes": 16384, "max_intervals_per_report": 128,
+        "max_merged_intervals_per_start": 512, "max_reports_per_start": 4096,
+        "max_transaction_actions": 20, "max_conflict_retries": 4,
+    }
+    # The former --course-v2 path read tests/fixtures/vcc_contract through the
+    # synthetic catalog module; importing the runtime must not load it.
+    loaded = loaded_after("local_server.runtime")
+    assert "mock_journey.course_fixture" not in loaded
+    assert "mock_journey.course_settings" in loaded and "mock_journey.dev_course" not in loaded
+
+
+class _NoClientCalls:
+    def __getattr__(self, name):
+        raise AssertionError("Local assembly made an SDK call: " + name)
+
+
+def _database(table="arc_local_assembly_test"):
+    return SimpleNamespace(client=_NoClientCalls(), table_name=table, operations=None)
+
+
+def _material(tmp_path):
+    from local_server.database import prepare_material
+    root = tmp_path / "installation"
+    root.mkdir(mode=0o700)
+    return prepare_material(root)
+
+
+def test_local_api_is_the_dummy_dev_course_application_assembled_like_aws(tmp_path):
+    from mock_journey.course_wiring import CourseApplication
+    from mock_journey.dev_course import CATALOG_VERSION, DummyDevCourseProvider
+    material, options = _material(tmp_path), LocalOptions()
+    service, objects, charts = runtime.build_api(_database(), material, options, "127.0.0.1", 8000)
+    try:
+        assert type(service) is CourseApplication and service.course_mode == "course_v2"
+        # AWS Dev assembly: the provider itself, no DummyLearnerBinding wrapper.
+        assert type(service.provider) is DummyDevCourseProvider
+        assignments = service.provider.list_assignments(service.provider.learner)
+        assert [binding.public_ids.course_id for binding in assignments] == list(range(910001, 910016))
+        assert service.provider.mapping_document["mapping_version"] == CATALOG_VERSION
+        assert len(service.provider.mapping_document["mappings"]) == 30
+        assert service.calculation.payload_limit == options.payload_limit
+        assert service.state.table_name == "arc_local_assembly_test"
+        assert charts.base_url == "http://127.0.0.1:8000" and objects.ready() is True
+    finally:
+        objects.close()
+
+
+def test_local_api_validates_catalog_capacity_before_opening_private_files(tmp_path, monkeypatch):
+    material = _material(tmp_path)
+    monkeypatch.setattr(runtime, "_objects", lambda *a, **k: pytest.fail("Files opened before validation."))
+    small = LocalOptions(calculation_body_bytes=100, artifact_bytes=100)
+    with pytest.raises(ValueError, match="Dummy Dev catalog"):
+        runtime.build_api(_database(), material, small, "127.0.0.1", 8000)
+    monkeypatch.setattr(runtime, "LOCAL_COURSE_LIMITS", {**runtime.LOCAL_COURSE_LIMITS, "max_transaction_actions": 7})
+    with pytest.raises(ValueError, match="Dummy Dev catalog"):
+        runtime.build_api(_database(), material, LocalOptions(), "127.0.0.1", 8000)
+
+
+def test_local_api_rejects_invalid_key_material_without_echo_and_closes_files(tmp_path, monkeypatch):
+    from dataclasses import replace as changed
+    material = _material(tmp_path)
+    closed = []
+    original = runtime._objects
+
+    def tracked(*args, **kwargs):
+        objects, charts, legacy = original(*args, **kwargs)
+        close = objects.close
+        objects.close = lambda: closed.append(True) or close()
+        return objects, charts, legacy
+
+    monkeypatch.setattr(runtime, "_objects", tracked)
+    with pytest.raises(ValueError) as error:
+        runtime.build_api(_database(), changed(material, resume_key=b"secret-marker"), LocalOptions(),
+                          "127.0.0.1", 8000)
+    assert "secret-marker" not in str(error.value) and closed == [True]
+
+
+def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapters(tmp_path):
+    from local_server.execution import LocalJobRunner
+    from local_server.lease import LocalLeaseGuardFactory
+    from mock_journey.contracts import (
+        CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    )
+    from mock_journey.cycle_goal import closed_cycle_count
+    from mock_journey.internal_calculator import InternalCalculator
+    material, options = _material(tmp_path), LocalOptions(worker_lease_seconds=40)
+    database = _database()
+    service, api_objects, _ = runtime.build_api(database, material, options, "127.0.0.1", 8000)
+    runner, worker_objects = runtime.build_local_worker(database, material, options, "127.0.0.1", 8000,
+                                                        object_material=api_objects.material)
+    try:
+        worker = runner._relay.sender.worker
+        assert type(runner) is LocalJobRunner and worker_objects is not api_objects
+        assert service.state.client is worker.jobs.state.client is database.client
+        assert service.state.table_name == worker.jobs.state.table_name
+        assert service.calculation.storage.bucket == worker.storage.bucket == runtime.STORAGE_BUCKET
+        assert service.calculation.storage.prefix == worker.storage.prefix
+        assert not hasattr(worker, "auth")
+        # The removed explicit factory rejected state/storage mismatches. Both
+        # roles now take their scope from one settings pair, never two inputs.
+        api_settings, worker_settings = runtime._settings(database, material, options)
+        assert api_settings.state is worker_settings.state and api_settings.storage is worker_settings.storage
+        assert worker_settings.storage.stage == runtime.STORAGE_STAGE
+        # ... and accepted only internal calculators of the storage stage: the
+        # current adapter bound to the D136 closed-cycle resolver, the retained
+        # pending adapters without one (their cycles goal stays pending).
+        registered = worker.adapters._registered
+        assert set(registered) == {(CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
+                                   (PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
+                                   (RETAINED_PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION)}
+        for (version, projection), adapter in registered.items():
+            assert type(adapter) is InternalCalculator and adapter.version == version
+            assert adapter.stage == worker.storage.stage == runtime.STORAGE_STAGE
+            if version == CURRENT_ADAPTER_VERSION:
+                assert adapter.cycle_goal_resolver is closed_cycle_count and adapter.allow_pending_cycle_goal is False
+            else:
+                assert adapter.cycle_goal_resolver is None and adapter.allow_pending_cycle_goal is True
+            assert worker.adapters.resolve(version, projection) is adapter
+        for version, projection in runtime.execution_catalog().required_bindings:
+            assert worker.adapters.resolve(version, projection) is registered[(version, projection)]
+        # The explicit lease guard factory is passed, not started.
+        assert type(worker.lease_guard_factory) is LocalLeaseGuardFactory
+        assert worker.lease_guard_factory.lease_seconds == 40
+        assert worker.lease_seconds == 40 and worker.retry_seconds == options.worker_retry_seconds
+    finally:
+        worker_objects.close()
+        api_objects.close()
+
+
+def test_all_fifteen_definitions_use_real_enums_and_the_cycle_goal_profile():
     from mock_journey.catalog import PROGRAMS, TARGETS, Catalog
-    from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION
+    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION
     from mock_journey import typed
     execution = runtime.execution_catalog()
-    assert len(Catalog(execution).slot_keys) == 15
-    assert execution.required_bindings == ((PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),)
+    assert len(PROGRAMS) * len(TARGETS) == 15
+    assert execution.required_bindings == ((CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),)
     for program, _, kind, amount in PROGRAMS:
         for target in TARGETS:
             value = execution.get_definition(program, target)
@@ -56,7 +226,8 @@ def test_all_fifteen_definitions_use_real_enums_and_explicit_pending_policy():
                 "is_2rescuers": program in ("mock-two-rescuer-cpr", "mock-two-rescuer-aed"),
             }
             assert value["calculation_profile"] == {}
-            assert value["profile_version"] == PENDING_GOAL_PROFILE_VERSION
+            assert value["profile_version"] == CYCLE_GOAL_PROFILE_VERSION
+            assert value["adapter_version"] == CURRENT_ADAPTER_VERSION
             definition = typed.parse_json(Catalog(execution).definition(program, target))
             assert definition["goal"] == {"kind": kind, "required": amount}
             condition["target"] = "mutated"
@@ -372,7 +543,7 @@ def test_child_has_only_readonly_attach_and_fixed_terminal_status(monkeypatch, o
     objects = SimpleNamespace(ready=lambda: outcome != "files_unready", close=lambda: close("objects-close"))
     def attach(endpoint, material, **kwargs):
         assert endpoint == config.endpoint and material is config.material
-        assert kwargs == {"journey": True, "initialize": False, "operations_role": "worker"}
+        assert kwargs == {"initialize": False, "operations_role": "worker"}
         events.append("readonly-attach")
         return db
     monkeypatch.setattr(database, "connect_application", attach)
@@ -441,7 +612,7 @@ def test_supervised_http_reports_real_readiness_and_stops_acceptance(tmp_path, m
                 if isinstance(available[0], Exception):
                     raise available[0]
                 return available[0]
-            service = SimpleNamespace(calculation=SimpleNamespace(payload_limit=4 * ((1000 + 2) // 3)))
+            service = StubCourseService(payload_limit=4 * ((1000 + 2) // 3))
             app = http.make_application(service, lambda: database_ready[0], "127.0.0.1", 8000,
                                         ["127.0.0.1"], calculation_body_limit=1000, chart_service=chart,
                                         response_body_limit=116_384, execution_ready=execution_ready)
@@ -454,16 +625,23 @@ def test_supervised_http_reports_real_readiness_and_stops_acceptance(tmp_path, m
                 body = b"".join(app(environ, lambda value, headers: status.append(value)))
                 return status[0], json.loads(body)
             monkeypatch.setattr(http, "handle", lambda *args: pytest.fail("Unavailable runtime must never dispatch"))
+            assert service.dispatched == []
             status, body = call()
             assert status == "200 OK" and body["calculator_available"] is True
-            assert body["mode"] == "local_journey" and body["program_target_combinations"] == 15
-            assert body["completion_policy"]["cycles"] == "pending_policy"
+            # Same keys and order as the former --course-v2 health body.
+            assert list(body) == ["service", "mode", "calculator_available", "login_path", "programs_path",
+                                  "calculation_transport_configured", "program_target_combinations",
+                                  "completion_policy"]
+            assert body["mode"] == "course_v2" and body["program_target_combinations"] == 15
+            assert body["login_path"] == "/api/v2/sessions/" and body["programs_path"] == "/api/v2/courses/progress/"
+            assert body["completion_policy"] == {"cycles": "evaluated", "compressions": "evaluated",
+                                                 "ventilations": "evaluated"}
             database_ready[0] = False
             assert call()[0] == "503 Service Unavailable"
             database_ready[0] = True
             for failed in (False, None, "true", RuntimeError("private-marker")):
                 available[0] = failed
-                for path, method in (("/", "GET"), ("/cpr-analysis", "POST"), ("/mock/v1/sessions", "POST")):
+                for path, method in (("/", "GET"), (calculation_path(), "POST"), ("/api/v2/sessions/", "POST")):
                     status, body = call(path, method)
                     assert status == "503 Service Unavailable"
                     assert body["error"]["code"] == "TEMPORARILY_UNAVAILABLE"
@@ -472,5 +650,93 @@ def test_supervised_http_reports_real_readiness_and_stops_acceptance(tmp_path, m
             assert call(extra={"REMOTE_ADDR": "203.0.113.5"})[0] == "404 Not Found"
             assert call(extra={"HTTP_HOST": "attacker.example"})[0] == "400 Bad Request"
             assert "private-marker" not in "".join(capsys.readouterr())
+        finally:
+            objects.close()
+
+
+@pytest.mark.parametrize("failure", ["db_process", "db_schema"])
+def test_dead_owned_database_refuses_health_progress_and_login_with_503(tmp_path, capsys, failure):
+    """The definite 503 contract of a dead owned DB, at the real WSGI gate.
+
+    The live CLI test can only observe it briefly: serve() then stops within
+    one 0.1-second poll and the CLI exits with a visible failure (checked here
+    too). The real LocalRuntime.ready/available functions are wired exactly as
+    the CLI wires them.
+    """
+    from local_server import http
+    from local_server.charts import LocalChartService
+    from local_server.database import prepare_material
+    from local_server.object_storage import LocalObjectClient, prepare_object_material
+    with cli.installation_lock(tmp_path / "installation") as directory:
+        material = prepare_material(directory)
+        objects = LocalObjectClient(prepare_object_material(material), bucket=runtime.STORAGE_BUCKET,
+                                    directory=runtime.STORAGE_DIRECTORY, stage="local",
+                                    artifact_limit=100_000, quota_bytes=1_000_000)
+        try:
+            chart = LocalChartService(objects, base_url="http://127.0.0.1:8000")
+            owned = _runtime_shell()
+            service = StubCourseService(payload_limit=4 * ((1000 + 2) // 3))
+            app = http.make_application(service, owned.ready, "127.0.0.1", 8000, ["127.0.0.1"],
+                                        calculation_body_limit=1000, chart_service=chart,
+                                        response_body_limit=116_384, execution_ready=owned.available)
+
+            def call(method, path, query="", body=b""):
+                environ = {"REMOTE_ADDR": "127.0.0.1", "HTTP_HOST": "127.0.0.1:8000",
+                           "REQUEST_URI": path + ("?" + query if query else ""), "PATH_INFO": path,
+                           "QUERY_STRING": query, "REQUEST_METHOD": method,
+                           "CONTENT_LENGTH": str(len(body)), "wsgi.input": io.BytesIO(body),
+                           "CONTENT_TYPE": "application/json"}
+                status = []
+                text = b"".join(app(environ, lambda value, headers: status.append(value)))
+                return status[0], json.loads(text)
+
+            login = json.dumps({"loginId": "test@test.com", "password": "2222"}).encode()
+            requests = (("GET", "/healthz", "", b""),
+                        ("GET", "/api/v2/courses/progress/", "page=1&pageSize=100", b""),
+                        ("POST", "/api/v2/sessions/", "", login),
+                        ("POST", calculation_path(), "", b"x"))
+            assert call("GET", "/healthz")[0] == "200 OK"
+            assert call("POST", "/api/v2/sessions/", body=login)[0] == "201 Created"
+            service.dispatched.clear()
+            service.calls.clear()
+            # The supervising serve loop is running when the DB dies.
+            stopped, outcome = threading.Event(), []
+            server = SimpleNamespace(run=lambda: stopped.wait(10))
+
+            def serve():
+                try:
+                    owned.serve(server)
+                except BaseException as raised:
+                    outcome.append(raised)
+            serving = threading.Thread(target=serve, daemon=True)
+            serving.start()
+            if failure == "db_process":
+                died = time.monotonic()
+                owned.db_child.poll = lambda: -signal.SIGTERM
+            else:
+                # The process is alive but the attached table is not ready.
+                owned.database.ready = lambda: False
+            for method, path, query, body in requests:
+                status, value = call(method, path, query, body)
+                if failure == "db_schema" and path != "/healthz":
+                    # Only /healthz reports DB readiness; routes still run.
+                    continue
+                assert status == "503 Service Unavailable"
+                assert value["error"]["code"] == "TEMPORARILY_UNAVAILABLE"
+                assert "2222" not in json.dumps(value)
+            if failure == "db_process":
+                assert service.dispatched == [] and service.calls == []
+                # serve() stops within its 0.1-second poll and reports the
+                # failure, so the CLI closes and exits non-zero.
+                serving.join(timeout=2)
+                assert not serving.is_alive() and time.monotonic() - died < 2
+                assert [type(value) for value in outcome] == [RuntimeUnavailable]
+                assert owned._closing.is_set() and owned.available() is False
+            else:
+                owned._closing.set()
+                serving.join(timeout=2)
+                assert [type(value) for value in outcome] == [RuntimeUnavailable]
+            stopped.set()
+            assert "2222" not in "".join(capsys.readouterr())
         finally:
             objects.close()

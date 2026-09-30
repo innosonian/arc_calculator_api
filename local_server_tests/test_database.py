@@ -4,20 +4,11 @@ from dataclasses import replace
 from copy import deepcopy
 import json
 import os
-import socket
 
 from botocore.exceptions import ClientError
 import pytest
 
 from local_server import database as db
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("DB unit test attempted network.")
-    monkeypatch.setattr(socket.socket, "connect", forbidden)
-    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
 
 
 @pytest.fixture
@@ -181,6 +172,12 @@ def test_sdk_ignores_ambient_config_profile_and_proxy(monkeypatch, tmp_path):
         client.close()
 
 
+def control_schema():
+    """The exact PK/SK-only table an earlier control-only installation created."""
+    return {"TableStatus": "ACTIVE", "KeySchema": deepcopy(db._KEY_SCHEMA),
+            "AttributeDefinitions": deepcopy(db._ATTRIBUTES)}
+
+
 class SetupClient:
     """Setup fixture only; never shipped or used to prove DB atomicity."""
     def __init__(self, *, exists=False):
@@ -188,18 +185,25 @@ class SetupClient:
         self.item = self.schema = None
         self.foreign = self.down = False
         self.created = self.closed = self.puts = 0
+        self.creations = []
 
     def describe_table(self, **kwargs):
         if self.down:
             raise RuntimeError("PRIVATE-UPSTREAM-MARKER")
         if not self.exists:
             raise ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeTable")
-        return {"Table": self.schema or {"TableStatus": "ACTIVE", "KeySchema": db._KEY_SCHEMA,
-                                         "AttributeDefinitions": db._ATTRIBUTES}}
+        return {"Table": self.schema or control_schema()}
 
     def create_table(self, **kwargs):
         self.created += 1
         self.exists = True
+        self.creations.append(deepcopy(kwargs))
+        # Report exactly the schema that was requested, with an active index.
+        self.schema = {"TableStatus": "ACTIVE", "KeySchema": deepcopy(kwargs["KeySchema"]),
+                       "AttributeDefinitions": deepcopy(kwargs["AttributeDefinitions"])}
+        if "GlobalSecondaryIndexes" in kwargs:
+            self.schema["GlobalSecondaryIndexes"] = [
+                {**deepcopy(index), "IndexStatus": "ACTIVE"} for index in kwargs["GlobalSecondaryIndexes"]]
 
     def get_item(self, **kwargs):
         return {"Item": self.item} if self.item is not None else {}
@@ -215,14 +219,32 @@ class SetupClient:
         self.closed += 1
 
 
-def test_setup_restart_binding_and_disabled_calculation(private_root, monkeypatch):
+EXPECTED_CREATION = {
+    "TableName": db.TABLE_NAME, "KeySchema": db._KEY_SCHEMA,
+    "AttributeDefinitions": db._ATTRIBUTES + db._JOB_ATTRIBUTES,
+    "GlobalSecondaryIndexes": [db._JOB_INDEX], "BillingMode": "PAY_PER_REQUEST",
+}
+
+
+@pytest.mark.parametrize("arguments", [{}, {"initialize": True}])
+def test_every_new_installation_is_created_with_the_journey_due_index(private_root, monkeypatch, arguments):
+    material = db.prepare_material(private_root)
+    client = SetupClient()
+    monkeypatch.setattr(db, "_new_client", lambda endpoint: client)
+    runtime = db.connect_application("http://127.0.0.1:18767", material, **arguments)
+    assert client.creations == [EXPECTED_CREATION]
+    assert db._table_kind(client.schema) == "journey" and runtime.ready() is True
+    runtime.close()
+
+
+def test_setup_restart_binding_without_an_application_assembly(private_root, monkeypatch):
     material = db.prepare_material(private_root)
     client = SetupClient()
     monkeypatch.setattr(db, "_new_client", lambda endpoint: client)
     runtime = db.connect_application("http://127.0.0.1:18767", material)
     assert runtime.ready() is True
-    assert runtime.application.calculation is None
-    assert runtime.application.catalog.execution_definitions is None
+    # The DB connection no longer assembles any API role; runtime.py does.
+    assert not hasattr(runtime, "application")
     assert client.created == 1 and client.puts == 1
     reopened = db.prepare_material(private_root)
     assert reopened.database_initialized is True
@@ -267,7 +289,7 @@ def test_log_cleanup_error_cannot_skip_owned_business_client_cleanup():
         def close(self, **kwargs):
             raise OSError("PRIVATE-LOG-CLEANUP-FAILURE")
     client = SetupClient()
-    runtime = db.LocalDatabase(client, None, None, operations=BrokenLogs())
+    runtime = db.LocalDatabase(client, None, operations=BrokenLogs())
     runtime.close()
     assert client.closed == 1
 
@@ -353,51 +375,82 @@ class MigrationClient(SetupClient):
         self.schema["GlobalSecondaryIndexes"] = [{**deepcopy(db._JOB_INDEX), "IndexStatus": "ACTIVE"}]
 
 
-def initialized_control(private_root, monkeypatch):
+def journey_schema():
+    """The one accepted schema: PK/SK plus the active GSI1 due index."""
+    return {"TableStatus": "ACTIVE", "KeySchema": deepcopy(db._KEY_SCHEMA),
+            "AttributeDefinitions": deepcopy(db._ATTRIBUTES + db._JOB_ATTRIBUTES),
+            "GlobalSecondaryIndexes": [{**deepcopy(db._JOB_INDEX), "IndexStatus": "ACTIVE"}]}
+
+
+def initialized_installation(private_root, monkeypatch, schema):
+    """Raw seed of an already initialized installation whose table reports ``schema``.
+
+    The seed writes the table description, this installation's sentinel and
+    the initialized material record directly; no setup code runs.
+    """
     material = db.prepare_material(private_root)
     client = MigrationClient()
+    client.exists, client.schema, client.item = True, schema, db._sentinel(material)
+    path = private_root / db.MATERIAL_FILENAME
+    record = json.loads(path.read_text())
+    record["database_initialized"] = True
+    db._write_record(path, record, replace=True)
     monkeypatch.setattr(db, "_new_client", lambda endpoint: client)
-    db.connect_application("http://127.0.0.1:18767", material).close()
-    return db.prepare_material(private_root), client
+    material = db.prepare_material(private_root)
+    assert material.database_initialized
+    return material, client
+
+
+def initialized_journey(private_root, monkeypatch):
+    material, client = initialized_installation(private_root, monkeypatch, journey_schema())
+    assert db._table_kind(client.schema) == "journey"
+    return material, client
+
+
+def initialized_control(private_root, monkeypatch):
+    """The PK/SK-only table of the removed control-only CLI (D122: refused, never migrated)."""
+    material, client = initialized_installation(private_root, monkeypatch, control_schema())
+    assert db._table_kind(client.schema) is None
+    return material, client
 
 
 def test_fresh_journey_creates_exact_index_and_exposes_own_client(private_root, monkeypatch):
     material = db.prepare_material(private_root)
     client = MigrationClient()
     monkeypatch.setattr(db, "_new_client", lambda endpoint: client)
-    runtime = db.connect_application("http://127.0.0.1:18767", material, journey=True)
+    runtime = db.connect_application("http://127.0.0.1:18767", material)
     assert runtime.ready() and runtime.client is client and runtime.table_name == db.TABLE_NAME
     assert db._table_kind(client.schema) == "journey"
     assert client.created == client.puts == 1 and client.updates == []
+    assert client.creations == [EXPECTED_CREATION]
     with pytest.raises(AttributeError):
         runtime.client = object()
     with pytest.raises(AttributeError):
         runtime.table_name = "foreign"
 
 
-def test_only_owned_exact_control_schema_receives_additive_index(private_root, monkeypatch):
+@pytest.mark.parametrize("initialize", [True, False])
+def test_control_schema_is_refused_without_any_write(private_root, monkeypatch, initialize):
+    # D122: the PK/SK-only table is not migrated (no update_table), not
+    # adopted (no create/put) and not served, by the parent, a child or the
+    # read-only log reader alike. The key record and sentinel stay untouched.
     material, client = initialized_control(private_root, monkeypatch)
-    original_key, original_sentinel = material.resume_key, deepcopy(client.item)
-    before = (private_root / db.MATERIAL_FILENAME).read_bytes()
-    runtime = db.connect_application("http://127.0.0.1:18767", material, journey=True)
-    assert runtime.ready()
-    assert client.updates == [{"TableName": db.TABLE_NAME, "AttributeDefinitions": db._JOB_ATTRIBUTES,
-                              "GlobalSecondaryIndexUpdates": [{"Create": db._JOB_INDEX}]}]
-    assert client.item == original_sentinel and client.puts == client.created == 1
-    assert (private_root / db.MATERIAL_FILENAME).read_bytes() == before
+    original_key = material.resume_key
+    before = (deepcopy(client.schema), deepcopy(client.item), (private_root / db.MATERIAL_FILENAME).read_bytes())
+    with pytest.raises(db.LocalDatabaseError) as error:
+        db.connect_application("http://127.0.0.1:18767", material, initialize=initialize)
+    assert str(error.value) == "Local database installation is unavailable or inconsistent."
+    assert client.updates == [] and client.created == client.puts == 0 and client.closed == 1
+    assert (client.schema, client.item, (private_root / db.MATERIAL_FILENAME).read_bytes()) == before
     assert db.prepare_material(private_root).resume_key == original_key
-    assert db.connect_application("http://127.0.0.1:18767", material).ready()
-    assert len(client.updates) == 1
 
 
 @pytest.mark.parametrize("damage", ["sentinel", "index-name", "index-key-type", "projection", "extra-index", "lsi", "missing-attribute"])
 def test_foreign_schema_or_sentinel_never_receives_an_update(private_root, monkeypatch, damage):
-    material, client = initialized_control(private_root, monkeypatch)
+    material, client = initialized_journey(private_root, monkeypatch)
     if damage == "sentinel":
         client.item = {"PK": {"S": "foreign"}}
     else:
-        client.schema["AttributeDefinitions"] = deepcopy(db._ATTRIBUTES + db._JOB_ATTRIBUTES)
-        client.schema["GlobalSecondaryIndexes"] = [{**deepcopy(db._JOB_INDEX), "IndexStatus": "ACTIVE"}]
         index = client.schema["GlobalSecondaryIndexes"][0]
         if damage == "index-name":
             index["IndexName"] = "foreign"
@@ -413,49 +466,43 @@ def test_foreign_schema_or_sentinel_never_receives_an_update(private_root, monke
             client.schema["AttributeDefinitions"].pop()
     before = deepcopy(client.schema), deepcopy(client.item)
     with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True)
-    assert client.updates == [] and client.puts == client.created == 1
+        db.connect_application("http://127.0.0.1:18767", material)
+    assert client.updates == [] and client.puts == client.created == 0
     assert (client.schema, client.item) == before
 
 
 def test_correct_pending_index_is_waited_for_without_another_update(private_root, monkeypatch):
-    material, client = initialized_control(private_root, monkeypatch)
-    db.connect_application("http://127.0.0.1:18767", material, journey=True)
+    material, client = initialized_journey(private_root, monkeypatch)
     client.pending_reads = 3
     sleeps = []
     monkeypatch.setattr(db.time, "sleep", sleeps.append)
-    runtime = db.connect_application("http://127.0.0.1:18767", material, journey=True)
-    assert runtime.ready() and len(client.updates) == 1 and len(sleeps) == 3
+    runtime = db.connect_application("http://127.0.0.1:18767", material)
+    assert runtime.ready() and client.updates == [] and len(sleeps) == 3
 
 
 def test_pending_index_timeout_preserves_schema_material_and_can_restart(private_root, monkeypatch):
-    material, client = initialized_control(private_root, monkeypatch)
-    db.connect_application("http://127.0.0.1:18767", material, journey=True)
+    material, client = initialized_journey(private_root, monkeypatch)
     client.pending_reads = 100
     material_before = (private_root / db.MATERIAL_FILENAME).read_bytes()
     clock = iter((0, 31))
     monkeypatch.setattr(db.time, "monotonic", lambda: next(clock))
     with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True)
-    assert len(client.updates) == 1 and (private_root / db.MATERIAL_FILENAME).read_bytes() == material_before
+        db.connect_application("http://127.0.0.1:18767", material)
+    assert client.updates == [] and (private_root / db.MATERIAL_FILENAME).read_bytes() == material_before
     client.pending_reads = 0
     monkeypatch.setattr(db.time, "monotonic", lambda: 100)
-    assert db.connect_application("http://127.0.0.1:18767", material, journey=True).ready()
-    assert len(client.updates) == 1
+    assert db.connect_application("http://127.0.0.1:18767", material).ready()
+    assert client.updates == []
 
 
 def test_child_attach_has_no_setup_writes_and_requires_active_job_index(private_root, monkeypatch):
-    material, client = initialized_control(private_root, monkeypatch)
-    with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True, initialize=False)
-    assert client.updates == []
-    db.connect_application("http://127.0.0.1:18767", material, journey=True)
+    material, client = initialized_journey(private_root, monkeypatch)
     before = (client.created, client.puts, len(client.updates), (private_root / db.MATERIAL_FILENAME).read_bytes())
-    assert db.connect_application("http://127.0.0.1:18767", material, journey=True, initialize=False).ready()
+    assert db.connect_application("http://127.0.0.1:18767", material, initialize=False).ready()
     assert (client.created, client.puts, len(client.updates), (private_root / db.MATERIAL_FILENAME).read_bytes()) == before
     client.pending_reads = 1
     with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True, initialize=False)
+        db.connect_application("http://127.0.0.1:18767", material, initialize=False)
     assert (client.created, client.puts, len(client.updates)) == before[:3]
 
 
@@ -464,13 +511,13 @@ def test_child_refuses_uninitialized_material_before_client_or_write(private_roo
     before = (private_root / db.MATERIAL_FILENAME).read_bytes()
     monkeypatch.setattr(db, "_new_client", lambda *a: pytest.fail("Child connected an uninitialized installation."))
     with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True, initialize=False)
+        db.connect_application("http://127.0.0.1:18767", material, initialize=False)
     assert (private_root / db.MATERIAL_FILENAME).read_bytes() == before
 
 
 @pytest.mark.parametrize("damage", ["material", "directory", "both", "tampered"])
 def test_child_material_validation_never_regenerates_missing_or_changed_files(private_root, monkeypatch, damage):
-    material, _ = initialized_control(private_root, monkeypatch)
+    material, _ = initialized_journey(private_root, monkeypatch)
     path = private_root / db.MATERIAL_FILENAME
     if damage in ("material", "both"):
         path.unlink()
@@ -483,7 +530,7 @@ def test_child_material_validation_never_regenerates_missing_or_changed_files(pr
     before = {entry.name: entry.read_bytes() if entry.is_file() else None for entry in private_root.iterdir()}
     monkeypatch.setattr(db, "_new_client", lambda *a: pytest.fail("Invalid material reached the SDK."))
     with pytest.raises(db.LocalDatabaseError):
-        db.connect_application("http://127.0.0.1:18767", material, journey=True, initialize=False)
+        db.connect_application("http://127.0.0.1:18767", material, initialize=False)
     after = {entry.name: entry.read_bytes() if entry.is_file() else None for entry in private_root.iterdir()}
     assert after == before
 
@@ -503,15 +550,28 @@ def test_read_only_material_load_never_creates_setup_files(private_root, damage)
 
 
 def test_journey_ready_detects_lost_index_without_repair(private_root, monkeypatch):
-    material, client = initialized_control(private_root, monkeypatch)
-    runtime = db.connect_application("http://127.0.0.1:18767", material, journey=True)
-    client.schema = {"TableStatus": "ACTIVE", "KeySchema": deepcopy(db._KEY_SCHEMA), "AttributeDefinitions": deepcopy(db._ATTRIBUTES)}
-    assert not runtime.ready() and len(client.updates) == 1
+    material, client = initialized_journey(private_root, monkeypatch)
+    runtime = db.connect_application("http://127.0.0.1:18767", material)
+    assert runtime.ready()
+    client.schema = control_schema()
+    assert not runtime.ready() and client.updates == []
 
 
-@pytest.mark.parametrize("arguments", [{"journey": 1}, {"journey": None}, {"initialize": "no"}, {"initialize": 0}])
+@pytest.mark.parametrize("arguments", [{"initialize": "no"}, {"initialize": 0}])
 def test_invalid_setup_flags_are_rejected_before_client(private_root, monkeypatch, arguments):
     material = db.prepare_material(private_root)
     monkeypatch.setattr(db, "_new_client", lambda *a: pytest.fail("Invalid flags reached the SDK."))
     with pytest.raises(db.LocalDatabaseError):
         db.connect_application("http://127.0.0.1:18767", material, **arguments)
+
+
+def test_former_journey_switch_is_no_longer_a_parameter(private_root, monkeypatch):
+    # D122: one schema only; the former journey=/control switch of the
+    # connection and of LocalDatabase is gone rather than silently ignored.
+    material = db.prepare_material(private_root)
+    monkeypatch.setattr(db, "_new_client", lambda *a: pytest.fail("A removed flag reached the SDK."))
+    for arguments in ({"journey": True}, {"journey": False}):
+        with pytest.raises(TypeError):
+            db.connect_application("http://127.0.0.1:18767", material, **arguments)
+    with pytest.raises(TypeError):
+        db.LocalDatabase(SetupClient(), None, journey=True)

@@ -1,31 +1,32 @@
 """L1 real DynamoDB transactions with the bundled calculator and test object IO.
 
-The fixture deliberately reuses in-memory object IO; this is not evidence for
-the later filesystem, default CLI, or actual app/manikin acceptance phases.
+Course attempts through the public /api/v2 harness (Dummy Dev courses, real
+internal calculator). The in-memory object IO is deliberate; this is not
+evidence for the filesystem, default CLI, or actual app/manikin acceptance
+phases. No v1 API route or v1-only service method is used. Legacy (no course
+binding) finalize is checked on the captured legacy rows
+(tests/fixtures/legacy_mock_v1_rows) with a USER slot already completed.
 """
 
-from copy import deepcopy
 import json
 
 import pytest
 
-from integration_tests.test_mock_journey import (
-    LocalDefinitions, api, create, journey as legacy_journey, login, stored_attempt, submit,
+from integration_tests.legacy_slot_support import PREVIOUS_ATTEMPT, complete_legacy_slot, other_slots
+from integration_tests.worker_journey_support import (  # noqa: F401 (store fixture)
+    DUMMY_SUBMISSION, OneTransactionInterruption, accepted, attempt_row, calculation, course_rows, item_view,
+    job_row, jobs_over, journey, progress_facts, seeded_legacy, start_reply, store, submit, user_row,
 )
-from integration_tests.test_mock_state_dynamodb import OneTransactionInterruption, _encode
-from mock_journey.catalog import Catalog
-from mock_journey.contracts import CalculatorRegistry
 from mock_journey.errors import JourneyError
-from mock_journey.internal_calculator import (
-    InternalCalculator, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
-)
-from mock_journey.jobs import DynamoJobRepository
-from mock_journey.state import DynamoStateRepository
-from mock_journey.worker import JourneyWorker, call_binding
+from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION
+from mock_journey.worker import call_binding
 from tests._synth import WEAK_RAMP, comp_session, cpr_session
+from tests.journey_support import LocalDefinitions, dummy_course, encode_item
 
 
 class PendingDefinitions(LocalDefinitions):
+    """Kept for integration_tests/test_local_database_migration.py (another unit's seed)."""
+
     def get_definition(self, program_id, target):
         definition = super().get_definition(program_id, target)
         definition.update(adapter_version=PENDING_GOAL_ADAPTER_VERSION,
@@ -33,198 +34,252 @@ class PendingDefinitions(LocalDefinitions):
         return definition
 
 
-class TrackedCalculator(InternalCalculator):
-    """Fault hooks surround actual calculation; no score is replaced."""
-
-    def __init__(self):
-        super().__init__(version=PENDING_GOAL_ADAPTER_VERSION, projection_version="test-projection",
-                         stage="development", allow_pending_cycle_goal=True)
-        self.calls = []
-        self.after_calculate = lambda: None
-
-    def calculate(self, loaded, binding, heartbeat):
-        raw = super().calculate(loaded, binding, heartbeat)
-        self.calls.append((deepcopy(binding), raw))
-        self.after_calculate()
-        return raw
+CPR = dummy_course("mock-cpr", "adult")
+CPR_DATA = cpr_session([(30, 2)] * 3)
 
 
-@pytest.fixture
-def pending_journey(legacy_journey):
-    world = legacy_journey
-    world.service.catalog = Catalog(PendingDefinitions())
-    world.adapter = TrackedCalculator()
-    world.worker = JourneyWorker(world.jobs, world.storage, CalculatorRegistry([world.adapter]),
-                                 lease_seconds=60, retry_seconds=5, clock=lambda: world.now[0])
-    return world
+def unavailable(*args, **kwargs):
+    raise JourneyError("TEMPORARILY_UNAVAILABLE")
 
 
-def progress(world, token):
-    return world.state.get_progress(world.auth.authenticate(token))
-
-
-def result(world, token, attempt):
-    return api(world, "GET", "attempts/" + attempt["attempt_id"] + "/calculation", token=token)
-
-
-def accept(world, token, *, data=None, program="mock-cpr", request_id="first"):
-    attempt = create(world, token, program=program, request_id=request_id)
-    assert submit(world, token, attempt, data=data if data is not None else cpr_session([(30, 2)] * 3))["statusCode"] == 202
-    return attempt, stored_attempt(world, token, attempt)["job_id"]
-
-
-@pytest.mark.parametrize("program,data,pending,met,decision,complete", [
-    ("mock-cpr", cpr_session([(30, 2)] * 3), True, None, "pass", False),
-    ("mock-cpr", cpr_session([(30, 2)]), True, None, "fail", False),
-    ("mock-compression-only", comp_session(60), False, True, "pass", True),
-    ("mock-compression-only", comp_session(59), False, False, "pass", False),
-    ("mock-compression-only", comp_session(60, WEAK_RAMP), False, True, "fail", False),
-], ids=("cpr-pass-pending", "cpr-null-pending", "only-pass-complete", "only-short-incomplete", "only-fail-incomplete"))
-def test_real_scores_and_completion_commit_once(pending_journey, program, data, pending, met, decision, complete):
-    world = pending_journey
-    token, other = login(world), login(world)
-    attempt, job_id = accept(world, token, data=data, program=program)
-    slot = program + ":adult"
-    assert progress(world, other)["slots"][slot]["open_attempts"] == 1
-    assert world.worker.process(job_id)
-    stored = stored_attempt(world, token, attempt)
+@pytest.mark.parametrize("program,data,observed,met,decision,complete", [
+    # D136: three closed cpr cycles meet the CPR goal; one cycle does not (and scores no pass).
+    ("mock-cpr", cpr_session([(30, 2)] * 3), 3, True, "pass", True),
+    ("mock-cpr", cpr_session([(30, 2)]), 1, False, "fail", False),
+    ("mock-cpr", cpr_session([(30, 2)] * 2 + [(30, 0)]), 2, False, "pass", False),
+    ("mock-compression-only", comp_session(60), 60, True, "pass", True),
+    ("mock-compression-only", comp_session(59), 59, False, "pass", False),
+    ("mock-compression-only", comp_session(60, WEAK_RAMP), 60, True, "fail", False),
+], ids=("cpr-three-cycles-complete", "cpr-one-cycle-incomplete", "cpr-open-last-group-incomplete",
+        "only-pass-complete", "only-short-incomplete", "only-fail-incomplete"))
+def test_real_scores_and_completion_commit_once(store, program, data, observed, met, decision, complete):
+    h = journey(store)
+    course = dummy_course(program, "adult")
+    token, other = h.login().token, h.login().token
+    token, attempt, job_id = accepted(h, course, token=token, data=data)
+    attempt_id = attempt["attemptId"]
+    assert item_view(h, other, course, course.practice_link_id)["isCompleted"] is False
+    assert h.work(job_id=job_id) is True
+    stored = attempt_row(h, attempt_id)
     assessment = stored["evaluation"]
     assert stored["state"] == "evaluated" and stored["active_counted"] is False
-    assert assessment["goal"]["status"] == ("pending_policy" if pending else "evaluated")
+    assert assessment["goal"]["status"] == "evaluated"
+    assert assessment["goal"]["observed"] == observed and type(assessment["goal"]["observed"]) is int
     assert assessment["goal"]["met"] is met
     assert assessment["score"]["decision"] == decision
     assert assessment["program_completed"] is complete
-    if pending:
-        assert assessment["goal"]["observed"] is None
-        assert assessment["reason_codes"] == ["GOAL_POLICY_UNRESOLVED"] + ([] if decision == "pass" else ["SCORE_NOT_PASS"])
-        assert stored["progress_application"]["reason"] == "GOAL_POLICY_UNRESOLVED"
-    shared = progress(world, other)
-    assert shared["slots"][slot]["open_attempts"] == 0
-    assert shared["slots"][slot]["completed"] is complete
-    job = world.jobs.get_job(job_id)
+    assert assessment["reason_codes"] == ([] if met else ["GOAL_NOT_MET"]) + ([] if decision == "pass" else ["SCORE_NOT_PASS"])
+    assert stored["progress_application"]["reason"] == ("APPLIED" if complete else "REQUIREMENTS_NOT_MET")
+    shared = h.course(other, course)
+    item = next(value for value in shared["courseItems"] if value["courseItemLinkId"] == course.practice_link_id)
+    assert item["isCompleted"] is complete
+    job = job_row(h, job_id)
     assert job["state"] == "done" and "GSI1PK" not in job and "GSI1SK" not in job
-    response = result(world, token, attempt)
-    assert response["statusCode"] == 200
-    body = json.loads(response["body"])
-    assert body["submit_arc"] == {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
+    response = calculation(h, token, attempt_id)
+    assert response.status == 200
+    body = response.data["calculation"]
+    assert response.data["submit_arc"] == DUMMY_SUBMISSION and "submit_arc" not in body
+    assert response.data["evaluation"] == assessment and "evaluation" not in body
     assert body["chart_dataset_url"]
-    assert "evaluation" not in body
-    if pending and decision == "fail":
-        assert body["cpr_score"]["total_score"]["overall"] is None
+    if program == "mock-cpr" and decision == "fail":
+        assert body["cpr_score"]["total_score"]["overall"] is None  # one cycle: no score, not a fake fail
     for _ in range(2):
-        assert world.worker.process(job_id)
-        assert result(world, token, attempt) == response
-        assert submit(world, token, attempt, data=data) == response
-    assert len(world.adapter.calls) == 1
-    assert stored_attempt(world, token, attempt) == stored
-    assert progress(world, other) == shared
-    next_attempt = api(world, "POST", "attempts", {"client_request_id": "next", "catalog_version": "mock-catalog-v1",
-                                                   "program_id": program, "target": "adult"}, token)
-    assert next_attempt["statusCode"] == (409 if complete else 201)
+        assert h.work(job_id=job_id) is True
+        assert calculation(h, token, attempt_id).body == response.body
+        assert submit(h, token, attempt, data=data).body == response.body
+    assert len(h.calculator.calls) == 1
+    assert attempt_row(h, attempt_id) == stored
+    assert h.course(other, course) == shared
+    # D130: completed or not, the practice item accepts another start; the shared view is untouched.
+    next_attempt = start_reply(h, token, course)
+    assert next_attempt.status == 201, next_attempt.body
+    assert h.course(other, course) == shared
 
 
-def test_pending_candidate_recovers_without_calculation_after_reference_commit_failure(pending_journey, monkeypatch):
-    world = pending_journey
-    token = login(world)
-    attempt, job_id = accept(world, token)
-    mark = world.jobs.mark_calculation_saved
-
-    def unavailable(*args, **kwargs):
-        raise JourneyError("TEMPORARILY_UNAVAILABLE")
-
-    monkeypatch.setattr(world.jobs, "mark_calculation_saved", unavailable)
-    assert not world.worker.process(job_id)
-    old = world.jobs.get_job(job_id)
-    candidate = world.storage.load_calculation(old["planned_candidate_ref"], call_binding(old))
+def test_pending_candidate_recovers_without_calculation_after_reference_commit_failure(store, monkeypatch):
+    h = journey(store)
+    token, attempt, job_id = accepted(h, CPR, data=CPR_DATA)
+    monkeypatch.setattr(h.worker.jobs, "mark_calculation_saved", unavailable)
+    assert h.work(job_id=job_id) is False
+    old = job_row(h, job_id)
+    candidate = h.worker.storage.load_calculation(old["planned_candidate_ref"], call_binding(old))
     assert candidate is not None and old["candidate_ref"] is None
-    assert json.loads(candidate)["goal"]["status"] == "pending_policy"
-    monkeypatch.setattr(world.jobs, "mark_calculation_saved", mark)
-    monkeypatch.setattr(world.adapter, "calculate", lambda *a, **k: pytest.fail("Saved pending candidate was recalculated."))
-    world.now[0] = old["next_due_at"]
-    assert world.worker.process(job_id)
-    assert world.jobs.get_job(job_id)["call_id"] == old["call_id"]
-    assert stored_attempt(world, token, attempt)["progress_application"]["reason"] == "GOAL_POLICY_UNRESOLVED"
-    assert progress(world, token)["slots"]["mock-cpr:adult"]["open_attempts"] == 0
-    assert len(world.adapter.calls) == 1
+    assert json.loads(candidate)["goal"] == {"kind": "cycles", "observed": 3, "status": "evaluated"}
+    assert attempt_row(h, attempt["attemptId"])["state"] == "outcome_unknown"
+    monkeypatch.undo()
+    monkeypatch.setattr(h.calculator, "calculate", lambda *a, **k: pytest.fail("Saved candidate was recalculated."))
+    h.now[0] = old["next_due_at"]
+    assert h.work(job_id=job_id) is True
+    assert job_row(h, job_id)["call_id"] == old["call_id"]
+    stored = attempt_row(h, attempt["attemptId"])
+    assert stored["state"] == "evaluated"
+    assert stored["evaluation"]["program_completed"] is True
+    assert stored["progress_application"]["reason"] == "APPLIED"
+    assert item_view(h, token, CPR, CPR.practice_link_id)["isCompleted"] is True
+    assert len(h.calculator.calls) == 1
 
 
-def test_unstored_pending_candidate_rotates_call_and_old_late_write_is_isolated(pending_journey):
-    world = pending_journey
-    token = login(world)
-    attempt, job_id = accept(world, token)
+def test_unstored_pending_candidate_rotates_call_and_old_late_write_is_isolated(store):
+    h = journey(store)
+    token, attempt, job_id = accepted(h, CPR, data=CPR_DATA)
 
     def interrupted():
         raise RuntimeError("Test interruption before candidate persistence.")
 
-    world.adapter.after_calculate = interrupted
-    assert not world.worker.process(job_id)
-    old = world.jobs.get_job(job_id)
-    assert world.storage.load_calculation(old["planned_candidate_ref"], call_binding(old)) is None
-    world.adapter.after_calculate = lambda: None
-    world.now[0] = old["next_due_at"]
-    assert world.worker.process(job_id)
-    current = world.jobs.get_job(job_id)
+    h.calculator.after_calculate = interrupted
+    assert h.work(job_id=job_id) is False
+    old = job_row(h, job_id)
+    assert h.worker.storage.load_calculation(old["planned_candidate_ref"], call_binding(old)) is None
+    h.calculator.after_calculate = lambda: None
+    h.now[0] = old["next_due_at"]
+    assert h.work(job_id=job_id) is True
+    current = job_row(h, job_id)
     assert current["call_id"] != old["call_id"] and current["planned_candidate_ref"] != old["planned_candidate_ref"]
-    assert current["execution_fence"] > old["execution_fence"]
-    snapshot = result(world, token, attempt)
-    saved_progress = progress(world, token)
-    world.storage.save_calculation(old["planned_candidate_ref"], world.adapter.calls[0][1], call_binding(old))
-    assert world.worker.process(job_id)
-    assert result(world, token, attempt) == snapshot and progress(world, token) == saved_progress
-    assert len(world.adapter.calls) == 2
+    assert current["execution_fence"] > old["execution_fence"] and current["calculation_restarts"] == 1
+    snapshot = calculation(h, token, attempt["attemptId"])
+    assert snapshot.status == 200
+    saved_rows = course_rows(h, attempt["attemptId"])
+    h.worker.storage.save_calculation(old["planned_candidate_ref"], h.calculator.calls[0][1], call_binding(old))
+    assert h.work(job_id=job_id) is True
+    assert calculation(h, token, attempt["attemptId"]).body == snapshot.body
+    assert course_rows(h, attempt["attemptId"]) == saved_rows
+    assert len(h.calculator.calls) == 2
 
 
-def test_logout_at_final_transaction_keeps_pending_result_without_applying_to_new_epoch(pending_journey, monkeypatch):
-    world = pending_journey
-    token, other = login(world), login(world)
-    attempt, job_id = accept(world, token)
-    original_epoch = progress(world, token)["epoch"]
-    wrapped = OneTransactionInterruption(world.state.client, before=lambda: world.state.logout(world.auth.authenticate(other)))
-    jobs = DynamoJobRepository(DynamoStateRepository(wrapped, world.state.table_name, clock=lambda: world.now[0]))
-    monkeypatch.setattr(world.jobs, "finalize", jobs.finalize)
-    assert world.worker.process(job_id)
-    saved = stored_attempt(world, token, attempt)
-    assert saved["state"] == "evaluated" and saved["evaluation"]["goal"]["status"] == "pending_policy"
+def test_logout_at_final_transaction_keeps_pending_result_without_applying_to_new_epoch(store, monkeypatch):
+    h = journey(store)
+    token, other = h.login().token, h.login().token
+    token, attempt, job_id = accepted(h, CPR, token=token, data=CPR_DATA)
+    original_epoch = user_row(h)["epoch"]
+    original_rows = course_rows(h, attempt["attemptId"])
+    wrapped = OneTransactionInterruption(h.store.client, before=lambda: h.logout(other))
+    monkeypatch.setattr(h.worker.jobs, "finalize", jobs_over(h, wrapped).finalize)
+    assert h.work(job_id=job_id) is True
+    assert wrapped.used
+    saved = attempt_row(h, attempt["attemptId"])
+    assert saved["state"] == "evaluated" and saved["evaluation"]["program_completed"] is True
     assert saved["progress_application"] == {"applied": False, "applied_epoch": None, "reason": "PROGRESS_RESET"}
-    shared = progress(world, token)
-    assert shared["epoch"] != original_epoch
-    assert all(slot["open_attempts"] == 0 and slot["completed"] is False for slot in shared["slots"].values())
-    assert result(world, token, attempt)["statusCode"] == 200
+    assert user_row(h)["epoch"] != original_epoch
+    # The original epoch's course rows are not rewritten by the late result.
+    assert course_rows(h, attempt["attemptId"]) == original_rows
+    assert calculation(h, token, attempt["attemptId"]).status == 200
+    h.refresh(token)
+    assert item_view(h, token, CPR, CPR.practice_link_id)["isCompleted"] is False
 
 
-def test_lost_final_commit_response_does_not_close_activity_twice(pending_journey, monkeypatch):
-    world = pending_journey
-    token = login(world)
-    attempt, job_id = accept(world, token)
-    wrapped = OneTransactionInterruption(world.state.client, lose_response=True)
-    jobs = DynamoJobRepository(DynamoStateRepository(wrapped, world.state.table_name, clock=lambda: world.now[0]))
-    monkeypatch.setattr(world.jobs, "finalize", jobs.finalize)
-    assert not world.worker.process(job_id)
-    saved = stored_attempt(world, token, attempt)
-    shared = progress(world, token)
-    assert saved["state"] == "evaluated" and world.jobs.get_job(job_id)["state"] == "done"
-    assert shared["slots"]["mock-cpr:adult"]["open_attempts"] == 0
-    response = result(world, token, attempt)
-    assert response["statusCode"] == 200
-    assert world.worker.process(job_id)
-    assert result(world, token, attempt) == response
-    assert stored_attempt(world, token, attempt) == saved and progress(world, token) == shared
-    assert len(world.adapter.calls) == 1
+def test_lost_final_commit_response_does_not_close_activity_twice(store, monkeypatch):
+    h = journey(store)
+    token = h.login().token
+    # The practice item must be complete before the final assessment starts.
+    course = dummy_course("mock-compression-only", "adult")
+    _, _, practice_job = accepted(h, course, token=token, data=comp_session(60))
+    assert h.work(job_id=practice_job) is True
+    token, attempt, job_id = accepted(h, course, token=token, role="final", data=comp_session(60))
+    assert course_rows(h, attempt["attemptId"]).final["phase"] == "active"
+    wrapped = OneTransactionInterruption(h.store.client, lose_response=True)
+    monkeypatch.setattr(h.worker.jobs, "finalize", jobs_over(h, wrapped).finalize)
+    assert h.work(job_id=job_id) is False
+    saved, rows = attempt_row(h, attempt["attemptId"]), course_rows(h, attempt["attemptId"])
+    assert saved["state"] == "evaluated" and job_row(h, job_id)["state"] == "done"
+    assert (rows.final["phase"], rows.final["active_attempt_id"]) == ("passed", None)
+    response = calculation(h, token, attempt["attemptId"])
+    assert response.status == 200
+    monkeypatch.undo()
+    assert h.work(job_id=job_id) is True
+    assert calculation(h, token, attempt["attemptId"]).body == response.body
+    assert attempt_row(h, attempt["attemptId"]) == saved and course_rows(h, attempt["attemptId"]) == rows
+    assert len(h.calculator.calls) == 2  # practice + final, each exactly once
 
 
-def test_pending_result_preserves_preexisting_completed_slot(pending_journey):
-    world = pending_journey
-    token = login(world)
-    attempt, job_id = accept(world, token)
-    user = progress(world, token)
-    # Represent an already existing completion from another accepted definition;
-    # this fixture does not claim a new CPR completion policy.
-    slot = user["slots"]["mock-cpr:adult"]
-    slot.update(completed=True, completed_by_attempt="previous-committed-attempt", completed_at=999)
-    user["revision"] += 1
-    world.state.client.put_item(TableName=world.state.table_name, Item=_encode(user))
-    assert world.worker.process(job_id)
-    saved = progress(world, token)["slots"]["mock-cpr:adult"]
-    assert saved == {**slot, "open_attempts": 0}
-    assert stored_attempt(world, token, attempt)["evaluation"]["program_completed"] is False
-    assert stored_attempt(world, token, attempt)["progress_application"]["reason"] == "GOAL_POLICY_UNRESOLVED"
+def test_completing_cpr_result_preserves_preexisting_completed_item(store):
+    """An item completed earlier keeps its completion evidence; the new result is recorded only (D131)."""
+    h = journey(store)
+    token, attempt, job_id = accepted(h, CPR, data=CPR_DATA)
+    rows = course_rows(h, attempt["attemptId"])
+    placement = rows.item["placement_key"]
+    # Represent an already existing completion from another accepted definition.
+    progress = json.loads(rows.head["progress_json"])
+    progress["items"][placement].update(completed=True, passed=True)
+    progress.update(completed_placements=[placement], course_status="IN_PROGRESS")
+    head = {**rows.head, "progress_json": json.dumps(progress), "completed_placements": [placement],
+            "revision": rows.head["revision"] + 1}
+    item = {**rows.item, "completed": True, "passed": True, "completed_by_attempt": "previous-committed-attempt",
+            "completion_definition_hash": rows.head["definition_hash"], "revision": rows.item["revision"] + 1}
+    for row in (head, item):
+        h.store.client.put_item(TableName=h.store.table, Item=encode_item(row))
+    before = progress_facts(course_rows(h, attempt["attemptId"]))
+    assert h.work(job_id=job_id) is True
+    stored = attempt_row(h, attempt["attemptId"])
+    assert stored["evaluation"]["program_completed"] is True
+    assert stored["progress_application"] == {"applied": False, "applied_epoch": None, "reason": "ALREADY_COMPLETED"}
+    after = progress_facts(course_rows(h, attempt["attemptId"]))
+    assert after["item"] == before["item"] and after["head"]["completed_placements"] == [placement]
+    assert json.loads(after["head"]["progress_json"])["items"][placement] == progress["items"][placement]
+    assert item_view(h, token, CPR, CPR.practice_link_id)["isCompleted"] is True
+
+
+def _finalize_legacy_on_completed_slot(h, token, attempt_id, reason, *, program_completed, before, slot, slot_key):
+    """Finalize one legacy (no course binding) job whose USER slot is already completed; shared checks."""
+    assert h.work(attempt_id) is True
+    stored = attempt_row(h, attempt_id)
+    assert stored["state"] == "evaluated" and stored["active_counted"] is False
+    assert stored["evaluation"]["program_completed"] is program_completed
+    assert stored["progress_application"] == {"applied": False, "applied_epoch": None, "reason": reason}
+    after = user_row(h)
+    # Only the open count closes; the earlier completion is neither undone nor reassigned.
+    assert after["slots"][slot_key] == {**slot, "open_attempts": 0}
+    assert after["slots"][slot_key]["completed_by_attempt"] == PREVIOUS_ATTEMPT
+    assert other_slots(after, slot_key) == other_slots(before, slot_key)
+    assert (after["epoch"], after["revision"]) == (before["epoch"], before["revision"] + 1)
+    reply = calculation(h, token, attempt_id)
+    assert reply.status == 200 and reply.data["progressApplication"] == stored["progress_application"]
+    assert h.work(attempt_id) is True  # A redelivered done job rewrites nothing.
+    assert attempt_row(h, attempt_id) == stored and user_row(h) == after
+
+
+def _legacy_on_completed_slot(store, label):
+    h, seeded, token = seeded_legacy(store)
+    attempt_id = seeded.attempts[label]["attempt_id"]
+    attempt = attempt_row(h, attempt_id)
+    assert attempt.get("course_binding") is None
+    slot_key = f'{attempt["program_id"]}:{attempt["target"]}'
+    slot, before = complete_legacy_slot(h, slot_key)
+    return h, token, attempt_id, slot_key, slot, before
+
+
+def test_legacy_finalize_preserves_preexisting_completed_slot(store):
+    """Legacy (no course binding) finalize never undoes or reassigns a completed USER slot (D103).
+
+    Real DynamoDB Local counterpart of the removed legacy
+    test_pending_result_preserves_preexisting_completed_slot. Uses only the
+    D103 compatibility surface: the captured queued compression-only job is
+    finalized as stored (no upload). The slot is marked completed by an earlier
+    attempt; this fixture does not claim a new CPR completion policy.
+    """
+    h, token, attempt_id, slot_key, slot, before = _legacy_on_completed_slot(store, "queued")
+    assert attempt_row(h, attempt_id)["state"] == "queued"
+    _finalize_legacy_on_completed_slot(h, token, attempt_id, "ALREADY_COMPLETED", program_completed=True,
+                                       before=before, slot=slot, slot_key=slot_key)
+
+
+def test_legacy_created_upload_pending_finalize_preserves_completed_slot(store):
+    """A pending-policy (cycles goal) legacy finalize keeps an already completed USER slot.
+
+    The captured fixture's only CPR (cycles goal) legacy attempt is ``created``
+    and its only queued job is compression-only, whose goal is never
+    pending_policy (worker.evaluate / jobs._evaluation reject that). So the
+    pending branch of the legacy finalize can only be reached by first
+    uploading to the legacy created attempt through /api/v2. That first upload
+    is allowed (2026-09-28 user decision recorded under D103, same intent as
+    D23: data measured before the switch can still be submitted to its
+    attempt); it stays in this separate test so the finalize property above
+    does not depend on it.
+    """
+    h, token, attempt_id, slot_key, slot, before = _legacy_on_completed_slot(store, "created")
+    assert attempt_row(h, attempt_id)["state"] == "created"
+    h.upload(token, attempt_id, h.attempt(token, attempt_id)["condition"])  # expects 202
+    assert attempt_row(h, attempt_id)["state"] == "queued"
+    assert user_row(h) == before, "Accepting input must not touch the completed slot or the USER row."
+    _finalize_legacy_on_completed_slot(h, token, attempt_id, "GOAL_POLICY_UNRESOLVED", program_completed=False,
+                                       before=before, slot=slot, slot_key=slot_key)
+    assert attempt_row(h, attempt_id)["evaluation"]["goal"]["status"] == "pending_policy"

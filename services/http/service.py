@@ -4,7 +4,7 @@ import base64
 import json
 from urllib import parse
 
-from services.http.schemas import DEFAULT_CONDITION, RequestBody, ActionRequestBody
+from services.http.schemas import DEFAULT_CONDITION, RequestBody
 
 
 def parse_body(request_body: str) -> RequestBody:
@@ -21,16 +21,18 @@ def parse_body(request_body: str) -> RequestBody:
     else:
         req_body["aed_b64_data"] = b""
 
+    # 기본 조건은 값이 같은 새 dict로 돌려준다. 호출자가 condition을 고쳐도 모듈 전역
+    # DEFAULT_CONDITION(다른 요청의 기본값)이 바뀌지 않는다(multipart 파서와 같은 방식).
     try:
         condition = body.get("condition")
-        req_body["condition"] = json.loads(condition[0]) if condition else DEFAULT_CONDITION
-    except Exception as e:
-        req_body["condition"] = DEFAULT_CONDITION
+        req_body["condition"] = json.loads(condition[0]) if condition else dict(DEFAULT_CONDITION)
+    except Exception:
+        req_body["condition"] = dict(DEFAULT_CONDITION)
 
     try:
         vp_event_list = body.get("vp_event_list")
         req_body["vp_event_list"] = json.loads(vp_event_list[0]) if vp_event_list else []
-    except Exception as e:
+    except Exception:
         req_body["vp_event_list"] = []
 
     req_body["hstm_document"] = _get_json_body_value(body, "hstm_document")
@@ -56,17 +58,6 @@ def parse_body(request_body: str) -> RequestBody:
     if token_expired is None:
         token_expired = _get_bool_body_value(body, "hstm_token_expired")
     req_body["token_expired"] = token_expired
-
-    return req_body
-
-
-def parse_body_as_action(request_body: str) -> ActionRequestBody:
-    body = json.loads(request_body)
-    req_body = {
-        "action_list": body.get("action_list", []),
-        "aed_part_list": body.get("aed_part_list", []),
-        "vp_action_list": body.get("vp_action_list", []),
-    }
 
     return req_body
 

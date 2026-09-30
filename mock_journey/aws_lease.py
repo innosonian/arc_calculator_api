@@ -11,13 +11,13 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from mock_journey.jobs import JobLeaseLost
+from mock_journey.settings import lease_renewal_exceeds
 
 
 class AwsLeaseGuardFactory:
     def __init__(self, *, lease_seconds, interval_seconds, renewal_timeout_seconds, response_reserve_ms=0):
         if (interval_seconds <= 0 or renewal_timeout_seconds <= 0
-                or interval_seconds > lease_seconds / 3
-                or interval_seconds + renewal_timeout_seconds >= lease_seconds):
+                or lease_renewal_exceeds(lease_seconds, interval_seconds, renewal_timeout_seconds)):
             raise ValueError("Invalid AWS lease configuration.")
         self.interval, self.timeout = interval_seconds, renewal_timeout_seconds
         self.slot = threading.Lock()

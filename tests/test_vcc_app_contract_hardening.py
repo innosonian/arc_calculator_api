@@ -7,22 +7,14 @@ import pytest
 
 from mock_journey.course_contracts import RefreshResult, StartCommand
 from mock_journey.course_errors import CourseError
-from mock_journey.course_fixture import FixtureCourseProvider
 from mock_journey.course_provider import validate_bundle
 from mock_journey.course_response import aggregate_availability, calculation_view_data, course_detail_data, item_detail_data
 from mock_journey.course_service import CourseService
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.typed import digest, parse_json
-from tests.test_vcc_api import World, decode, event, view_of
-from tests.test_vcc_provider import BUNDLE_DOC, make_auth, real_principal
-from tests.test_vcc_state import REQUEST, repository, seed_auth
-
-
-def source_bundle(document=None):
-    source = FixtureCourseProvider(document=document or BUNDLE_DOC, settings=fixture_course_settings())
-    learner = source.resolve_learner(make_auth(real_principal()))
-    bundle = source.fetch_bundle(source.list_assignments(learner)[0])
-    return source, bundle
+from tests.vcc_api_support import World, decode, event, view_of
+from tests.vcc_provider_support import BUNDLE_DOC, source_bundle  # noqa: F401 (re-export)
+from tests.vcc_state_support import REQUEST, repository, seed_auth
 
 
 def change_at(value, path, replacement):

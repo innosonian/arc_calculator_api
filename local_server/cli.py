@@ -1,10 +1,9 @@
-"""Own the local DB child and HTTP server, preserving data on every shutdown."""
+"""Own the local DB child, worker and /api/v2 HTTP server, preserving data on every shutdown."""
 
 import argparse
 from contextlib import contextmanager
 import fcntl
 import hashlib
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -13,16 +12,29 @@ import secrets
 import shutil
 import signal
 import socket
-import stat
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 
+# Import-free local modules only: nothing here may import application code
+# (or an SDK) before isolated_environment() runs in main().
+from local_server.addresses import private_ipv4 as _private_ipv4
+from local_server.constants import (
+    CHART_URL_TTL_SECONDS, DEFAULT_ARTIFACT_BYTES, DEFAULT_CALCULATION_BODY_BYTES,
+    DEFAULT_STORAGE_QUOTA_BYTES, DEFAULT_WORKER_LEASE_SECONDS, DEFAULT_WORKER_POLL_SECONDS,
+    DEFAULT_WORKER_RETRY_SECONDS,
+)
+from local_server.private_fs import private_directory_violation, private_file_violation
+
 
 ROOT = Path(__file__).resolve().parent.parent
-_PRIVATE = tuple(ipaddress.ip_network(s) for s in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+READY_BANNER = (
+    "Available: /api/v2 login, 15 temporary Dummy courses after Dummy login, measured binary calculation, "
+    f"stored results and {CHART_URL_TTL_SECONDS}-second charts.",
+    "CPR completion follows the cycle rule (D136); ARC submission remains disabled.",
+)
 
 
 class StartupError(Exception):
@@ -60,14 +72,6 @@ def restrict_outbound(db_port, api_host, api_port):
     sys.addaudithook(guard)
 
 
-def _private_ipv4(value):
-    try:
-        address = ipaddress.IPv4Address(value)
-    except ipaddress.AddressValueError:
-        return False
-    return str(address) == value and any(address in network for network in _PRIVATE)
-
-
 def validate_network(host, port, db_port, clients, insecure_lan):
     if not (1024 <= port <= 65535 and 1024 <= db_port <= 65535) or port == db_port:
         raise StartupError("API and DB ports must be different numbers between 1024 and 65535.")
@@ -94,13 +98,12 @@ def installation_lock(path):
     if not path.exists():
         path.mkdir(mode=0o700, parents=True)
     info = path.stat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+    if private_directory_violation(info):
         raise StartupError("The data directory must be owned by you with permissions 0700.")
     fd = os.open(path / "server.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+        if private_file_violation(info):
             raise StartupError("Invalid local server lock file.")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -206,26 +209,23 @@ def stop_database(child):
             child._arc_local_build = None
 
 
-def close_resources(server, db, child):
-    """Every owned resource is attempted even if an earlier cleanup failed."""
+def close_resources(db, child):
+    """Every owned resource is attempted even if an earlier cleanup failed.
+
+    The HTTP listener exists only after LocalRuntime; LocalRuntime.close stops
+    it (see close_journey_resources), so no listener reaches this function.
+    """
     try:
-        if server is not None:
-            try:
-                server.task_dispatcher.shutdown(timeout=5)
-            finally:
-                from waitress import wasyncore
-                wasyncore.close_all(map=server._map)
+        if db is not None:
+            db.close()
     finally:
-        try:
-            if db is not None:
-                db.close()
-        finally:
-            if child is not None:
-                stop_database(child)
+        if child is not None:
+            stop_database(child)
 
 
 def argument_parser():
-    parser = argparse.ArgumentParser(description="Local ARC journey with private files and an owned calculator worker.")
+    parser = argparse.ArgumentParser(
+        description="Local ARC /api/v2 course API with private files and an owned calculator worker.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db-port", type=int, default=8001)
@@ -233,16 +233,14 @@ def argument_parser():
     parser.add_argument("--dynamodb-home", type=Path, default=ROOT / "var/dynamodb-local-3.3.1")
     parser.add_argument("--allow-client", action="append", default=[])
     parser.add_argument("--allow-insecure-lan", action="store_true")
-    parser.add_argument("--control-only", action="store_true",
-                        help="Run login/session/program control APIs without training or calculation.")
-    parser.add_argument("--course-v2", action="store_true",
-                        help="Serve the explicit /api/v2 course assembly. The default remains /mock/v1.")
-    parser.add_argument("--calculation-body-bytes", type=int, default=1_000_000)
-    parser.add_argument("--artifact-bytes", type=int, default=8_000_000)
-    parser.add_argument("--storage-quota-bytes", type=int, default=1_073_741_824)
-    parser.add_argument("--worker-lease-seconds", type=int, default=60)
-    parser.add_argument("--worker-retry-seconds", type=int, default=5)
-    parser.add_argument("--worker-poll-seconds", type=float, default=0.25)
+    # The removed --control-only/--course-v2 modes are unknown arguments
+    # (D123): argparse exits with its usage error before main() runs.
+    parser.add_argument("--calculation-body-bytes", type=int, default=DEFAULT_CALCULATION_BODY_BYTES)
+    parser.add_argument("--artifact-bytes", type=int, default=DEFAULT_ARTIFACT_BYTES)
+    parser.add_argument("--storage-quota-bytes", type=int, default=DEFAULT_STORAGE_QUOTA_BYTES)
+    parser.add_argument("--worker-lease-seconds", type=int, default=DEFAULT_WORKER_LEASE_SECONDS)
+    parser.add_argument("--worker-retry-seconds", type=int, default=DEFAULT_WORKER_RETRY_SECONDS)
+    parser.add_argument("--worker-poll-seconds", type=float, default=DEFAULT_WORKER_POLL_SECONDS)
     return parser
 
 
@@ -258,7 +256,7 @@ def close_journey_resources(runtime, server, db, child):
                 if child is not None:
                     stop_database(child)
             else:
-                close_resources(None, db, child)
+                close_resources(db, child)
         finally:
             if runtime.requires_process_exit:
                 print("Local runtime shutdown could not finish safely; terminating this CLI process.",
@@ -270,10 +268,6 @@ def close_journey_resources(runtime, server, db, child):
 
 def main(argv=None):
     args = argument_parser().parse_args(argv)
-    if args.course_v2 and args.control_only:
-        print("Local server could not start: The course API cannot run in control-only mode.",
-              file=sys.stderr)
-        return 1
     db = child = server = runtime = None
     phase = "validate local configuration"
     os.umask(0o077)
@@ -302,53 +296,38 @@ def main(argv=None):
                 restrict_outbound(args.db_port, args.host, args.port)
                 phase = "connect the owned local database"
                 endpoint = f"http://127.0.0.1:{args.db_port}"
-                if args.control_only:
-                    db = connect_application(endpoint, material, operations_role="api")
-                else:
-                    db = connect_application(endpoint, material, journey=True, operations_role="api")
-                    # The successful parent initialization may have marked the
-                    # record initialized; pass only that validated new material.
-                    material = prepare_material(data_dir, initialize=False)
-                    from local_server.runtime import LocalRuntime
-                    phase = "prepare the local calculation runtime"
-                    runtime = LocalRuntime(db, material, options, args.host, args.port, child,
-                                           course_v2=args.course_v2)
-                    phase = "start the owned local worker"
-                    runtime.start_worker(material, endpoint, args.host, args.port)
+                # A new installation gets the journey schema; any existing
+                # table must already have exactly that schema (D122).
+                db = connect_application(endpoint, material, operations_role="api")
+                # The successful parent initialization may have marked the
+                # record initialized; pass only that validated new material.
+                material = prepare_material(data_dir, initialize=False)
+                from local_server.runtime import LocalRuntime
+                phase = "prepare the local calculation runtime"
+                runtime = LocalRuntime(db, material, options, args.host, args.port, child)
+                phase = "start the owned local worker"
+                runtime.start_worker(material, endpoint, args.host, args.port)
                 phase = "start the local HTTP listener"
-                if runtime is None:
-                    application = make_application(db.application, db.ready, args.host, args.port, clients)
-                else:
-                    application = make_application(
-                        runtime.service, runtime.ready, args.host, args.port, clients,
-                        calculation_body_limit=options.calculation_body_bytes, chart_service=runtime.charts,
-                        response_body_limit=options.response_body_limit, execution_ready=runtime.available,
-                    )
+                application = make_application(
+                    runtime.service, runtime.ready, args.host, args.port, clients,
+                    calculation_body_limit=options.calculation_body_bytes, chart_service=runtime.charts,
+                    response_body_limit=options.response_body_limit, execution_ready=runtime.available,
+                )
                 server = create_server(application, args.host, args.port)
-                if runtime is None:
-                    print(f"ARC local control API ready: http://{args.host}:{args.port}", flush=True)
-                    print("Available: login, session, programs/progress, logout. Training/calculation unavailable.", flush=True)
-                elif args.course_v2:
-                    print(f"ARC local course API ready: http://{args.host}:{args.port}", flush=True)
-                    print("Available: /api/v2 login, course progress, measured binary calculation, stored results and 300-second charts.", flush=True)
-                    print("/mock/v1 is not served. Dummy login has no synthetic enrollments. ARC submission remains disabled.", flush=True)
-                else:
-                    print(f"ARC local journey API ready: http://{args.host}:{args.port}", flush=True)
-                    print("Available: login, programs, measured binary calculation, stored results and 300-second charts.", flush=True)
-                    print("CPR completion policy remains pending; ARC submission remains disabled.", flush=True)
+                print(f"ARC local course API ready: http://{args.host}:{args.port}", flush=True)
+                for line in READY_BANNER:
+                    print(line, flush=True)
                 print("DynamoDB: loopback only. Ctrl+C stops owned services and preserves local data.", flush=True)
                 if args.allow_insecure_lan:
                     print("LAN HTTP is unencrypted. Dummy data only; allowed IPs are not personal authentication.", flush=True)
-                phase = "serve the local journey" if runtime is not None else "serve the local control API"
-                if runtime is None:
-                    server.run()
-                else:
-                    runtime.serve(server)
+                phase = "serve the local course API"
+                runtime.serve(server)
             finally:
                 # Keep the installation lock until all owned resources are closed.
                 try:
                     if runtime is None:
-                        close_resources(server, db, child)
+                        # No listener exists before the runtime does.
+                        close_resources(db, child)
                     else:
                         # The second interrupt must not skip child cleanup and
                         # release this installation while old work is running.
@@ -367,4 +346,4 @@ def main(argv=None):
         print("Local server failed to " + phase + ". Check local dependencies, private data files and DB configuration.", file=sys.stderr)
         return 1
     finally:
-        close_resources(server, db, child)
+        close_resources(db, child)

@@ -13,27 +13,26 @@ _COURSE_ERRORS = {
     "DEFINITION_CHANGED": (409, "The course definition has changed."),
     "EXECUTION_DEFINITION_MISSING": (409, "The execution definition is missing."),
     "EXECUTION_DEFINITION_UNSUPPORTED": (422, "The execution definition is not supported."),
-    "ITEM_ALREADY_COMPLETED": (409, "The learning item is already completed."),
     "PREREQUISITES_NOT_COMPLETED": (409, "Prerequisite items are not completed."),
     "FINAL_ASSESSMENT_ACTIVE": (409, "A final assessment is already active."),
     "FINAL_ASSESSMENT_RECOVERY_REQUIRED": (409, "The final assessment requires recovery."),
     "COMPLETION_POLICY_PENDING": (409, "The completion policy is not available."),
-    "ASSESSMENT_ALREADY_PASSED": (409, "The final assessment has already passed."),
     "PROGRESS_CAPACITY_EXCEEDED": (413, "The progress evidence limit is exceeded."),
     "CONTENT_VERSION_MISMATCH": (409, "The content version does not match the learning start."),
 }
 
-REUSED_JOURNEY_CODES = frozenset({
-    "INVALID_REQUEST", "LOGIN_FAILED", "SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_REVOKED",
-    "NOT_FOUND", "IDEMPOTENCY_CONFLICT", "ATTEMPT_INPUT_CONFLICT", "PROFILE_MISMATCH",
-    "INVALID_STATE", "PAYLOAD_TOO_LARGE", "TEMPORARILY_UNAVAILABLE",
-    "CALCULATOR_CONTRACT_MISMATCH", "CALCULATION_OUTCOME_UNKNOWN", "STORED_INPUT_INVALID",
-    "CALCULATION_FAILED", "MEASUREMENT_INPUT_INVALID", "PROGRAM_ALREADY_COMPLETED",
-})
+# Every existing journey code is reused by name (derived, not copied by hand).
+REUSED_JOURNEY_CODES = frozenset(_ERRORS)
 COURSE_ERROR_CODES = frozenset(_COURSE_ERRORS) | REUSED_JOURNEY_CODES
+# Session/login failures always propagate; they are never turned into a
+# learning "waiting" availability (D81/D89 cover only ARC progress failures).
+AUTH_ERROR_CODES = frozenset({
+    "LOGIN_FAILED", "SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_REVOKED",
+})
 
 
 def error_spec(code: str):
+    # An unregistered code raises KeyError, not a CourseError (kept as is).
     if code in _COURSE_ERRORS:
         return _COURSE_ERRORS[code]
     return _ERRORS[code]

@@ -1,51 +1,38 @@
-"""Composition counterexamples; these definitions/adapters exist only in tests."""
+"""Composition counterexamples; these definitions/adapters exist only in tests.
+
+The API role is always build_course_application (D103); its shared auth/state/
+calculation core is private to mock_journey.assembly.
+"""
 
 from copy import deepcopy
 from dataclasses import replace
 import json
-from types import SimpleNamespace
 
 import pytest
 
-from mock_journey.assembly import ExecutionCatalog, build_application, build_worker, build_relay
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, slot_key
+from mock_journey.assembly import ExecutionCatalog, build_course_application, build_worker, build_relay
+from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_key, definition_keys
+from mock_journey.course_provider import UnavailableCourseProvider
+from mock_journey.course_settings import fixture_course_settings
 from mock_journey.projection import ProjectionSchema
-from mock_journey.settings import StateSettings, StorageSettings, ApiSettings, WorkerSettings, RelaySettings
+from mock_journey.settings import WorkerSettings, RelaySettings
 from mock_journey import typed
-from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
+from tests.assembly_support import NoClientCalls, adapter, configuration, definitions, schemas
 
 
-def definitions():
-    # Merely constructor fixtures, not a supplied execution registry.
-    return {slot_key(program[0], target): {
-        "condition": {"target": target}, "calculation_profile": {
-            "Custom": {"PassThreshold": 80.0, "CertificateAdult": False}},
-        "profile_version": "test-profile", "adapter_version": "test-adapter", "projection_version": "test-projection",
-    } for program in PROGRAMS for target in TARGETS}
+def build_api(settings, **kwargs):
+    """The API role as every runtime assembles it, with no course provider reachable."""
+    kwargs.setdefault("provider", UnavailableCourseProvider())
+    kwargs.setdefault("course_settings", fixture_course_settings())
+    return build_course_application(settings, **kwargs)
 
 
-def schemas():
-    return {"test-projection": ProjectionSchema("test-projection", {"CompressionDepth": {"value": "scalar"}})}
-
-
-def adapter(version="test-adapter", projection="test-projection"):
-    def forbidden(*args, **kwargs):
-        pytest.fail("Role construction called the internal calculator.")
-    return SimpleNamespace(version=version, projection_version=projection,
-                           calculate=forbidden, validate_response=forbidden, get_chart=forbidden)
-
-
-def configuration():
-    objects = MemoryS3()
-    bindings = MemoryLegacyBindings(objects)
-    state = StateSettings("local-table", 8)
-    storage = StorageSettings("development", bindings.bucket, bindings.directory, 1000000, 2000000)
-    return objects, bindings, ApiSettings(state, storage, "local-assembly", 2000000)
-
-
-class NoClientCalls:
-    def __getattr__(self, name):
-        pytest.fail("Construction accessed an SDK client operation.")
+def test_definition_keys_are_the_fifteen_program_target_pairs():
+    keys = definition_keys()
+    assert len(keys) == len(set(keys)) == 15
+    assert keys == tuple(f"{program[0]}:{target}" for program in PROGRAMS for target in TARGETS)
+    assert definition_key("mock-cpr", "adult") == "mock-cpr:adult"
+    assert set(definitions()) == set(keys)
 
 
 def test_roles_construct_without_sdk_calls_or_sharing_user_keys():
@@ -53,8 +40,8 @@ def test_roles_construct_without_sdk_calls_or_sharing_user_keys():
     client = NoClientCalls()
     execution = ExecutionCatalog(definitions(), schemas())
     keys = {"v1": b"test-only-key-material-32-bytes!!" + b"!"}
-    service = build_application(settings, dynamodb_client=client, s3_client=client, legacy_bindings=bindings,
-                                resume_keys=keys, current_key_version="v1", execution=execution, clock=lambda: 1000)
+    service = build_api(settings, dynamodb_client=client, s3_client=client, legacy_bindings=bindings,
+                        resume_keys=keys, current_key_version="v1", execution=execution, clock=lambda: 1000)
     worker = build_worker(WorkerSettings(settings.state, settings.storage, 60, 5),
                           dynamodb_client=client, s3_client=client, legacy_bindings=bindings,
                           adapters=[adapter()], required_bindings=execution.required_bindings, clock=lambda: 1000)
@@ -63,7 +50,7 @@ def test_roles_construct_without_sdk_calls_or_sharing_user_keys():
     assert service.auth.state is service.state
     assert service.calculation.state is service.state
     assert service.calculation.jobs.state is service.state
-    assert service.catalog.slot_keys == Catalog().slot_keys
+    assert service.course_http is not None and not hasattr(service, "catalog")
     assert worker.jobs.state.client is relay.jobs.state.client is service.state.client is client
     assert worker.lease_seconds == 60 and relay.page_size == 10
     assert not hasattr(worker, "auth") and not hasattr(relay, "storage")
@@ -93,7 +80,7 @@ def test_catalog_and_schema_snapshots_survive_caller_and_return_value_mutation()
 
 
 @pytest.mark.parametrize("change", [
-    "missing_slot", "extra_slot", "wrong_target", "missing_field", "extra_field", "missing_schema",
+    "missing_definition", "extra_definition", "wrong_target", "missing_field", "extra_field", "missing_schema",
     "wrong_schema_version", "invalid_schema_tree", "invalid_schema_name", "nonfinite", "surrogate", "cycle",
     "profile_credential", "condition_credential", "unknown_profile", "unknown_condition",
     "schema_key_surrogate", "retained_schema_surrogate",
@@ -101,9 +88,9 @@ def test_catalog_and_schema_snapshots_survive_caller_and_return_value_mutation()
 def test_invalid_contracts_fail_before_any_client_is_available(change):
     supplied, supplied_schemas = definitions(), schemas()
     item = supplied["mock-cpr:adult"]
-    if change == "missing_slot":
+    if change == "missing_definition":
         supplied.pop("mock-two-rescuer-aed:infant")
-    elif change == "extra_slot":
+    elif change == "extra_definition":
         supplied["unconfirmed:adult"] = deepcopy(item)
     elif change == "wrong_target":
         item["condition"]["target"] = "child"
@@ -180,7 +167,7 @@ def test_bad_api_wiring_never_makes_storage_or_authentication_calls(cause):
     else:
         kwargs["execution"] = Catalog()
     with pytest.raises(ValueError) as error:
-        build_application(settings, **kwargs)
+        build_api(settings, **kwargs)
     assert str(error.value) == "Invalid explicit journey composition."
 
 
@@ -189,9 +176,9 @@ def test_api_schema_registry_retains_previous_declared_projection_for_resubmissi
     supplied["old-projection"] = ProjectionSchema("old-projection", {})
     execution = ExecutionCatalog(definitions(), supplied)
     _, bindings, settings = configuration()
-    service = build_application(settings, dynamodb_client=NoClientCalls(), s3_client=NoClientCalls(),
-                                legacy_bindings=bindings, resume_keys={"v1": b"K" * 32},
-                                current_key_version="v1", execution=execution)
+    service = build_api(settings, dynamodb_client=NoClientCalls(), s3_client=NoClientCalls(),
+                        legacy_bindings=bindings, resume_keys={"v1": b"K" * 32},
+                        current_key_version="v1", execution=execution)
     assert set(service.calculation.schemas) == {"test-projection", "old-projection"}
 
 
@@ -211,7 +198,7 @@ def test_missing_explicit_dependency_is_rejected_without_sdk_introspection(role,
     else:
         kwargs.update(s3_client=NoClientCalls(), legacy_bindings=bindings)
         if role == "api":
-            factory, config = build_application, settings
+            factory, config = build_api, settings
             kwargs.update(resume_keys={"v1": b"K" * 32}, current_key_version="v1", execution=execution)
         else:
             factory = build_worker

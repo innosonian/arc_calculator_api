@@ -38,16 +38,33 @@ def json_bytes(value):
     return json.dumps(value, allow_nan=False).encode("utf-8")
 
 
-def parse_json(body):
+def strict_loads(body, *, duplicate, nonfinite=None):
+    """json.loads that raises ``duplicate()`` for a repeated object key.
+
+    ``nonfinite``, when given, is raised for NaN/Infinity/-Infinity; without it
+    those parse as floats (the json.loads default). Decoding errors propagate
+    unchanged (json.JSONDecodeError). Each caller keeps its own error types and
+    wrapping; nothing else is checked here.
+    """
     def pairs(items):
         result = {}
         for key, value in items:
             if key in result:
-                raise ValueError("Duplicate JSON key.")
+                raise duplicate()
             result[key] = value
         return result
 
-    value = json.loads(body, object_pairs_hook=pairs,
-                       parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite JSON.")))
+    if nonfinite is None:
+        return json.loads(body, object_pairs_hook=pairs)
+
+    def constant(_):
+        raise nonfinite()
+
+    return json.loads(body, object_pairs_hook=pairs, parse_constant=constant)
+
+
+def parse_json(body):
+    value = strict_loads(body, duplicate=lambda: ValueError("Duplicate JSON key."),
+                         nonfinite=lambda: ValueError("Nonfinite JSON."))
     canonical_bytes(value)
     return value

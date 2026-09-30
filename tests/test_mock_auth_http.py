@@ -1,4 +1,10 @@
-"""Authentication, public boundaries and secret non-disclosure; no AWS calls."""
+"""Authentication, public boundaries and secret non-disclosure; no AWS calls.
+
+AuthManager is checked directly. The HTTP cases run on the public /api/v2
+login and attempt routes (the /mock/v1 routes and their Bearer parser were
+removed, D103); Authorization header ambiguity on v2 is covered in
+tests/test_v2_calculation_boundary.py.
+"""
 
 from copy import deepcopy
 import json
@@ -6,18 +12,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from mock_journey.auth import AuthManager, extract_bearer
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
+from mock_journey.auth import AuthManager
+from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_keys
 from mock_journey.errors import JourneyError
-from mock_journey.handler import handle, run
-from mock_journey.service import JourneyService
+from mock_journey.handler import run
+from tests.journey_support import JourneyStore, V2Journey
 
 
 class SessionStore:
     def __init__(self):
         self.sessions = {}
 
-    def create_session(self, session, slots):
+    def create_session(self, session):
         self.sessions[session["session_id"]] = deepcopy(session)
 
     def get_session(self, ident):
@@ -44,14 +50,14 @@ def expect(code, call):
 ])
 def test_only_exact_dummy_credentials_create_a_session(auth_setup, login, password):
     store, auth, _ = auth_setup
-    expect("LOGIN_FAILED", lambda: auth.login(login, password, Catalog().slot_keys))
+    expect("LOGIN_FAILED", lambda: auth.login(login, password))
     assert not store.sessions
 
 
 def test_concurrent_identity_has_distinct_tokens_and_no_plaintext_persistence(auth_setup):
     store, auth, now = auth_setup
-    first, token1 = auth.login("test@test.com", "2222", Catalog().slot_keys)
-    second, token2 = auth.login("test@test.com", "2222", Catalog().slot_keys)
+    first, token1 = auth.login("test@test.com", "2222")
+    second, token2 = auth.login("test@test.com", "2222")
     assert first["principal"] == second["principal"]
     assert token1 != token2 and first["session_id"] != second["session_id"]
     assert first["expires_at"] - now[0] == 86400
@@ -69,7 +75,7 @@ def test_concurrent_identity_has_distinct_tokens_and_no_plaintext_persistence(au
 
 def test_logout_receipt_is_the_only_revoked_token_exception(auth_setup):
     store, auth, now = auth_setup
-    session, token = auth.login("test@test.com", "2222", ())
+    session, token = auth.login("test@test.com", "2222")
     record = store.sessions[session["session_id"]]
     record.update(status="revoked", revision=1)
     expect("SESSION_REVOKED", lambda: auth.authenticate(token, allow_logout_receipt=True))
@@ -77,24 +83,6 @@ def test_logout_receipt_is_the_only_revoked_token_exception(auth_setup):
     now[0] = session["expires_at"] + 1
     expect("SESSION_REVOKED", lambda: auth.authenticate(token))
     assert auth.authenticate(token, allow_logout_receipt=True).revision == 1
-
-
-@pytest.mark.parametrize("event", [
-    {}, {"headers": {"Authorization": "Bearer "}},
-    {"headers": {"Authorization": "Bearer token", "authorization": "Bearer token"}},
-    {"multiValueHeaders": {"Authorization": ["Bearer token", "Bearer token"]}},
-    {"headers": {"Authorization": "Bearer first"}, "multiValueHeaders": {"authorization": ["Bearer second"]}},
-    {"headers": {"Authorization": "Bearer token extra"}},
-    {"headers": {"Authorization": "Basic token"}},
-    {"headers": {"Authorization": ["Bearer token"]}},
-])
-def test_ambiguous_or_missing_bearer_is_rejected(event):
-    expect("SESSION_REQUIRED", lambda: extract_bearer(event))
-
-
-def test_proxy_single_and_multi_header_representations_must_agree():
-    assert extract_bearer({"headers": {"AUTHORIZATION": "bearer opaque"},
-                           "multiValueHeaders": {"Authorization": ["bearer opaque"]}}) == "opaque"
 
 
 def test_resume_proof_is_creator_attempt_environment_and_key_bound(auth_setup):
@@ -116,54 +104,81 @@ def test_resume_proof_is_creator_attempt_environment_and_key_bound(auth_setup):
     expect("TEMPORARILY_UNAVAILABLE", lambda: rotated.verify_resume(attempt, "tester", proof))
 
 
+def test_catalog_has_fifteen_definition_keys_and_no_unverified_runtime_definition():
+    catalog = Catalog()
+    assert len(definition_keys()) == 15
+    for program in PROGRAMS:
+        for target in TARGETS:
+            expect("CALCULATOR_CONTRACT_MISMATCH", lambda: catalog.definition(program[0], target))
+
+
+# -- /api/v2 HTTP boundary -----------------------------------------------------------------
+
+LOGIN = {"loginId": "test@test.com", "password": "2222"}
+
+
+@pytest.fixture
+def h():
+    return V2Journey(JourneyStore.memory())
+
+
 def event(method, path, body=None, token=None):
-    result = {"httpMethod": method, "path": path, "headers": {}}
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    result = {"httpMethod": method, "path": path, "headers": headers}
     if body is not None:
         result["body"] = body if isinstance(body, str) else json.dumps(body)
-    if token:
-        result["headers"]["Authorization"] = "Bearer " + token
     return result
 
 
-def test_http_login_types_headers_and_authentication_precede_control_body_parsing(auth_setup):
-    state, auth, _ = auth_setup
-    service = JourneyService(state, auth, Catalog())
-    ctx = SimpleNamespace(aws_request_id="request-a")
-    response = handle(event("POST", "/mock/v1/sessions", {"login_id": "test@test.com", "password": "2222"}), ctx, service)
-    assert response["statusCode"] == 201 and response["headers"]["Cache-Control"] == "no-store"
-    body = json.loads(response["body"])
-    assert type(body["expires_in"]) is int and body["expires_in"] == 86400
-    assert "password" not in body and "token_hash" not in body
-    malformed = handle(event("POST", "/mock/v1/attempts", "{not-json"), ctx, service)
-    assert malformed["statusCode"] == 401
-    malformed = handle(event("POST", "/mock/v1/attempts", "{not-json", body["session_token"]), ctx, service)
-    assert malformed["statusCode"] == 400
+def call(h, value):
+    reply = h.call(value["httpMethod"], value["path"], event=value)
+    return reply.status, reply.body, json.dumps(reply.raw)
 
 
-@pytest.mark.parametrize("body", [
-    '{"login_id":"test@test.com","password":"2222","password":"2222"}',
-    '{"login_id":"test@test.com","password":NaN}',
-    {"login_id": "test@test.com", "password": 2222},
-    {"login_id": "test@test.com", "password": "2222", "token": "PRIVATE-MARKER"},
-    "x" * 17000,
-    {"login_id": "\ud800", "password": "2222"},
-])
-def test_new_control_schema_rejects_ambiguous_or_excess_input(auth_setup, body):
-    state, auth, _ = auth_setup
-    result = handle(event("POST", "/mock/v1/sessions", body), None, JourneyService(state, auth, Catalog()))
-    assert result["statusCode"] == 400
-    assert "PRIVATE-MARKER" not in result["body"] and not state.sessions
+def sessions(h):
+    return [row for row in h.store.rows() if row["PK"].startswith(("SESSION#", "USER#"))]
 
 
-def test_errors_do_not_expose_credentials_or_raw_traceback(auth_setup, capsys):
-    state, auth, _ = auth_setup
+def test_http_login_types_headers_and_authentication_precede_control_body_parsing(h):
+    reply = h.call("POST", "/api/v2/sessions/", event=event("POST", "/api/v2/sessions/", LOGIN))
+    assert reply.status == 201 and reply.headers["Cache-Control"] == "no-store"
+    raw = json.dumps(reply.raw)
+    data = reply.data
+    assert type(data["accessToken"]) is str and type(data["expiresAt"]) is str
+    assert "password" not in raw and "token_hash" not in raw and "2222" not in raw
+    status, body, _ = call(h, event("POST", "/api/v2/attempts/", "{not-json"))
+    assert (status, body["error"]["code"]) == (401, "SESSION_REQUIRED")
+    status, body, _ = call(h, event("POST", "/api/v2/attempts/", "{not-json", data["accessToken"]))
+    assert (status, body["error"]["code"]) == (400, "INVALID_REQUEST")
+
+
+@pytest.mark.parametrize("body,status", [
+    ('{"loginId":"test@test.com","password":"2222","password":"2222"}', 400),
+    ('{"loginId":"test@test.com","password":NaN}', 400),
+    ({"loginId": "test@test.com", "password": 2222}, 400),
+    ({"loginId": "test@test.com", "password": "2222", "token": "PRIVATE-MARKER"}, 400),
+    ({"loginId": "\ud800", "password": "2222"}, 400),
+    ("x" * 17000, 413),
+], ids=["duplicate_key", "nan", "number", "extra_field", "surrogate", "oversized"])
+def test_control_schema_rejects_ambiguous_or_excess_login_input(h, body, status):
+    got, parsed, raw = call(h, event("POST", "/api/v2/sessions/", body))
+    assert got == status
+    assert parsed["error"]["code"] == ("PAYLOAD_TOO_LARGE" if status == 413 else "INVALID_REQUEST")
+    assert "PRIVATE-MARKER" not in raw and sessions(h) == []
+
+
+def test_errors_do_not_expose_credentials_or_raw_traceback(h, capsys):
     def fail(*args):
         raise RuntimeError("PRIVATE-SESSION-MARKER")
-    state.create_session = fail
-    result = handle(event("POST", "/mock/v1/sessions", {"login_id": "test@test.com", "password": "2222"}),
-                    None, JourneyService(state, auth, Catalog()))
-    assert result["statusCode"] == 503
-    assert "PRIVATE-SESSION-MARKER" not in result["body"] + capsys.readouterr().out
+
+    h.api.state.create_session = fail
+    status, body, raw = call(h, event("POST", "/api/v2/sessions/", LOGIN))
+    assert (status, body["error"]["code"]) == (503, "TEMPORARILY_UNAVAILABLE")
+    captured = capsys.readouterr()
+    assert "PRIVATE-SESSION-MARKER" not in raw + captured.out + captured.err
+    assert sessions(h) == []
 
 
 def test_runtime_is_disabled_without_explicit_configuration(monkeypatch):
@@ -171,49 +186,22 @@ def test_runtime_is_disabled_without_explicit_configuration(monkeypatch):
     monkeypatch.setattr(runtime, "_application", None)
     monkeypatch.delenv("ARC_MOCK_ENABLED", raising=False)
     # Global conftest forbids creating any AWS client: fail-closed must precede that.
-    response = run(event("POST", "/mock/v1/sessions", {"login_id": "test@test.com", "password": "2222"}), None)
+    response = run(event("POST", "/api/v2/sessions/", LOGIN), SimpleNamespace(aws_request_id="request-a"))
     assert response["statusCode"] == 503
+    assert json.loads(response["body"])["error"]["code"] == "TEMPORARILY_UNAVAILABLE"
 
 
-def test_excessive_json_nesting_is_an_input_error_before_any_command(auth_setup):
-    state, auth, _ = auth_setup
-    service = JourneyService(state, auth, Catalog())
+def test_excessive_json_nesting_is_an_input_error_before_any_command(h):
     deep_value = "[" * 3000 + "0" + "]" * 3000
-    body = '{"login_id":' + deep_value + ',"password":"2222"}'
+    body = '{"loginId":' + deep_value + ',"password":"2222"}'
     assert len(body.encode()) < 16384
-    result = handle(event("POST", "/mock/v1/sessions", body), None, service)
-    assert result["statusCode"] == 400
-    assert json.loads(result["body"])["error"]["code"] == "INVALID_REQUEST"
-    assert not state.sessions
-    _, token = auth.login("test@test.com", "2222", Catalog().slot_keys)
-    result = handle(event("POST", "/mock/v1/attempts", body, token), None, service)
-    assert result["statusCode"] == 400
-    assert json.loads(result["body"])["error"]["code"] == "INVALID_REQUEST"
-    # SessionStore has no create/get-created command. Reaching it would be503.
-    assert len(state.sessions) == 1
-    assert handle(event("POST", "/mock/v1/attempts", body), None, service)["statusCode"] == 401
-
-
-def test_catalog_all_fifteen_slots_and_no_unverified_runtime_definition():
-    catalog = Catalog()
-    slots = {key: {"completed": False, "open_attempts": 0} for key in catalog.slot_keys}
-    slots["mock-cpr:infant"] = {"completed": True, "open_attempts": 0}
-    view = catalog.programs_view({"epoch": "E1", "revision": 5, "slots": slots})
-    assert len(catalog.slot_keys) == 15 and len(view["programs"]) == 5
-    assert [p["goal"]["required"] for p in view["programs"]] == [3, 60, 8, 8, 10]
-    assert view["programs"][0]["progress_by_target"]["infant"] == "completed"
-    for program in PROGRAMS:
-        for target in TARGETS:
-            expect("CALCULATOR_CONTRACT_MISMATCH", lambda: catalog.definition(program[0], target))
-
-
-def test_attempt_public_view_preserves_json_numeric_types_and_excludes_internal_secrets():
-    definition = {"condition": {}, "calculation_profile": {"integer": 80, "float": 80.0, "null": None},
-                  "goal": {"kind": "cycles", "required": 3}, "catalog_version": "v1", "profile_version": "v1"}
-    attempt = {"attempt_id": "a", "state": "created", "program_id": "mock-cpr", "target": "adult",
-               "epoch": "E1", "profile_name": "tester", "definition_json": json.dumps(definition),
-               "resume_digest": "PRIVATE-DIGEST", "resume_nonce": "PRIVATE-NONCE", "bound_session_id": "PRIVATE-SESSION"}
-    result = JourneyService.attempt_view(attempt)
-    profile = result["calculation_profile"]
-    assert type(profile["integer"]) is int and type(profile["float"]) is float and profile["null"] is None
-    assert "missing" not in profile and "PRIVATE-" not in json.dumps(result)
+    status, parsed, _ = call(h, event("POST", "/api/v2/sessions/", body))
+    assert (status, parsed["error"]["code"]) == (400, "INVALID_REQUEST")
+    assert sessions(h) == []
+    token = h.login().token
+    rows = h.store.rows()
+    status, parsed, _ = call(h, event("POST", "/api/v2/attempts/", body, token))
+    assert (status, parsed["error"]["code"]) == (400, "INVALID_REQUEST")
+    assert h.store.rows() == rows
+    status, parsed, _ = call(h, event("POST", "/api/v2/attempts/", body))
+    assert (status, parsed["error"]["code"]) == (401, "SESSION_REQUIRED")

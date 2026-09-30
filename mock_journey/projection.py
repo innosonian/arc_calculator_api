@@ -9,7 +9,16 @@ from mock_journey import typed
 
 
 SCALAR = "scalar"
-_CONDITION = {key: SCALAR for key in ("mode", "target", "training_type", "guideline", "cpr_cycle_type", "is_2rescuers")}
+# Execution definition key sets (S6-09). The tuple orders match
+# course_contracts.CONDITION_KEYS/EXECUTION_KEYS, which build stored
+# definition_json dicts in that order.
+CONDITION_FIELDS = ("mode", "target", "training_type", "guideline", "cpr_cycle_type", "is_2rescuers")
+PROFILE_SECTIONS = ("Custom", "Open_Skill", "Usage", "Organization")
+DEFINITION_VERSION_FIELDS = ("profile_version", "adapter_version", "projection_version")
+# The five keys an ExecutionCatalog entry holds; the catalog adds goal and catalog_version.
+DEFINITION_CORE_KEYS = ("condition", "calculation_profile") + DEFINITION_VERSION_FIELDS
+DEFINITION_KEYS = DEFINITION_CORE_KEYS + ("goal", "catalog_version")
+_CONDITION = {key: SCALAR for key in CONDITION_FIELDS}
 _VP = {key: SCALAR for key in ("event", "timestamp", "last_timestamp")}
 _CUSTOM = {key: SCALAR for key in ("CertificateAdult", "CertificateChild", "CertificateInfant", "CertificateBaby", "PassThreshold", "PassThresholdChild")}
 _CUSTOM["TrainCourse"] = {"Certification": SCALAR, "StopCondition": {
@@ -33,6 +42,20 @@ _CREDENTIALS = frozenset((
     "source_endpoint", "token_expired", "hstm_access_token", "hstm_refresh_token", "hstm_client_id",
     "hstm_client_secret", "hstm_access_token_url", "hstm_send_result_url", "hstm_source_endpoint", "hstm_token_expired",
 ))
+
+
+# Public names of the schema pieces reused by the ExecutionCatalog (same objects).
+CONDITION_SCHEMA = _CONDITION
+DOCUMENT_SCHEMA = _DOCUMENT
+
+
+def definition_core_schema():
+    """Projection schema of a five-key ExecutionCatalog definition (DEFINITION_CORE_KEYS)."""
+    return {
+        "condition": _CONDITION,
+        "calculation_profile": {key: _DOCUMENT[key] for key in PROFILE_SECTIONS},
+        **{key: SCALAR for key in DEFINITION_VERSION_FIELDS},
+    }
 
 
 @dataclass(frozen=True)
@@ -95,6 +118,10 @@ def _project(value, schema):
     return result if as_pairs else dict(result)
 
 
+# Public name of the field projection (same function object).
+project = _project
+
+
 def project_input(body, definition, schema):
     if type(definition) is not dict or not isinstance(schema, ProjectionSchema) or schema.version != definition.get("projection_version"):
         raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
@@ -133,9 +160,9 @@ def project_input(body, definition, schema):
                         for key, value in document]
         definition_schema = {
             "condition": _CONDITION,
-            "calculation_profile": {key: document_schema[key] for key in ("Custom", "Open_Skill", "Usage", "Organization")},
+            "calculation_profile": {key: document_schema[key] for key in PROFILE_SECTIONS},
             "goal": {"kind": SCALAR, "required": SCALAR},
-            **{key: SCALAR for key in ("catalog_version", "profile_version", "adapter_version", "projection_version")},
+            **{key: SCALAR for key in ("catalog_version",) + DEFINITION_VERSION_FIELDS},
         }
         safe_definition = _project(definition, definition_schema)
         payload = {"calculation_input": calculation, "response_context": response,

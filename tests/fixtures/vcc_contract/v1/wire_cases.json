@@ -157,7 +157,8 @@
     "courseStatus"
   ],
   "undetermined": {
-    "goal_pending_policy": "calculation 200 with evaluation.goal.status=pending_policy",
+    "goal_pending_policy": "calculation 200 with evaluation.goal.status=pending_policy: only a result of a retained pending adapter (arc-internal-detection-pending-v3 in-flight attempt or stored arc-local-calculator-pending-v2 candidate)",
+    "goal_cycles_evaluated": "D136: a current (arc-internal-detection-v4) CPR result has goal.status=evaluated, observed=closed cpr cycle count (int), met=bool; completion = met AND score pass",
     "no_fake_fail": true,
     "no_fake_pass": true,
     "no_transmission_success": true
@@ -263,10 +264,6 @@
       "http": 422,
       "message": "The execution definition is not supported."
     },
-    "ITEM_ALREADY_COMPLETED": {
-      "http": 409,
-      "message": "The learning item is already completed."
-    },
     "PREREQUISITES_NOT_COMPLETED": {
       "http": 409,
       "message": "Prerequisite items are not completed."
@@ -282,10 +279,6 @@
     "COMPLETION_POLICY_PENDING": {
       "http": 409,
       "message": "The completion policy is not available."
-    },
-    "ASSESSMENT_ALREADY_PASSED": {
-      "http": 409,
-      "message": "The final assessment has already passed."
     },
     "PROGRESS_CAPACITY_EXCEEDED": {
       "http": 413,
@@ -346,7 +339,8 @@
               "reason": "arc_progress_unavailable"
             },
             "accessToken": "<session-token>",
-            "tokenType": "Bearer"
+            "tokenType": "Bearer",
+            "userName": "Test User"
           },
           "note": "Session succeeds. Availability waiting. Token only here."
         }
@@ -505,6 +499,7 @@
           },
           "forbidden_fields": [
             "accessToken",
+            "userName",
             "resumeCredential"
           ]
         }
@@ -1872,28 +1867,6 @@
           }
         },
         {
-          "id": "already_completed_training",
-          "request": {
-            "clientRequestId": "10000000-0000-4000-8000-000000000001",
-            "courseId": 101,
-            "enrollmentId": 501,
-            "courseItemLinkId": 1003,
-            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
-          },
-          "expect": {
-            "http": 409,
-            "body": {
-              "success": false,
-              "error": {
-                "code": "ITEM_ALREADY_COMPLETED",
-                "message": "The learning item is already completed.",
-                "details": null
-              },
-              "timestamp": "2026-09-18T00:00:00Z"
-            }
-          }
-        },
-        {
           "id": "prerequisites",
           "request": {
             "clientRequestId": "10000000-0000-4000-8000-000000000001",
@@ -1961,6 +1934,7 @@
         },
         {
           "id": "policy_pending",
+          "note": "Only a retained pending-adapter final assessment result (pending_policy) holds the FINAL phase policy_pending; current (D136) results are evaluated.",
           "request": {
             "clientRequestId": "10000000-0000-4000-8000-000000000001",
             "courseId": 101,
@@ -1975,28 +1949,6 @@
               "error": {
                 "code": "COMPLETION_POLICY_PENDING",
                 "message": "The completion policy is not available.",
-                "details": null
-              },
-              "timestamp": "2026-09-18T00:00:00Z"
-            }
-          }
-        },
-        {
-          "id": "already_passed",
-          "request": {
-            "clientRequestId": "10000000-0000-4000-8000-000000000001",
-            "courseId": 101,
-            "enrollmentId": 501,
-            "courseItemLinkId": 1005,
-            "definitionHash": "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
-          },
-          "expect": {
-            "http": 409,
-            "body": {
-              "success": false,
-              "error": {
-                "code": "ASSESSMENT_ALREADY_PASSED",
-                "message": "The final assessment has already passed.",
                 "details": null
               },
               "timestamp": "2026-09-18T00:00:00Z"
@@ -2449,7 +2401,44 @@
               "exclusionReasons": []
             }
           },
-          "note": "Undetermined CPR completion is not a calculation HTTP error."
+          "note": "A retained pending-adapter CPR result (pending_policy) is not a calculation HTTP error. Current results follow D136 (next case)."
+        },
+        {
+          "id": "cycles_evaluated_is_200",
+          "http": 200,
+          "data": {
+            "attemptId": "50000000-0000-4000-8000-000000000001",
+            "calculationStatus": "succeeded",
+            "calculation": {
+              "preserved": true
+            },
+            "evaluation": {
+              "goal": {
+                "kind": "cycles",
+                "required": 3,
+                "observed": 3,
+                "met": true,
+                "status": "evaluated"
+              },
+              "score": {
+                "decision": "pass"
+              },
+              "program_completed": true,
+              "reason_codes": []
+            },
+            "progressApplication": {
+              "applied": true
+            },
+            "submit_arc": {
+              "status": "excluded",
+              "ok": false,
+              "error": null,
+              "exclusionReasons": [
+                "dummy"
+              ]
+            }
+          },
+          "note": "D136: a current-adapter CPR result counts closed cpr cycles; completion = met AND score pass."
         }
       ],
       "errors": [

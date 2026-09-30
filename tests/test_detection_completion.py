@@ -15,15 +15,11 @@ from mock_journey.internal_calculator import InternalCalculator
 from mock_journey.projection import LoadedInput, ProjectionSchema, project_input, typed_identity
 from mock_journey.worker import evaluate
 from tests._synth import packet
+from tests.request_support import condition  # noqa: F401 (re-export condition)
 
 
 TARGETS = ("adult", "child", "infant")
 GUIDELINES = ("AHA2020", "ARC2020", "ARC2025", "ERC2020", "STD2015")
-
-
-def condition(target, training, guideline="ARC2025"):
-    return {"mode": "training", "target": target, "training_type": training, "guideline": guideline,
-            "cpr_cycle_type": "152" if target == "infant" else "302", "is_2rescuers": False}
 
 
 def compression_bytes(count, target, good):
@@ -130,7 +126,8 @@ def test_raw_simultaneous_detection_across_supported_conditions(guideline, targe
 
 
 @pytest.mark.parametrize("target", TARGETS)
-def test_new_detection_does_not_complete_cpr_without_cycle_policy(target):
+def test_pending_v3_definition_keeps_cpr_goal_pending_policy(target):
+    # D136: only attempts started under the retained pending-v3 definition stay pending.
     from tests._synth import cpr_session
     raw = cpr_session([(15 if target == "infant" else 30, 2)] * 3)
     verified, assessment, _ = calculated(raw, condition(target, "cpr"))

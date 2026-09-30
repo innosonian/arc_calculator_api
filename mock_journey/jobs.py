@@ -7,14 +7,34 @@ import re
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSIONS, PENDING_GOAL_PROFILE_VERSION
+from mock_journey.auth import PRINCIPAL
+from mock_journey.contracts import (
+    CALL_BINDING_FIELDS, expected_goal_status, expected_profile_version, is_versioned_goal,
+)
 from mock_journey.errors import JourneyError
-from mock_journey.state import _ReadConflict, _decode, _encode, _key, _unavailable
+from mock_journey.state import (
+    ReadConflict, decode_item, encode_item, extend_condition, legacy_progress, legacy_slot_key, unavailable,
+)
+from mock_journey.storage_keys import (
+    attempt_key, course_final_key, course_head_key, course_item_key, due_partition, job_key, outbox_key, session_key,
+    user_key,
+)
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-_BINDING = ("attempt_id", "epoch", "input_digest", "adapter_version", "projection_version", "job_id", "call_id")
+_BINDING = CALL_BINDING_FIELDS
 _FAILURES = {"STORED_INPUT_INVALID", "CALCULATOR_CONTRACT_MISMATCH", "CALCULATION_FAILED"}
+# Approved 2026-09-28 (Q4): an interrupted call is restarted at most five times.
+CALCULATION_RESTART_LIMIT = 5
+RESTART_LIMIT_BASIS = "calculation_restart_limit"
+# Fixed upper bound of one finalize transaction (ARCHITECTURE §8 fixture value).
+# It is not CourseSettings.max_transaction_actions; linking them is a policy change.
+FINALIZE_MAX_TRANSACTION_ACTIONS = 20
+
+
+def _is_dummy(attempt):
+    """D90: a Dummy login attempt is excluded from ARC submission."""
+    return attempt.get("principal") == PRINCIPAL
 
 
 class JobLeaseLost(Exception):
@@ -24,13 +44,18 @@ class JobLeaseLost(Exception):
 
 def _integer(value, *, positive=False):
     if type(value) is not int or value < (1 if positive else 0):
-        raise _unavailable()
+        raise unavailable()
     return value
+
+
+def calculation_restarts(job):
+    """Committed replacement calls for interrupted ones; rows written before the count read 0."""
+    return _integer(job.get("calculation_restarts", 0))
 
 
 def _text(value):
     if type(value) is not str or not value:
-        raise _unavailable()
+        raise unavailable()
     return value
 
 
@@ -38,6 +63,21 @@ def _digest(value):
     if type(value) is not str or not _SHA256.fullmatch(value):
         raise JourneyError("STORED_INPUT_INVALID")
     return value
+
+
+def _restart_limit_closure(updated_job, updated_attempt, seal=None):
+    """Mark an already built failure write-set as the D104 restart-limit closure.
+
+    A technical closure, not an educational Fail: the public code stays
+    CALCULATION_FAILED and the basis is recorded on the JOB row (and on the
+    course seal). The rows are updated in place after they were built, so the
+    stored field order is that of the plain failure/seal write-set plus
+    ``failure_basis``.
+    """
+    if seal is not None:
+        seal["basis"] = RESTART_LIMIT_BASIS
+    updated_job.update(error_code="CALCULATION_FAILED", failure_basis=RESTART_LIMIT_BASIS)
+    updated_attempt.update(error_code="CALCULATION_FAILED", progress_application=None)
 
 
 def _reference(value, *, planned=False):
@@ -63,14 +103,14 @@ class DynamoJobRepository:
         for _ in range(self.state.max_conflict_retries):
             try:
                 result, actions = build()
-            except _ReadConflict:
+            except ReadConflict:
                 continue
-            if not actions or self.state._write(actions):
+            if not actions or self.state.write(actions):
                 return result
-        raise _unavailable()
+        raise unavailable()
 
     def get_job(self, job_id):
-        return self.state._get(_key("JOB", job_id, "STATE"))
+        return self.state.get_row(job_key(job_id))
 
     def _job(self, job_id):
         job = self.get_job(job_id)
@@ -80,10 +120,10 @@ class DynamoJobRepository:
 
     def _job_attempt(self, job_id, *, with_user=False):
         initial = self._job(job_id)
-        keys = [_key("JOB", job_id, "STATE"), _key("ATTEMPT", initial["attempt_id"], "META")]
+        keys = [job_key(job_id), attempt_key(initial["attempt_id"])]
         if with_user:
-            keys.append(_key("USER", initial["principal"], "STATE"))
-        rows = self.state._read(keys)
+            keys.append(user_key(initial["principal"]))
+        rows = self.state.read_rows(keys)
         job, attempt = rows[:2]
         if (not job or not attempt or job.get("attempt_id") != attempt.get("attempt_id")
                 or job.get("principal") != attempt.get("principal")
@@ -93,7 +133,7 @@ class DynamoJobRepository:
                 or hashlib.sha256(attempt["definition_json"].encode()).hexdigest() != job.get("definition_sha256")):
             raise JourneyError("STORED_INPUT_INVALID")
         if with_user:
-            self.state._require_user(rows[2], job["principal"])
+            self.state.require_user(rows[2], job["principal"])
         return rows
 
     @staticmethod
@@ -111,12 +151,12 @@ class DynamoJobRepository:
             expression += " AND #o = :owner AND #f = :fence AND #l > :now"
             names.update({"#o": "owner", "#f": "fence", "#l": "lease_until"})
             values.update({":owner": owner, ":fence": fence, ":now": now})
-        return self.state._replace(new, expression, names, values)
+        return self.state.replace_action(new, expression, names, values)
 
     @staticmethod
     def _due(item, when, kind):
         _integer(when)
-        item.update(next_due_at=when, GSI1PK=f"DUE#{kind}", GSI1SK=when)
+        item.update(next_due_at=when, GSI1PK=due_partition(kind), GSI1SK=when)
 
     @staticmethod
     def _remove_due(item):
@@ -128,40 +168,35 @@ class DynamoJobRepository:
         if job.get("terminal_seal"):
             raise JourneyError("INVALID_STATE")
 
-    def _binding_map(self, attempt):
-        from mock_journey.course_contracts import CourseBinding
-        raw = attempt.get("course_binding")
-        if raw is None:
-            return None
+    @staticmethod
+    def _binding_map(attempt):
+        """The attempt's course_binding dict, None for a legacy row; an unusable value is invalid stored input."""
+        from mock_journey.course_contracts import binding_from_row
         try:
-            bound = CourseBinding(**raw) if type(raw) is dict else raw
-            if type(bound) is not CourseBinding:
-                raise ValueError()
-            return dict(bound.__dict__)
-        except (ValueError, TypeError):
+            return binding_from_row(attempt, null_is_legacy=True)
+        except ValueError:
             raise JourneyError("STORED_INPUT_INVALID") from None
 
     def _course_rows(self, attempt, user):
         binding = self._binding_map(attempt)
         if binding is None:
-            return {"is_dummy": attempt.get("principal") == "dummy-tester"}
+            return {"is_dummy": _is_dummy(attempt)}
         epoch = attempt["epoch"]
         if epoch != user["epoch"]:
-            return {"is_dummy": attempt.get("principal") == "dummy-tester"}
-        pk = f"COURSE#{binding['scope_key']}"
-        item_key = {"PK": pk, "SK": f"EPOCH#{epoch}#ITEM#{binding['placement_key']}"}
-        head, item, final = self.state._read([
-            {"PK": pk, "SK": f"EPOCH#{epoch}#HEAD"}, item_key,
-            {"PK": pk, "SK": f"EPOCH#{epoch}#FINAL"},
+            return {"is_dummy": _is_dummy(attempt)}
+        item_key = course_item_key(binding["scope_key"], epoch, binding["placement_key"])
+        head, item, final = self.state.read_rows([
+            course_head_key(binding["scope_key"], epoch), item_key,
+            course_final_key(binding["scope_key"], epoch),
         ])
         if head is None or final is None or self.course_blobs is None:
-            raise _unavailable()
-        from mock_journey.course_state import bundle_from_record
+            raise unavailable()
+        from mock_journey.course_records import bundle_from_record
         from mock_journey.course_policy import scope_key
         from mock_journey.typed import parse_json
         body = self.course_blobs.get_bytes(head.get("bundle_ref"))
         if body is None:
-            raise _unavailable()
+            raise unavailable()
         bundle = bundle_from_record(parse_json(body))
         if (bundle.definition_hash != head.get("definition_hash")
                 or scope_key(bundle.scope) != binding["scope_key"]
@@ -169,24 +204,24 @@ class DynamoJobRepository:
             raise JourneyError("STORED_INPUT_INVALID")
         return {
             "head": head, "item": item, "final": final, "bundle": bundle,
-            "is_dummy": attempt.get("principal") == "dummy-tester",
+            "is_dummy": _is_dummy(attempt),
         }
 
     def _course_put_from_row(self, current, updates, match):
         if current is None:
-            raise _unavailable()
+            raise unavailable()
         updated = deepcopy(current)
         bump = updates.pop("revision_bump", None)
         updated.update(updates)
         if bump is True or "revision" in current:
             revision = current.get("revision")
             if type(revision) is not int:
-                raise _unavailable()
+                raise unavailable()
             updated["revision"] = revision + 1
             match = dict(match)
             match.setdefault("revision", revision)
         expression, names, values = DynamoJobRepository._match_expression(match)
-        return self.state._replace(updated, expression, names, values)
+        return self.state.replace_action(updated, expression, names, values)
 
     @staticmethod
     def _match_expression(match):
@@ -211,7 +246,7 @@ class DynamoJobRepository:
                 continue
             if kind == "SUBMISSION":
                 item = {"PK": key[0], "SK": key[1], **deepcopy(fields)}
-                extra.append(self.state._put(item))
+                extra.append(self.state.put_action(item))
                 continue
             if attempt_epoch != user_epoch:
                 continue
@@ -244,12 +279,12 @@ class DynamoJobRepository:
         _integer(next_due_at)
 
         def build():
-            session, attempt = self.state._read([
-                _key("SESSION", auth.session_id, "AUTH"), _key("ATTEMPT", attempt_id, "META"),
+            session, attempt = self.state.read_rows([
+                session_key(auth.session_id), attempt_key(attempt_id),
             ])
-            now = self.state._now()
-            self.state._check_session(session, auth, now)
-            self.state._check_attempt(attempt, auth)
+            now = self.state.now()
+            self.state.check_session(session, auth, now)
+            self.state.check_attempt(attempt, auth)
             if attempt.get("input_digest") is not None:
                 if attempt["input_digest"] != input_digest:
                     raise JourneyError("ATTEMPT_INPUT_CONFLICT")
@@ -266,7 +301,7 @@ class DynamoJobRepository:
             updated = {**attempt, "state": "queued", "revision": attempt["revision"] + 1,
                        "input_digest": input_digest, "input_manifest_ref": reference, "job_id": job_id}
             job = {
-                **_key("JOB", job_id, "STATE"), "job_id": job_id, "attempt_id": attempt_id,
+                **job_key(job_id), "job_id": job_id, "attempt_id": attempt_id,
                 "principal": attempt["principal"], "epoch": attempt["epoch"], "input_digest": input_digest,
                 "input_manifest_ref": reference, "adapter_version": adapter_version,
                 "projection_version": projection_version,
@@ -282,16 +317,15 @@ class DynamoJobRepository:
                 job["course_binding"] = bound
             self._due(job, next_due_at, "JOB")
             outbox = {
-                **_key("OUTBOX", job_id, "DISPATCH"), "job_id": job_id, "state": "pending",
+                **outbox_key(job_id), "job_id": job_id, "state": "pending",
                 "owner": None, "lease_until": 0, "fence": 0, "revision": 0,
                 "delivery_attempts": 0, "error_code": None,
             }
             self._due(outbox, next_due_at, "OUTBOX")
-            attempt_action = self.state._attempt_action(attempt, updated)
-            attempt_action["Put"]["ConditionExpression"] += " AND attribute_not_exists(#input)"
-            attempt_action["Put"]["ExpressionAttributeNames"]["#input"] = "input_digest"
-            return updated, [self.state._session_condition(auth, now), attempt_action,
-                             self.state._put(job), self.state._put(outbox)]
+            attempt_action = extend_condition(self.state.attempt_action(attempt, updated),
+                                              "attribute_not_exists(#input)", {"#input": "input_digest"})
+            return updated, [self.state.session_condition(auth, now), attempt_action,
+                             self.state.put_action(job), self.state.put_action(outbox)]
 
         return self._command(build)
 
@@ -301,14 +335,14 @@ class DynamoJobRepository:
 
         def build():
             job, attempt = self._job_attempt(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             if job["state"] in {"done", "failed"}:
                 return ("done", job), None
             if job.get("call_phase") not in {"not_started", "started", "candidate_saved"}:
                 # An old or unknown execution protocol is not permission to
                 # reinterpret accepted work as a new internal calculation.
-                raise _unavailable()
+                raise unavailable()
             if job["lease_until"] > now or job.get("next_due_at", now) > now:
                 return ("busy", job), None
             action = "execute" if job["call_phase"] == "not_started" else "recover"
@@ -319,7 +353,7 @@ class DynamoJobRepository:
             if attempt["state"] == "queued" or (self._binding_map(attempt) is not None
                                                   and attempt["state"] in {"failed", "outcome_unknown"}):
                 newer = {**attempt, "state": "processing", "revision": attempt["revision"] + 1}
-                actions.append(self.state._attempt_action(attempt, newer))
+                actions.append(self.state.attempt_action(attempt, newer))
             return (action, updated), actions
 
         return self._command(build)
@@ -329,7 +363,7 @@ class DynamoJobRepository:
 
         def build():
             job = self._job(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             self._lease(job, owner, fence, now)
             updated = {**job, "lease_until": now + lease_seconds, "revision": job["revision"] + 1}
@@ -343,26 +377,29 @@ class DynamoJobRepository:
 
         A worker recovering a missing candidate must hold a newer lease/fence
         and name the execution it inspected. The prior worker can only write
-        its old path, never the newly selected candidate.
+        its old path, never the newly selected candidate. Each such restart is
+        counted in the same CAS; none is issued once the limit is reached.
         """
         _text(call_id)
         reference = _reference(planned_candidate_ref, planned=True)
 
         def build():
             job = self._job(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             self._lease(job, owner, fence, now)
+            restart = job["call_phase"] == "started"
             if job["call_phase"] == "not_started":
                 allowed = previous_call_id is None and job["call_id"] is None
-            elif job["call_phase"] == "started":
+            elif restart:
                 allowed = (previous_call_id is not None and previous_call_id == job["call_id"]
                            and call_id != previous_call_id
                            and type(job.get("execution_fence")) is int
                            and job["execution_fence"] < fence
                            and job.get("candidate_ref") is None
                            and job["chart_snapshot"]["kind"] == "unset"
-                           and reference != job["planned_candidate_ref"])
+                           and reference != job["planned_candidate_ref"]
+                           and calculation_restarts(job) < CALCULATION_RESTART_LIMIT)
             else:
                 allowed = False
             if not allowed:
@@ -370,6 +407,8 @@ class DynamoJobRepository:
             updated = {**job, "call_phase": "started", "call_id": call_id,
                        "execution_fence": fence, "planned_candidate_ref": reference,
                        "revision": job["revision"] + 1}
+            if restart:
+                updated["calculation_restarts"] = calculation_restarts(job) + 1
             return (True, updated), [self._job_action(job, updated, owner=owner, fence=fence, now=now)]
 
         return self._command(build)
@@ -379,7 +418,7 @@ class DynamoJobRepository:
 
         def build():
             job = self._job(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             self._lease(job, owner, fence, now)
             planned = job["planned_candidate_ref"]
@@ -404,7 +443,7 @@ class DynamoJobRepository:
     def pin_chart(self, job_id, owner, fence, selection):
         def build():
             job = self._job(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._lease(job, owner, fence, now)
             self._binding(selection, job)
             if job["call_phase"] != "candidate_saved":
@@ -430,24 +469,27 @@ class DynamoJobRepository:
         return self._command(build)
 
     @staticmethod
-    def _evaluation(value, attempt):
+    def check_evaluation(value, attempt):
+        """The evaluation as stored, once it agrees with the attempt's definition (else CALCULATOR_CONTRACT_MISMATCH)."""
         if type(value) is not dict or set(value) != {"goal", "score", "program_completed", "reason_codes"}:
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         definition = json.loads(attempt["definition_json"])
         goal = value["goal"]
         score = value["score"]
-        versioned_goal = definition.get("adapter_version") in PENDING_GOAL_ADAPTER_VERSIONS
+        versioned_goal = is_versioned_goal(definition)
+        adapter_version = definition.get("adapter_version")
         goal_fields = {"kind", "required", "observed", "met"}
         if versioned_goal:
             goal_fields.add("status")
         if (type(goal) is not dict or set(goal) != goal_fields
                 or goal.get("kind") != definition["goal"]["kind"]
                 or type(goal.get("required")) is not int or goal["required"] != definition["goal"]["required"]
-                or (versioned_goal and definition.get("profile_version") != PENDING_GOAL_PROFILE_VERSION)
+                or (versioned_goal and definition.get("profile_version") != expected_profile_version(adapter_version))
                 or type(score) is not dict or set(score) != {"decision"}
                 or type(score.get("decision")) is not str or score["decision"] not in {"pass", "fail"}):
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
-        expected_status = "pending_policy" if goal["kind"] == "cycles" else "evaluated"
+        # None for an unversioned definition (no status key, checked above).
+        expected_status = expected_goal_status(goal["kind"], adapter_version)
         if versioned_goal and goal["status"] != expected_status:
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         pending = versioned_goal and expected_status == "pending_policy"
@@ -465,17 +507,6 @@ class DynamoJobRepository:
         if type(value["program_completed"]) is not bool or value["program_completed"] != completed or value["reason_codes"] != reasons:
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         return deepcopy(value)
-
-    def _close_count(self, attempt, user, now):
-        if attempt["epoch"] != user["epoch"] or not attempt["active_counted"]:
-            return None
-        slot_key = f'{attempt["program_id"]}:{attempt["target"]}'
-        if self.state._slot(user, slot_key)["open_attempts"] <= 0:
-            raise _unavailable()
-        changed = deepcopy(user)
-        changed["slots"][slot_key]["open_attempts"] -= 1
-        changed.update(revision=user["revision"] + 1, updated_at=now)
-        return changed
 
     @staticmethod
     def _publication(value, job):
@@ -506,16 +537,16 @@ class DynamoJobRepository:
             if job["state"] == "done":
                 return attempt, None
             self._require_unsealed(job)
-            now = self.state._now()
+            now = self.state.now()
             self._lease(job, owner, fence, now)
             if job["call_phase"] != "candidate_saved":
                 raise JourneyError("INVALID_STATE")
             selected = job["chart_snapshot"]
             self._publication(chart_publication, job)
-            checked = self._evaluation(evaluation, attempt)
+            checked = self.check_evaluation(evaluation, attempt)
             bound = self._binding_map(attempt)
             if bound is not None and completion_plan is None:
-                raise _unavailable()
+                raise unavailable()
             plan_payload = None
             plan_receipt = None
             course_rows = None
@@ -525,30 +556,16 @@ class DynamoJobRepository:
                 plan = completion_plan.build(job, attempt, user, course_rows, checked)
                 plan_payload = parse_json(plan.actions_json)
                 plan_receipt = parse_json(plan.result_receipt_json)
-            changed_user = self._close_count(attempt, user, now)
+            changed_user = self.state.close_open_attempt(attempt, user, now)
             if plan_receipt is not None:
                 progress = plan_receipt["progress_application"]
             else:
-                applied = False
-                if attempt["epoch"] != user["epoch"]:
-                    reason = "PROGRESS_RESET"
-                elif checked["goal"].get("status") == "pending_policy":
-                    reason = "GOAL_POLICY_UNRESOLVED"
-                elif not checked["program_completed"]:
-                    reason = "REQUIREMENTS_NOT_MET"
-                else:
-                    slot_key = f'{attempt["program_id"]}:{attempt["target"]}'
-                    if self.state._slot(user, slot_key)["completed"]:
-                        reason = "ALREADY_COMPLETED"
-                    else:
-                        applied, reason = True, "APPLIED"
-                        if changed_user is None:
-                            changed_user = deepcopy(user)
-                            changed_user.update(revision=user["revision"] + 1, updated_at=now)
-                        changed_user["slots"][slot_key].update(
-                            completed=True, completed_by_attempt=attempt["attempt_id"], completed_at=now)
-                progress = {"applied": applied, "applied_epoch": attempt["epoch"] if applied else None,
-                            "reason": reason}
+                progress, slot_completion = legacy_progress(attempt, user, checked, now)
+                if slot_completion is not None:
+                    if changed_user is None:
+                        changed_user = deepcopy(user)
+                        changed_user.update(revision=user["revision"] + 1, updated_at=now)
+                    changed_user["slots"][legacy_slot_key(attempt)].update(slot_completion)
             updated_attempt = {**attempt, "state": "evaluated", "revision": attempt["revision"] + 1,
                                "active_counted": False, "result_ref": reference, "evaluation": checked,
                                "progress_application": progress, "chart_publication": deepcopy(chart_publication)}
@@ -559,38 +576,48 @@ class DynamoJobRepository:
                            "owner": None, "lease_until": 0, "final_ref": reference, "error_code": None,
                            "chart_publication": deepcopy(chart_publication)}
             self._remove_due(updated_job)
-            job_action = self._job_action(job, updated_job, owner=owner, fence=fence, now=now)
-            job_action["Put"]["ConditionExpression"] += " AND #chart = :chart"
-            job_action["Put"]["ExpressionAttributeNames"]["#chart"] = "chart_snapshot"
-            job_action["Put"]["ExpressionAttributeValues"].update(_encode({":chart": selected}))
-            actions = [job_action, self.state._attempt_action(attempt, updated_attempt),
-                       self.state._user_action(user, changed_user)]
+            job_action = extend_condition(self._job_action(job, updated_job, owner=owner, fence=fence, now=now),
+                                          "#chart = :chart", {"#chart": "chart_snapshot"}, {":chart": selected})
+            actions = [job_action, self.state.attempt_action(attempt, updated_attempt),
+                       self.state.user_action(user, changed_user)]
             if plan_payload is not None:
                 actions.extend(self._plan_extra_actions(
                     plan_payload, course_rows, attempt["epoch"], user["epoch"],
                 ))
-            if len(actions) > 20:
-                raise _unavailable()
+            if len(actions) > FINALIZE_MAX_TRANSACTION_ACTIONS:
+                raise unavailable()
             return updated_attempt, actions
 
         return self._command(build)
 
-    def _finish_error(self, job_id, owner, fence, error_code, next_due_at):
+    @staticmethod
+    def _require_restart_limit(job):
+        """Only the limit and an interrupted, uncommitted call justify a restart-limit close."""
+        if (calculation_restarts(job) < CALCULATION_RESTART_LIMIT or job.get("call_phase") != "started"
+                or job.get("candidate_ref") is not None or job.get("final_ref") is not None
+                or job["chart_snapshot"]["kind"] != "unset"):
+            raise JourneyError("INVALID_STATE")
+
+    def _finish_error(self, job_id, owner, fence, error_code, next_due_at, *, restart_limit=False):
         unknown = next_due_at is not None
         if unknown:
             _integer(next_due_at)
             if error_code != "CALCULATION_OUTCOME_UNKNOWN":
-                raise _unavailable()
+                raise unavailable()
         elif error_code not in _FAILURES:
-            raise _unavailable()
+            raise unavailable()
 
         def build():
             job, attempt, user = self._job_attempt(job_id, with_user=True)
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             self._lease(job, owner, fence, now)
             if unknown and job["call_phase"] != "started":
                 raise JourneyError("INVALID_STATE")
+            if restart_limit:
+                self._require_restart_limit(job)
+                if self._binding_map(attempt) is not None:
+                    raise JourneyError("INVALID_STATE")  # Course jobs close only through a seal.
             state = "outcome_unknown" if unknown else "failed"
             updated_job = {**job, "state": state, "owner": None, "lease_until": 0,
                            "revision": job["revision"] + 1, "error_code": error_code}
@@ -601,10 +628,12 @@ class DynamoJobRepository:
             updated_attempt = {**attempt, "state": state, "active_counted": False,
                                "revision": attempt["revision"] + 1, "evaluation": None,
                                "progress_application": None, "error_code": error_code}
-            changed_user = self._close_count(attempt, user, now)
+            if restart_limit:
+                _restart_limit_closure(updated_job, updated_attempt)
+            changed_user = self.state.close_open_attempt(attempt, user, now)
             return updated_job, [self._job_action(job, updated_job, owner=owner, fence=fence, now=now),
-                                 self.state._attempt_action(attempt, updated_attempt),
-                                 self.state._user_action(user, changed_user)]
+                                 self.state.attempt_action(attempt, updated_attempt),
+                                 self.state.user_action(user, changed_user)]
 
         return self._command(build)
 
@@ -613,6 +642,10 @@ class DynamoJobRepository:
 
     def mark_failed(self, job_id, owner, fence, error_code):
         return self._finish_error(job_id, owner, fence, error_code, None)
+
+    def close_restart_limit(self, job_id, owner, fence):
+        """Fail a legacy job instead of a sixth restart, through the existing failure write-set."""
+        return self._finish_error(job_id, owner, fence, "CALCULATION_FAILED", None, restart_limit=True)
 
     def _evidence_digest(self, evidence):
         from mock_journey.typed import digest
@@ -634,20 +667,19 @@ class DynamoJobRepository:
                 binding = self._binding_map(attempt)
                 if binding is None:
                     raise JourneyError("INVALID_STATE")
-                pk = f"COURSE#{binding['scope_key']}"
-                keys = [_key("JOB", job_id, "STATE"), _key("ATTEMPT", attempt["attempt_id"], "META"),
-                        _key("USER", attempt["principal"], "STATE"),
-                        {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#HEAD"},
-                        {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#FINAL"}]
-                current = self.state._read(keys)
+                keys = [job_key(job_id), attempt_key(attempt["attempt_id"]),
+                        user_key(attempt["principal"]),
+                        course_head_key(binding["scope_key"], attempt["epoch"]),
+                        course_final_key(binding["scope_key"], attempt["epoch"])]
+                current = self.state.read_rows(keys)
                 if not all(current):
                     raise JourneyError("STORED_INPUT_INVALID")
                 if current[0]["revision"] != job["revision"] or current[1]["revision"] != attempt["revision"]:
                     continue
-                return dict(zip(("job", "attempt", "user", "head", "final"), current), now=self.state._now())
-            except _ReadConflict:
+                return dict(zip(("job", "attempt", "user", "head", "final"), current), now=self.state.now())
+            except ReadConflict:
                 continue
-        raise _unavailable()
+        raise unavailable()
 
     def _verify_course_evidence(self, job_id, evidence, action, owner, fence):
         from mock_journey.course_contracts import RecoveryEvidence
@@ -684,13 +716,14 @@ class DynamoJobRepository:
                 if final["active_attempt_id"] != attempt["attempt_id"] or final["phase"] == "passed":
                     raise JourneyError("INVALID_STATE")
                 if row is final:
-                    updates = {"phase": "free" if release else "recovery_required",
+                    from mock_journey.course_policy import resting_phase
+                    updates = {"phase": resting_phase(final) if release else "recovery_required",
                                "active_attempt_id": None if release else attempt["attempt_id"]}
             if updates or (row is head and attempt["epoch"] == user["epoch"]):
                 actions.append(self._course_put_from_row(row, updates, match))
             else:
                 expression, names, values = self._match_expression(match)
-                actions.append(self.state._condition({"PK": row["PK"], "SK": row["SK"]},
+                actions.append(self.state.condition_action({"PK": row["PK"], "SK": row["SK"]},
                                                      expression, names, values))
         return actions
 
@@ -703,7 +736,7 @@ class DynamoJobRepository:
         def build():
             snap = self.recovery_snapshot(job_id)
             job, attempt, user = snap["job"], snap["attempt"], snap["user"]
-            now = self.state._now()
+            now = self.state.now()
             self._require_unsealed(job)
             self._lease(job, owner, fence, now)
             recovery_error = ("CALCULATION_OUTCOME_UNKNOWN"
@@ -721,12 +754,19 @@ class DynamoJobRepository:
             changed_attempt = {**attempt, "state": "outcome_unknown", "error_code": recovery_error,
                 "revision": attempt["revision"] + 1, "evaluation": None, "progress_application": None}
             actions = [self._job_action(job, changed_job, owner=owner, fence=fence, now=now),
-                       self.state._attempt_action(attempt, changed_attempt), self.state._user_action(user)]
+                       self.state.attempt_action(attempt, changed_attempt), self.state.user_action(user)]
             actions.extend(self._recovery_course_actions(snap))
             return changed_job, actions
         return self._command(build)
 
     def close_course_terminal(self, job_id, owner, fence, evidence):
+        return self._seal_course(job_id, owner, fence, evidence, "close_terminal")
+
+    def close_course_restart_limit(self, job_id, owner, fence, evidence):
+        """Seal instead of a sixth restart; evidence is the fresh retry_local_call inspection."""
+        return self._seal_course(job_id, owner, fence, evidence, "retry_local_call", restart_limit=True)
+
+    def _seal_course(self, job_id, owner, fence, evidence, action, *, restart_limit=False):
         from mock_journey.course_contracts import RecoveryEvidence
         if type(evidence) is not RecoveryEvidence or evidence.snapshot_json is None:
             raise JourneyError("INVALID_STATE")
@@ -735,13 +775,15 @@ class DynamoJobRepository:
             existing = self._job(job_id).get("terminal_seal")
             if type(existing) is dict and existing.get("evidence_digest") == seal_digest:
                 return self._job_attempt(job_id)[1], None
-            snap = self._verify_course_evidence(job_id, evidence, "close_terminal", owner, fence)
+            snap = self._verify_course_evidence(job_id, evidence, action, owner, fence)
             job, attempt, user = snap["job"], snap["attempt"], snap["user"]
-            now = self.state._now()
+            now = self.state.now()
             self._lease(job, owner, fence, now)
             if (job.get("final_ref") is not None or attempt.get("result_ref") is not None
                     or job.get("candidate_ref") is not None or evidence.candidate_state != "absent_uncommitted"):
                 raise JourneyError("INVALID_STATE")
+            if restart_limit:
+                self._require_restart_limit(job)
             seal = {"job_id": job_id, "attempt_id": attempt["attempt_id"], "epoch": attempt["epoch"],
                     "call_id": job.get("call_id"), "fence": fence, "evidence_digest": seal_digest}
             updated_job = {**job, "state": "failed", "owner": None, "lease_until": 0,
@@ -749,9 +791,11 @@ class DynamoJobRepository:
             self._remove_due(updated_job)
             updated_attempt = {**attempt, "state": "failed", "evaluation": None,
                                "revision": attempt["revision"] + 1, "active_counted": False}
+            if restart_limit:
+                _restart_limit_closure(updated_job, updated_attempt, seal)
             actions = [self._job_action(job, updated_job, owner=owner, fence=fence, now=now),
-                       self.state._attempt_action(attempt, updated_attempt),
-                       self.state._user_action(user, self._close_count(attempt, user, now))]
+                       self.state.attempt_action(attempt, updated_attempt),
+                       self.state.user_action(user, self.state.close_open_attempt(attempt, user, now))]
             actions.extend(self._recovery_course_actions(snap, release=True))
             return updated_attempt, actions
         return self._command(build)
@@ -764,24 +808,24 @@ class DynamoJobRepository:
             snap = self._verify_course_evidence(job_id, evidence, "resume_candidate", None, evidence.fence)
             job, attempt, user = snap["job"], snap["attempt"], snap["user"]
             if (job["state"] != "failed" or attempt["state"] != "failed"
-                    or job.get("owner") is not None or job.get("lease_until", 0) > self.state._now()
+                    or job.get("owner") is not None or job.get("lease_until", 0) > self.state.now()
                     or job.get("final_ref") is not None or attempt.get("result_ref") is not None):
                 raise JourneyError("INVALID_STATE")
-            now = self.state._now()
+            now = self.state.now()
             changed_job = {**job, "state": "queued", "revision": job["revision"] + 1,
                            "owner": None, "lease_until": 0,
                            "recovery_from": {"state": job["state"], "error_code": job.get("error_code"),
                                              "revision": job["revision"]}}
             self._due(changed_job, now, "JOB")
             changed_attempt = {**attempt, "state": "processing", "revision": attempt["revision"] + 1}
-            actions = [self._job_action(job, changed_job), self.state._attempt_action(attempt, changed_attempt),
-                       self.state._user_action(user)]
+            actions = [self._job_action(job, changed_job), self.state.attempt_action(attempt, changed_attempt),
+                       self.state.user_action(user)]
             actions.extend(self._recovery_course_actions(snap))
             return changed_attempt, actions
         return self._command(build)
 
     def _outbox(self, job_id):
-        record = self.state._get(_key("OUTBOX", job_id, "DISPATCH"))
+        record = self.state.get_row(outbox_key(job_id))
         if not record:
             raise JourneyError("NOT_FOUND")
         return record
@@ -792,7 +836,7 @@ class DynamoJobRepository:
             expression += " AND #o = :owner AND #f = :fence AND #l > :now"
             names.update({"#o": "owner", "#f": "fence", "#l": "lease_until"})
             values.update({":owner": owner, ":fence": fence, ":now": now})
-        return self.state._replace(new, expression, names, values)
+        return self.state.replace_action(new, expression, names, values)
 
     def claim_outbox(self, job_id, owner, lease_seconds):
         _text(owner)
@@ -800,7 +844,7 @@ class DynamoJobRepository:
 
         def build():
             old = self._outbox(job_id)
-            now = self.state._now()
+            now = self.state.now()
             if old["state"] == "sent":
                 return ("done", old), None
             if old["lease_until"] > now or old.get("next_due_at", now) > now:
@@ -818,7 +862,7 @@ class DynamoJobRepository:
             old = self._outbox(job_id)
             if old["state"] == "sent":
                 return old, None
-            now = self.state._now()
+            now = self.state.now()
             self._lease(old, owner, fence, now)
             new = {**old, "state": "sent", "owner": None, "lease_until": 0,
                    "revision": old["revision"] + 1, "error_code": None}
@@ -830,11 +874,11 @@ class DynamoJobRepository:
     def release_outbox(self, job_id, owner, fence, *, next_due_at, error_code):
         _integer(next_due_at)
         if error_code != "TEMPORARILY_UNAVAILABLE":
-            raise _unavailable()
+            raise unavailable()
 
         def build():
             old = self._outbox(job_id)
-            now = self.state._now()
+            now = self.state.now()
             self._lease(old, owner, fence, now)
             new = {**old, "owner": None, "lease_until": 0, "revision": old["revision"] + 1,
                    "error_code": error_code}
@@ -845,29 +889,29 @@ class DynamoJobRepository:
 
     def _due_page(self, kind, *, limit, cursor):
         _integer(limit, positive=True)
-        now = self.state._now()
+        now = self.state.now()
         request = {
             "TableName": self.state.table_name, "IndexName": "GSI1", "Limit": limit,
             "KeyConditionExpression": "#pk = :kind AND #sk <= :now",
             "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
-            "ExpressionAttributeValues": _encode({":kind": f"DUE#{kind}", ":now": now}),
+            "ExpressionAttributeValues": encode_item({":kind": due_partition(kind), ":now": now}),
         }
         if cursor is not None:
-            request["ExclusiveStartKey"] = _encode(cursor)
+            request["ExclusiveStartKey"] = encode_item(cursor)
         try:
             response = self.state.client.query(**request)
             records = []
             for value in response.get("Items", []):
-                row = _decode(value)
-                current = self.state._get({"PK": row["PK"], "SK": row["SK"]})
-                if (current and current.get("GSI1PK") == f"DUE#{kind}"
-                        and current.get("next_due_at", now + 1) <= self.state._now()
-                        and current.get("lease_until", 0) <= self.state._now()):
+                row = decode_item(value)
+                current = self.state.get_row({"PK": row["PK"], "SK": row["SK"]})
+                if (current and current.get("GSI1PK") == due_partition(kind)
+                        and current.get("next_due_at", now + 1) <= self.state.now()
+                        and current.get("lease_until", 0) <= self.state.now()):
                     records.append(current)
             continuation = response.get("LastEvaluatedKey")
-            return records, _decode(continuation) if continuation else None
+            return records, decode_item(continuation) if continuation else None
         except (ClientError, BotoCoreError, KeyError, TypeError):
-            raise _unavailable() from None
+            raise unavailable() from None
 
     def due_outbox(self, *, limit, cursor=None):
         return self._due_page("OUTBOX", limit=limit, cursor=cursor)
@@ -885,46 +929,46 @@ class DynamoJobRepository:
             "KeyConditionExpression": "#gpk = :kind AND #gsk <= :cutoff",
             "ProjectionExpression": "#pk, #sk, #gpk, #gsk",
             "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK", "#gpk": "GSI1PK", "#gsk": "GSI1SK"},
-            "ExpressionAttributeValues": _encode({":kind": "DUE#" + kind, ":cutoff": cutoff}),
+            "ExpressionAttributeValues": encode_item({":kind": due_partition(kind), ":cutoff": cutoff}),
         }
         if cursor is not None:
-            request["ExclusiveStartKey"] = _encode(cursor)
+            request["ExclusiveStartKey"] = encode_item(cursor)
         try:
             check_relay_call()
             response = self.state.client.query(**request)
             items = response.get("Items", [])
             if type(items) is not list or len(items) > 1:
-                raise _unavailable()
-            raw = validate_cursor(_decode(items[0]), kind, cutoff) if items else None
+                raise unavailable()
+            raw = validate_cursor(decode_item(items[0]), kind, cutoff) if items else None
             returned = response.get("LastEvaluatedKey")
             if returned is not None and type(returned) is not dict:
-                raise _unavailable()
-            continuation = validate_cursor(_decode(returned), kind, cutoff) if returned else None
+                raise unavailable()
+            continuation = validate_cursor(decode_item(returned), kind, cutoff) if returned else None
             # No filter, and one evaluated item. A nonempty page's continuation
             # must be that actual item, not a key guessed from its refreshed row.
             if (continuation is not None and (continuation == cursor
                     or (raw is not None and continuation != raw))):
-                raise _unavailable()
+                raise unavailable()
             return raw, continuation
         except (ClientError, BotoCoreError, KeyError, TypeError, AttributeError):
-            raise _unavailable() from None
+            raise unavailable() from None
 
     def due_current(self, kind, raw, *, cutoff):
         """Strong eligibility reread after the caller's post-query time check."""
         from mock_journey.relay_progress import check_relay_call, validate_cursor
         raw = validate_cursor(raw, kind, cutoff)
         if raw is None:
-            raise _unavailable()
+            raise unavailable()
         check_relay_call()
-        current = self.state._get({"PK": raw["PK"], "SK": raw["SK"]})
+        current = self.state.get_row({"PK": raw["PK"], "SK": raw["SK"]})
         if current is None:
             return None
         job_id = raw["PK"].split("#", 1)[1]
         if (current.get("PK") != raw["PK"] or current.get("SK") != raw["SK"]
                 or current.get("job_id") != job_id):
-            raise _unavailable()
-        now = self.state._now()
-        if (current.get("GSI1PK") != "DUE#" + kind
+            raise unavailable()
+        now = self.state.now()
+        if (current.get("GSI1PK") != due_partition(kind)
                 or current.get("state") in {"done", "failed", "sent"}):
             return None
         if (_integer(current.get("next_due_at")) > now

@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 from dataclasses import fields, replace
-from pathlib import Path
 import json
 import subprocess
 import sys
@@ -11,101 +10,27 @@ import pytest
 
 from mock_journey.catalog import PROGRAMS, TARGETS
 from mock_journey.course_contracts import (
-    APP_ROUTES, ATTEMPT_VIEW_FIELDS, CALCULATION_VIEW_FIELDS, CONTENT_START_VIEW_FIELDS,
-    CONTRACT_VERSION, COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS,
-    DIGEST_EXCLUDED_WIRE_FIELDS, ENROLLMENT_FIELDS, EXECUTION_KEYS, FIXTURE_CATALOG_VERSION,
-    FIXTURE_MAPPING_VERSION, ITEM_DETAIL_OUTER_FIELDS, ITEM_TYPE_WIRE, PAGE_SIZE_MAX,
-    POLICY_VERSION, PROGRESS_RECEIPT_FIELDS, PUBLIC_SYMBOLS, SESSION_VIEW_FIELDS,
-    START_REQUEST_FIELDS, AssignmentBinding, AttemptTemplate, ContentReport, CourseBinding,
-    CourseBundle, CourseScope, CourseView, GateView, InventoryTicket,
-    InventoryView, LearnerContext, MappingRegistry, Placement, PublicIds, RefreshResult,
-    RefreshTicket, StartCommand, StartReceipt, StoredProgressReceipt, WritePlan,
-    definition_digest, definition_identity, item_type_wire, learner_identity, owned_json_bytes,
-    sealed_bundle, scope_identity, validate_execution_definition,
+    APP_ROUTES, ATTEMPT_VIEW_FIELDS, CALCULATION_VIEW_FIELDS, CONTENT_START_VIEW_FIELDS, CONTRACT_VERSION,
+    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS, DIGEST_EXCLUDED_WIRE_FIELDS,
+    ENROLLMENT_FIELDS, EXECUTION_KEYS, FIXTURE_CATALOG_VERSION, FIXTURE_MAPPING_VERSION,
+    ITEM_DETAIL_OUTER_FIELDS, ITEM_TYPE_WIRE, PAGE_SIZE_MAX, POLICY_VERSION, PROGRESS_RECEIPT_FIELDS,
+    PUBLIC_SYMBOLS, SESSION_VIEW_FIELDS, START_REQUEST_FIELDS, AssignmentBinding, AttemptTemplate,
+    ContentReport, CourseBinding, CourseScope, CourseView, GateView, InventoryTicket, InventoryView,
+    LearnerContext, MappingRegistry, PublicIds, RefreshResult, RefreshTicket, StartCommand, StartReceipt,
+    StoredProgressReceipt, WritePlan, definition_digest, definition_identity, item_type_wire,
+    learner_identity, owned_json_bytes, sealed_bundle, scope_identity, validate_execution_definition,
 )
 from mock_journey.course_errors import COURSE_ERROR_CODES, CourseError, course_error_table
 from mock_journey.course_settings import CourseSettings, fixture_course_settings
 from mock_journey.errors import JourneyError
 from mock_journey.typed import digest, parse_json
+from tests.vcc_contract_support import (  # noqa: F401 (re-export)
+    BUNDLE_DOC, FIXTURES, MAPPING_DOC, ROOT, VECTORS, WIRE, assignment_501, baseline_bundle, bundle_from, learner_from,
+    load, placement_from, t2_identity,
+)
 
 
-ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = ROOT / "tests" / "fixtures" / "vcc_contract" / "v1"
 PYTHON = sys.executable
-
-
-def load(name):
-    return parse_json((FIXTURES / name).read_bytes())
-
-
-BUNDLE_DOC = load("course_bundle.json")
-VECTORS = load("typed_id_vectors.json")
-MAPPING_DOC = load("execution_mapping.json")
-WIRE = load("wire_cases.json")
-
-
-def t2_identity(scope, mapping_version, placements):
-    """ARCHITECTURE T2 projection copied here so tests do not treat implementation output as truth."""
-    return {
-        "contract_version": "vcc-internal-v1",
-        "mapping_version": mapping_version,
-        "scope": list(scope),
-        "placements": [{
-            "source_id": item["source_id"],
-            "position": item["position"],
-            "kind": item["kind"],
-            "content_identity": deepcopy(item["content_identity"]),
-            "content_version": item["content_version"],
-            "duration_ms": item["duration_ms"],
-            "execution_status": item["execution_status"],
-            "execution": deepcopy(item["execution"]),
-        } for item in placements],
-    }
-
-
-def learner_from(doc):
-    return LearnerContext(**doc)
-
-
-def placement_from(doc, *, detail=None, content_identity=None, execution=None, **overrides):
-    payload = {
-        "source_id": doc["source_id"],
-        "public_link_id": doc["public_link_id"],
-        "public_item_id": doc["public_item_id"],
-        "position": doc["position"],
-        "kind": doc["kind"],
-        "content_version": doc["content_version"],
-        "content_identity_json": content_identity if content_identity is not None else deepcopy(doc["content_identity"]),
-        "detail_json": detail if detail is not None else deepcopy(doc["detail"]),
-        "execution_json": execution if execution is not None else deepcopy(doc["execution"]),
-        "execution_status": doc["execution_status"],
-        "duration_ms": doc["duration_ms"],
-    }
-    payload.update(overrides)
-    return Placement(**payload)
-
-
-def bundle_from(doc, assignment, *, placements=None, course_json=None, progress_json=None):
-    learner = learner_from(doc["learners"]["real"])
-    scope = CourseScope(learner, assignment["scope"][3], assignment["scope"][4])
-    public = PublicIds(assignment["course_public_id"], assignment["enrollment_public_id"], assignment["progress_id"])
-    items = placements if placements is not None else [placement_from(item) for item in doc["placements"]]
-    bundle = CourseBundle(
-        scope=scope, public_ids=public, source_revision=assignment["source_revision"],
-        mapping_version=doc["mapping_version"], definition_hash=assignment["definition_hash"],
-        placements=items,
-        course_json=course_json if course_json is not None else deepcopy(doc["course_json"]),
-        source_progress_json=progress_json if progress_json is not None else deepcopy(doc["source_progress_json"]),
-    )
-    return bundle
-
-
-def assignment_501():
-    return BUNDLE_DOC["assignments"][0]
-
-
-def baseline_bundle():
-    return bundle_from(BUNDLE_DOC, assignment_501())
 
 
 class TestContractVersionAndSymbols:
@@ -439,6 +364,16 @@ class TestV05WireSchema:
         )
         assert policy["http"] == 200
         assert policy["data"]["evaluation"]["goal"]["status"] == "pending_policy"
+        assert "retained pending" in policy["note"]
+        evaluated = next(
+            case for case in next(route for route in WIRE["routes"] if route["id"] == "calculation_get")["success"]
+            if case["id"] == "cycles_evaluated_is_200"
+        )
+        assert evaluated["http"] == 200
+        assert evaluated["data"]["evaluation"]["goal"] == {
+            "kind": "cycles", "required": 3, "observed": 3, "met": True, "status": "evaluated"}
+        assert evaluated["data"]["evaluation"]["program_completed"] is True
+        assert "D136" in WIRE["undetermined"]["goal_cycles_evaluated"]
         assert set(WIRE["digest_exclusions"]) == DIGEST_EXCLUDED_WIRE_FIELDS
         assert WIRE["cancel_reason_map"] == {"user_cancelled": "user_stopped", "connection_lost": "manikin_disconnected"}
         assert PAGE_SIZE_MAX == 1000

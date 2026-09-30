@@ -3,7 +3,6 @@
 import contextlib
 import http.client
 import json
-import socket
 import threading
 from types import SimpleNamespace
 
@@ -14,7 +13,12 @@ from mock_journey.course_errors import CourseError
 from mock_journey.course_http import CourseHttp
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.course_wiring import COURSE_MODE
+from tests.course_hooks_support import hooks_with
+from tests.loopback_port_support import unused_loopback_port as unused_port
 from tests.vcc_support import OLD_ROUTES
+
+# Real loopback sockets: opted out of the directory network guard (conftest.py).
+pytestmark = pytest.mark.loopback
 
 
 CLOCK = lambda: 1_800_000_000
@@ -30,15 +34,9 @@ class CourseV2Service:
         self.course_http = CourseHttp(
             SimpleNamespace(), settings, clock=CLOCK,
             uuid_factory=lambda: "61000000-0000-4000-8000-000000000001",
-            authenticate=lambda *a, **k: (_ for _ in ()).throw(CourseError("SESSION_REQUIRED")),
-            login=lambda *a, **k: (_ for _ in ()).throw(CourseError("LOGIN_FAILED")),
+            hooks=hooks_with(authenticate=lambda *a, **k: (_ for _ in ()).throw(CourseError("SESSION_REQUIRED")),
+                             login=lambda *a, **k: (_ for _ in ()).throw(CourseError("LOGIN_FAILED"))),
         )
-
-
-def unused_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 @contextlib.contextmanager

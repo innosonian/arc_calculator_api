@@ -16,12 +16,12 @@ import uuid
 from botocore.exceptions import ReadTimeoutError
 import pytest
 
-from integration_tests.test_mock_jobs_dynamodb import jobs_world  # noqa: F401
-from integration_tests.test_mock_state_dynamodb import _encode as fixture_encode
+from integration_tests.jobs_world_support import jobs_world  # noqa: F401 -- legacy-seeded GSI table
 from mock_journey.dispatch import OutboxRelay, handle_stream
 from mock_journey.errors import JourneyError
 from mock_journey.relay_progress import DynamoRelayProgress, RelayProgressLost
 from mock_journey.state import _decode, _encode
+from tests.journey_support import encode_item as fixture_encode
 
 
 class MeasuredClient:

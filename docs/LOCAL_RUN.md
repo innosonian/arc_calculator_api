@@ -1,6 +1,6 @@
-# 로컬 Journey 서버 실행 안내
+# 로컬 서버 실행 안내
 
-2026-09-18 기준. 기본 실행은 기존 `/mock/v1`이다. 새 `/api/v2`는 `--course-v2`로 `build_course_application`을 명시 조립할 때만 열린다. 플래그 없이 실행하면 `/mock/v1`이다. 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
+2026-09-28 기준. 기본 실행은 `/api/v2`이며 AWS Dev와 같은 Dummy Dev 임시 과정 15개를 제공한다. `/mock/v1`과 `/cpr-analysis`는 삭제되어 `404`다(D103, query 없이 요청할 때. `/api/v2/` 밖의 경로에 query가 붙으면 먼저 `400`). 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
 
 ## 1. Mac에서 실행
 
@@ -16,24 +16,30 @@ var/local-python/bin/python scripts/serve_local.py
 정상 시작 메시지:
 
 ```text
-ARC local journey API ready: http://127.0.0.1:8000
+ARC local course API ready: http://127.0.0.1:8000
+Available: /api/v2 login, 15 temporary Dummy courses after Dummy login, measured binary calculation, stored results and 300-second charts.
+CPR completion follows the cycle rule (D136); ARC submission remains disabled.
+DynamoDB: loopback only. Ctrl+C stops owned services and preserves local data.
 ```
 
-터미널을 켜 둔 상태에서 `http://127.0.0.1:8000/healthz`를 연다. 정상 상태는 HTTP `200`, `mode: "local_journey"`, `calculator_available: true`다. 로그인 화면이나 Swagger UI가 뜨는 서버는 아니다.
+터미널을 켜 둔 상태에서 `http://127.0.0.1:8000/healthz`를 연다. 정상 상태는 HTTP `200`, `mode: "course_v2"`, `calculator_available: true`, `login_path: "/api/v2/sessions/"`, `programs_path: "/api/v2/courses/progress/"`, `program_target_combinations: 15`다. 로그인 화면이나 Swagger UI가 뜨는 서버는 아니다.
 
-이제 기본 명령으로 로그인·프로그램·훈련 생성·계산·결과·실제 차트 조회가 연결된다. 과거 제어 API만 필요할 때에만 `--control-only`를 붙인다. 그 모드의 `calculator_available: false`는 정상이며 계산 Journey에는 사용하지 않는다.
+기본 명령으로 로그인·과정 목록·훈련/평가 시작·계산·결과·실제 차트 조회가 연결된다. Dummy 로그인(`test@test.com` / 문자열 `2222`) 뒤 `[Dummy Dev]` 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)가 보인다. AWS Dev와 같은 임시 카탈로그이며 ARC 배정·운영 한도가 아니고 영상·문서 자료는 없다. ARC 제출은 계속 비활성이며 Dummy 계산 결과는 `excluded`다.
 
-앱이 `/api/v2`를 쓰면 같은 명령에 `--course-v2`를 붙인다. `--control-only`와 함께 쓸 수 없다. 이 모드는 `/mock/v1`과 `/cpr-analysis`를 제공하지 않는다. Dummy 로그인(`test@test.com` / 문자열 `2222`)은 가능하지만 합성 과정의 등록을 자동으로 받지 않으므로 과정 목록은 비어 있다. 공급자는 저장소의 합성 fixture이며 ARC 배정·운영 한도가 아니다. ARC 제출은 계속 비활성이다.
+`--course-v2`·`--control-only`는 제거됐다(D123). 붙이면 argparse가 알 수 없는 인자로 거절해 파일·포트·잠금을 만들기 전에 종료 코드 2로 끝난다.
+
+**예전 로컬 데이터 폴더를 그대로 쓸 때.** 예전 `--course-v2`로 쓰던 데이터 폴더에는 이전 합성 fixture 학습자 정보가 남아 있어, Dummy 로그인 뒤 `learningAvailability`가 `waiting`/`arc_progress_unavailable`이고 과정 조회가 `503 ARC_PROGRESS_UNAVAILABLE`일 수 있다. `POST /api/v2/session/refresh/`로는 풀리지 않는다. Dummy 로그아웃(`DELETE /api/v2/session/`)을 한 번 한 뒤 다시 로그인하면 15개 과정이 준비된다. 로그아웃은 Dummy 공유 진도를 초기화한다. 이전 학습자 행은 자동으로 삭제·정리하지 않는다. `/mock/v1` 기본 모드로만 쓰던 데이터 폴더에는 해당하지 않는다. 로컬 DB는 journey 스키마(PK/SK + `GSI1`)만 인식한다(D122). 예전 제어 전용(GSI1 없는) 표를 자동으로 이행하지 않으며, 다른 스키마의 표는 행·스키마·키 파일을 건드리지 않고 거절해 서버가 종료 코드 1로 끝난다. `scripts/read_local_logs.py`는 초기화 없는 읽기 전용 접속(`initialize=False`)이다.
 
 ## 2. 실제 앱의 연결 순서
 
-앱 개발자에게 [최신 과정 API와 기존 경로 구분](APP_API.md)를 전달한다. 명세에는 서버 주소를 넣지 않았으므로 실제 실행 위치는 별도로 전달한다.
+앱 개발자에게 [앱 API 명세](APP_API.md)를 전달한다. 로컬 서버 주소는 별도로 전달한다.
 
 1. `test@test.com` / 문자열 `2222`로 로그인한다.
-2. 프로그램·연령을 선택하고 훈련 시도를 생성한다.
-3. 앱에서 실제 마네킨 데이터를 누적하고, 훈련 종료 후 전체를 업로드한다.
-4. 저장된 계산 결과와 차트를 조회한다.
-5. 별도 시도 상태에서 완료 판정을 확인하고, 프로그램 목록을 다시 받아 현재 공유 진도를 확인한다.
+2. 과정 목록 → 등록의 과정 상세 → 항목 상세를 받는다.
+3. 훈련·평가 항목의 시도를 생성한다.
+4. 앱에서 실제 마네킨 데이터를 누적하고, 훈련 종료 후 전체를 업로드한다.
+5. 저장된 계산 결과·평가와 차트를 조회한다.
+6. 과정 상세를 다시 받아 현재 공유 진도를 확인한다.
 
 서버의 자동 계산 실행과 실제 차트 다운로드는 검증했다. **실물 마네킨과 iPad/Android 앱의 현장 연결 시험은 아직 별도다.** 테스트 서버에서 보낸 기록 바이너리의 성공을 실제 앱 인수로 간주하지 않는다.
 
@@ -50,9 +56,9 @@ var/local-python/bin/python scripts/serve_local.py \
   --host <Mac의_현재_내부_IP> \
   --allow-client <iPad의_현재_내부_IP> \
   --allow-insecure-lan
-
-`/api/v2`로 같은 기기를 받으려면 위 명령에 `--course-v2`를 추가한다. 앱의 baseURL은 `http://<Mac의_현재_내부_IP>:8000`이고 경로는 `/api/v2/`로 시작한다.
 ```
+
+앱의 baseURL은 `http://<Mac의_현재_내부_IP>:8000`이고 경로는 `/api/v2/`로 시작한다.
 
 iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 모드는 지정한 Mac IP에만 서버를 열며 `127.0.0.1:8000`을 동시에 열지 않는다. 동일 데이터 폴더로 두 서버를 동시에 실행하지 않는다.
 
@@ -62,10 +68,10 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 
 | 항목 | 현재 동작 |
 |---|---|
-| 모든 5개 프로그램 × 3개 연령 | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
+| 임시 과정 15개(5개 프로그램 × 3개 연령) | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
 | Compression Only / Ventilation Only | 실제 횟수와 기존 tester Pass를 모두 충족하면 완료 |
-| CPR 계열 | 결과를 제공하되 완전한 cycle 완료 규칙이 미정이므로 `pending_policy`. 완료를 임의로 만들지 않음 |
-| ARC 제출 | `submit_arc.status=disabled`, `ok=false`, `error=arc_contract_pending` |
+| CPR 계열 | D136 사이클 규칙(계산기가 `cpr`로 분류한 사이클 수 ≥ 3/8/10) AND 점수 합격이면 완료. 이전 어댑터로 시작한 진행 중 시도만 `pending_policy` |
+| ARC 제출 | 전송하지 않음. 처리 중 응답은 `status=disabled`, Dummy 계산 결과는 `status=excluded`, `exclusionReasons=["dummy"]`(D90). `ok=false` |
 | 대기 | D54에 따라 앱의 파일 업로드 시작부터 최대30초. 이후에도 같은 시도의 결과를 조회 가능. 이미 접수된 작업을 자동 취소하는 시간이 아님 |
 | 차트 | 실제 로컬 JSON 파일을 서명 URL로 제공. 발급부터300초; 만료 시 인증된 API로 새 링크 발급 |
 
@@ -97,6 +103,8 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 | Mac만 연결됨 | iPad IP 허용 목록, 같은 네트워크, 기기 간 통신 제한 |
 | `401` / `403` | 세션 헤더·만료·로그아웃; 필요한 경우 새 로그인 뒤 같은 시도 재인가 |
 | `409` | 완료한 훈련 재시작, 변경된 입력, 시도 상태 확인 |
+| `400 INVALID_REQUEST` | query는 `/api/v2/` 경로에서만 받는다. `/healthz`·`/`·서명 차트 URL에 query를 붙이면 `400`. 업로드 `Content-Type` 헤더 규칙은 [APP_API](APP_API.md) |
+| `503 ARC_PROGRESS_UNAVAILABLE` | 예전 데이터 폴더의 학습자 정보. 1절대로 Dummy 로그아웃 1회 뒤 재로그인 |
 | `503` | 저장 한도·파일/DB 상태·계산 실행기 오류. 기존 파일을 지우기 전에 오류 확인 |
 | worker/DB 고장으로 서버 종료 | 장애를 숨기며 계속 접수하지 않는 동작. 원인 확인 뒤 같은 설치로 재시작 |
 
@@ -131,9 +139,9 @@ var/local-python/bin/python scripts/read_local_logs.py --date 2026-09-10 --limit
 
 | 기록 | 확인할 내용 |
 |---|---|
-| 주요 이력(`category=operation`) | 로그인 성공/거절, 로그아웃/진도 초기화, 훈련 생성/취소/재인가, 계산 접수/재전송/처리 결과, 완료의 공유 진도 반영 여부 |
+| 주요 이력(`category=operation`) | 로그인 성공/거절, 요청 거절, 로그아웃/진도 초기화, 훈련 생성/취소/재인가, 계산 접수/재전송/처리 결과, 완료의 공유 진도 반영 여부 |
 | 상세 진단(`category=diagnostic`) | 기존 계산 단계, 바이너리 크기·관측 개수·처리 시간, 정제된 오류 종류·코드 위치 |
-| 식별 정보 | `attempt_id`·`job_id`로 같은 훈련의 기록을 연결. `session_id`는 세션 식별자이며 로그인에 사용하는 `session_token`과 다름 |
+| 식별 정보 | `attempt_id`·`job_id`로 같은 훈련의 기록을 연결. `session_id`는 세션 식별자이며 로그인 응답의 `accessToken`과 다름. `/api/v2` 요청 기록의 `http_request_id`는 AWS 응답의 `X-Request-Id`와 같은 값이며 로컬 응답에는 이 헤더가 없음(D107) |
 
 비밀번호, 로그인 토큰, 복구 증표, 전체 요청·응답, 원본 바이너리, 차트 서명 URL과 임의 오류 메시지는 기록하지 않는다. 정상 조회마다 접근 이력을 전부 남기는 기능은 아니다. 계산 결과 전체는 기존 결과 조회 경로로 확인한다.
 
@@ -191,7 +199,9 @@ var/validation-python/bin/python -m pip check
 STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 var/validation-python/bin/python scripts/validate_local_integration.py --dynamodb-home var/dynamodb-local-3.3.1 --suite all
 ```
 
-DynamoDB 배포물은 7절의 manifest와 전체 파일이 일치해야 한다. 새 PC에서는 관리자가 검증된 **프로그램 배포 파일만** 제공하거나 출처를 확인해 준비한다. 사용자 DB·키 폴더를 복사하지 않는다. manifest의 출처 설명에는 재현 가능한 다운로드 URL·설치 명령이 없으므로 배포물 확보가 안 되면 준비 단계는 차단 상태다. 임의 파일로 hash를 갱신하지 않는다.
+`--suite`는 `scripts/test_suites.py`에 고정된 `all`(`tests`·`local_server_tests`·`integration_tests`·`http_pipeline_tests`·`transport_integration_tests`), `integration`(`integration_tests`·`http_pipeline_tests`·`transport_integration_tests`), `boundary`(`local_server_tests`) 중 하나다. PR CI와 같은 오프라인 단위 스위트는 DB 없이 `var/validation-python/bin/python scripts/run_actions_regression.py`(인자 없음)로 실행한다. `tests/test_*.py` 전체를 소켓 연결과 AWS client를 막은 상태로 실행하며 전체 스위트의 부분집합이다.
+
+DynamoDB 배포물은 7절의 manifest와 전체 파일이 일치해야 한다. 새 PC에서는 관리자가 검증된 **프로그램 배포 파일만** 제공하거나 출처를 확인해 준비한다. 사용자 DB·키 폴더를 복사하지 않는다. manifest의 `archive` 필드(공식 다운로드 URL·sha256)는 CI가 받는 날짜 고정 archive와 같으며 `scripts/validate_actions.py check`가 workflow 값과 대조한다. 설치 명령은 없으므로 배포물 확보가 안 되면 준비 단계는 차단 상태다. 임의 파일로 hash를 갱신하지 않는다.
 
 | 설정 | 용도·예시 |
 |---|---|
@@ -204,7 +214,7 @@ DynamoDB 배포물은 7절의 manifest와 전체 파일이 일치해야 한다. 
 
 실행기는 새 임시 DB·포트를 소유하고 각 시험은 임시 테이블·파일과 저장소의 `tests/dataset/`, `tests/fixtures/`를 사용한다. fixture·golden 파일을 재생성하거나 사용자 자료를 삭제하지 않는다. 정상 종료 시 시험 소유 DB 프로세스를 종료하고 실행기가 만든 DB 폴더를 정리한다. 각 pytest 임시 결과 파일은 실행 후에도 pytest의 보관 정책에 따라 남을 수 있다. 강제 종료에서는 자식이 남을 가능성이 있으므로 포트/소유 관계를 확인하며 임의 프로세스를 종료하지 않는다.
 
-정상 판단은 종료 코드와 `failed/error/skipped/xfailed`를 함께 읽는다. 최신 전체 로컬 검증은 **3251개 + 하위 시험 9개 통과**이며 과거 경계 예상 실패는 수정됐다. `python -m pytest` 기본 명령은 `tests scripts`만 수집하므로 전체 시험 대신 사용하지 않는다. 실제 실행 범위와 날짜는 [검증 요약](VALIDATION.md)을 따른다. 시험을 제외하거나 fixture·기대값을 임의 교체해 통과시키지 않는다.
+정상 판단은 종료 코드와 `failed/error/skipped/xfailed`를 함께 읽는다. 최신 시험 수와 실제 실행 범위·날짜는 [검증 요약](VALIDATION.md)을 따른다. `python -m pytest` 기본 명령은 `tests`만 수집하며(`scripts` 아래에는 시험이 없다) 통합·경계 시험을 포함하지 않으므로 전체 시험 대신 사용하지 않는다. 시험을 제외하거나 fixture·기대값을 임의 교체해 통과시키지 않는다.
 
 | 자주 발생하는 문제 | 확인·대응 |
 |---|---|

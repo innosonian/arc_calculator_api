@@ -125,9 +125,23 @@ def event_run_widths(
 ) -> list[int]:
     """각 이벤트 정점이 속한 연속 구간(패킷별 max >= min_amp)의 길이(패킷 수)."""
     pmax = [max(p) if p else 0 for p in packets]
+    # 정점마다 좌우로 걸으면 긴 연속 구간에서 O(이벤트 수 x 구간 길이)가 되므로, 각 인덱스의
+    # 왼쪽/오른쪽 연속(pmax >= min_amp) 개수를 한 번씩 미리 세어 같은 폭을 O(n)으로 구한다.
+    # 정점 자신의 pmax는 검사하지 않는다(폭 = 왼쪽 연속 + 오른쪽 연속 + 1).
+    n = len(pmax)
+    left = [0] * n
+    for i in range(1, n):
+        left[i] = left[i - 1] + 1 if pmax[i - 1] >= min_amp else 0
+    right = [0] * n
+    for i in range(n - 2, -1, -1):
+        right[i] = right[i + 1] + 1 if pmax[i + 1] >= min_amp else 0
     widths = []
     for event in events:
         lo = hi = event.peak_packet_index
+        if 0 <= lo < n:
+            widths.append(left[lo] + right[lo] + 1)
+            continue
+        # 범위 밖 인덱스(정상 분절에서는 나오지 않음)는 기존 걷기 그대로 처리한다.
         while lo - 1 >= 0 and pmax[lo - 1] >= min_amp:
             lo -= 1
         while hi + 1 < len(pmax) and pmax[hi + 1] >= min_amp:

@@ -1,8 +1,8 @@
 # AWS·Dev 배포와 인수 안내
 
-2026-09-24 기준. **새 `/api/v2` Dummy Dev 배포 후 사용자 출력으로 HTTPS 로그인·조회, 기존 성인 압박 파일의 일반 훈련·최종평가 계산과 과정 FINISHED, 원본·결과·운용 로그·차트를 확인했다. 다른 세션의 조회 차단, 차트의 실제 만료/재발급, 완료된 시작·업로드의 순차 재전송과 기존 기록 보존도 통과했다. 이 범위에서 앱 연결 시험을 시작할 수 있으며 전체 AWS 운영 인수는 진행 중이다.** 다음 단계는 [앱팀에 연결 정보 전달](#beginner-dev-app-handoff)이다. 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
+2026-09-24 기준, 2026-09-28 코드 리뷰 후속 결정(D103~D114) 반영. **새 `/api/v2` Dummy Dev 배포 후 사용자 출력으로 HTTPS 로그인·조회, 기존 성인 압박 파일의 일반 훈련·최종평가 계산과 과정 FINISHED, 원본·결과·운용 로그·차트를 확인했다. 다른 세션의 조회 차단, 차트의 실제 만료/재발급, 완료된 시작·업로드의 순차 재전송과 기존 기록 보존도 통과했다. 이 범위에서 앱 연결 시험을 시작할 수 있으며 전체 AWS 운영 인수는 진행 중이다.** 다음 단계는 [앱팀에 연결 정보 전달](#beginner-dev-app-handoff)이다. 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
 
-기본 AWS 조립은 `/mock/v1`과 인증된 `/cpr-analysis`를 제공한다. **이번 목표는 API·Worker에 `course_v2_dummy`를 명시한 새 `/api/v2` Dev 시험**이다. 내장 Dummy 임시 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)를 사용하고 실제 업로드 바이너리로 계산한다. 영상·문서 자료나 공식 ARC 배정을 만들지 않는다. Dummy 결과는 ARC 제출 `excluded`, 일반 비활성 상태는 `disabled`, CPR 완료는 `pending_policy`다. 생성된 Dev 주소와 완료한 검증 범위를 함께 앱팀에 안내한다.
+AWS API는 항상 `/api/v2`로 조립하며 `/mock/v1`과 `/cpr-analysis`는 삭제되어 404다(D103). API·Worker 설정에는 `course_v2_dummy` 절이 필수이고 Dev stage에서만 허용되므로, Beta/Prod의 API·Worker 조립은 G-RELEASE에서 정식 과정 공급자와 계약을 정하기 전까지 거부된다(fail-closed). **이번 목표는 이 `/api/v2` Dev 시험**이다. 내장 Dummy 임시 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)를 사용하고 실제 업로드 바이너리로 계산한다. 영상·문서 자료나 공식 ARC 배정을 만들지 않는다. Dummy 결과는 ARC 제출 `excluded`, 일반 비활성 상태는 `disabled`, CPR 완료는 `pending_policy`다. 생성된 Dev 주소와 완료한 검증 범위를 함께 앱팀에 안내한다.
 
 실제 주소·계정·리전·자원·한도·비용·보관기간을 이 문서에서 정하지 않는다. 기존 계산·null·코칭, 인증·소유권·멱등성·epoch·lease/fence, 비공개 파일을 유지한다. CPR 완료는 `pending_policy`, ARC 제출은 `disabled`, 실제 HSTM 전송은 금지다. commit·push·AWS 변경·배포는 사용자 결정이다.
 
@@ -14,10 +14,10 @@
 1. **AWS 웹사이트에 로그인한다.** 기존에 받은 계정 ID/별칭·IAM 사용자 이름으로 로그인한다. 별도 작업 Role을 받았다면 [2절의 역할 전환](#aws-personal-access)까지 수행한다. 새 계정이나 새 접근 키를 만들 필요는 없다. 화면 위 계정과 리전을 확인한다. 이번 작업은 Dev이며 운영 서버를 선택하지 않는다. 앱용 공용 Dummy 계정과 AWS 관리 계정은 다른 것이다.
 2. **이미 있는 것의 이름을 적는다.** AWS 검색창에서 `Lambda`, `API Gateway`, `DynamoDB`, `S3`, `SQS`를 차례로 열어 아래 표를 채운다. 이름에 dev가 있어도 운영과 같이 쓰는 자원인지 확인한다. 모르는 칸은 추측하지 말고 비워 둔다. 조회 명령은 3절에 있다.
 3. **없는 자원과 바꿔도 되는 자원을 구분한다.** 기존 자원을 재사용하는 것이 기본이다. 필요한 것이 없으면 새 Dev 전용 자원을 만들지, 기존 것을 연결할지 결정해야 한다. 이 저장소는 실제 이름·권한을 모른다. 이 단계까지는 삭제·생성·저장을 누르지 않아도 된다.
-4. **서버 설정 세 장을 작성한다.** `api-runtime.json`, `worker-runtime.json`, `relay-runtime.json`이 각각 세 담당자의 주소록이다. 4절의 형식에 실제 이름과 선택한 한도를 넣는다. API·Worker에는 같은 `course` 설정을 넣는다. 개별 검사와 세 장 묶음 검사 모두 통과시킨다. 예제 시험값은 자동으로 운영값이 되지 않는다.
+4. **서버 설정 세 장을 작성한다.** `api-runtime.json`, `worker-runtime.json`, `relay-runtime.json`이 각각 세 담당자의 주소록이다. 4절의 형식에 실제 이름과 선택한 한도를 넣는다. API·Worker에는 같은 `course` 설정을 반드시 넣는다(없으면 설정 오류). 개별 검사와 세 장 묶음 검사 모두 통과시킨다. 예제 시험값은 자동으로 운영값이 되지 않는다.
 5. **배포할 ZIP 한 개를 만든다.** 8절의 빌드 명령을 사용한다. `mock-lambda.zip`은 세 Lambda가 함께 쓰지만 시작 함수(Handler)는 서로 다르다. `.env`, DB, 키 파일, 원본 훈련 파일, 컴퓨터의 가상환경을 압축해서 올리지 않는다.
 6. **되돌릴 준비를 한다.** 기존 Lambda 코드·설정·키 버전, API의 배포 번호, 큐/예약 연결과 진행 중 작업을 보호된 위치에 보관한다. 변경 전후 함수·DB·파일 이름을 비교한다. 이미 접수된 작업을 처리할 Worker를 끄거나 기존 데이터·키를 지우는 방식으로 시작하지 않는다.
-7. **세 Lambda에 코드를 올린다.** 승인한 Dev 함수에서 `Code → Upload from → .zip file`로 같은 ZIP을 올리고 아래 Handler를 각각 지정한다. Python 3.12를 사용한다. `Configuration → Environment variables`에 각자에게 맞는 설정을 넣는다. 처음부터 앱에 공개하지 말고 Worker·Relay 준비를 먼저 확인한다. 기존 Calculator용 자동 스크립트 두 개만으로 이 세 역할이 모두 설치되지는 않는다.
+7. **세 Lambda에 코드를 올린다.** 승인한 Dev 함수에서 `Code → Upload from → .zip file`로 같은 ZIP을 올리고 아래 Handler를 각각 지정한다. Python 3.12를 사용한다. `Configuration → Environment variables`에 각자에게 맞는 설정을 넣는다. 처음부터 앱에 공개하지 말고 Worker·Relay 준비를 먼저 확인한다. 기존 Calculator용 자동 스크립트 두 개는 과거 자료(D113, 7절)이며 이 세 역할을 설치하지 않는다.
 8. **기록장·보관함·대기줄을 연결한다.** 5절의 DB 키/인덱스, 비공개 S3와 역할별 권한을 맞춘다. SQS 트리거는 Worker에 연결하고 `ReportBatchItemFailures`를 켠다. Relay는 새 작업 알림용 DynamoDB Stream과 재확인용 EventBridge 예약에 연결한다. 예약은 6절의 진행 행을 처음 준비한 후 켠다. Queue visibility는 Worker timeout의 6배+batch window 이상이어야 한다. 실제 연결 권한과 실행 결과도 확인한다.
 9. **앱이 들어오는 문을 연결한다.** API Gateway의 **REST API**에서 `/api/v2/{proxy+}`의 `ANY`를 API Lambda의 **Lambda proxy integration**으로 연결할 수 있다. 이미 같은 경로가 있으면 먼저 충돌을 확인한다. 앱의 `Authorization: Bearer ...`와 원래 경로·query를 그대로 넘긴다. `multipart/form-data`를 binary media type으로 설정하고 원본 파일 hash 보존을 시험한다. 변경한 뒤 승인한 Dev stage로 `Deploy API`한다. 공유 API의 다른 미배포 변경까지 포함되는지 먼저 확인한다. [AWS proxy 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-set-up-simple-proxy.html), [binary 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-payload-encodings.html)
 10. **작게 한 번 시험한다.** 앱팀에 Dev 주소와 [APP_API](APP_API.md)를 전달한다. 로그인→`[Dummy Dev]` 과정 15개 조회→성인 압박 Only 훈련→실제 누적 파일 업로드→결과/차트 조회→최종평가를 확인한다. 점수가 나온 것과 프로그램 통과를 구별한다. 처음에는 `202`(접수/처리 중), 완료 후 `200`(결과)이며 Dummy 제출은 `excluded`다. `/healthz`는 AWS 확인 주소가 아니다.
@@ -48,7 +48,7 @@
 
 기준 코드: [aws_runtime.py](../mock_journey/aws_runtime.py), [aws_settings.py](../mock_journey/aws_settings.py), [assembly.py](../mock_journey/assembly.py). 설정 누락 시 메모리 DB·가짜 계산·로컬 Java DB로 대체하지 않는다. 로컬 서버 감독기·DynamoDB Local·가상환경은 Lambda에 넣지 않는다.
 
-기존 REST API + Python 3.12 Lambda + DynamoDB + 비공개 S3 구성을 재사용한다. 전체 Journey에는 SQS와 Relay/Worker 연결도 필요하다. 함수 개수와 기존 함수 재사용 여부는 실제 배치 확인 후 정한다. 단일 Calculator/Gateway 스크립트 실행으로 전체 인프라가 완성되지 않는다.
+기존 REST API + Python 3.12 Lambda + DynamoDB + 비공개 S3 구성을 재사용한다. 전체 Journey에는 SQS와 Relay/Worker 연결도 필요하다. 함수 개수와 기존 함수 재사용 여부는 실제 배치 확인 후 정한다. 배포 정본은 이 문서의 수동 절차다. 단일 Calculator/Gateway 스크립트는 과거 자료(D113)이며 전체 인프라를 만들지 않는다.
 
 <a id="aws-personal-access"></a>
 ## 2. 기존 IAM 사용자로 로그인하고 작업 역할로 전환
@@ -180,16 +180,16 @@ Lambda 함수 이름들:
 | `logs` | `capacity`(1~4096), `max_bytes`, `flush_budget_ms`, `response_reserve_ms`는 양의 정수; `sdk`는 로그용 별도 SDK 객체 |
 | `storage` — API/Worker | `stage`, `bucket`, `directory`, `input_bytes`, `artifact_bytes`. byte 한도는 양의 정수, artifact≥input; AWS stage `test`/`local` 거절 |
 | `execution` — API/Worker | `current_adapter_version`, `projection_version`, `retained_adapter_versions` |
-| `course` — 이번 Dev의 API/Worker | `mode="course_v2_dummy"`, `catalog_version="arc-dummy-dev-v1"`, `settings`에 아래 9개 한도 전부. Relay에는 넣지 않음 |
-| `api` — API | `payload_limit`: body 문자열 UTF-8 크기 제한, 양의 정수 bytes |
+| `course` — API/Worker 필수 | `mode="course_v2_dummy"`, `catalog_version="arc-dummy-dev-v1"`, `settings`에 아래 9개 한도 전부. 없거나 null이면 설정 오류. Relay에는 넣지 않음(넣으면 설정 오류) |
+| `api` — API | `payload_limit`: body 문자열 UTF-8 크기 제한, 양의 정수 bytes. `storage.input_bytes`의 base64 크기 `4×ceil(input_bytes/3)` 이상이어야 함(D106). multipart 여유까지 보장하는 검사는 아님 |
 | `worker` — Worker | `lease_seconds`, `retry_seconds`: 양의 정수 초; `renewal_interval_seconds`, `renewal_timeout_seconds`: 양수 초; `processing_reserve_ms`: 양의 정수 |
 | `relay` — Relay | `queue_url`, `lease_seconds`, `retry_seconds`, `page_size`, `max_pages`, `processing_reserve_ms`. 수치는 양의 정수; Queue는 같은 계정·리전의 Standard SQS |
 
-Worker는 갱신 interval≤lease/3, interval+갱신 timeout<lease를 검사한다. Relay는 SDK timeout/시도·DB 충돌·로그/반환·시계 여유를 포함한 예산을 검사한다. `page_size × max_pages`는 각 종류의 논리적 조회 예산이며 실제 Query는 `Limit=1`이다. 설정 검사가 실제 AWS의 전체 실행시간을 보장하지는 않는다.
+Worker는 갱신 interval≤lease/3, interval+갱신 timeout<lease를 검사한다. Relay는 SDK timeout/시도·DB 충돌·로그/반환·시계 여유를 포함한 예산을 검사한다. `page_size × max_pages`는 각 종류의 논리적 조회 예산이며 실제 Query는 `Limit=1`이다. 복구 재조정은 OUTBOX/JOB을 한 step씩 교대하되, 한 종류가 이번 호출에서 끝났거나 자기 예산에 닿으면 남은 종류를 자기 예산과 시간이 허락하는 만큼 계속 처리한다(D109). 멈춘 종류는 다음 호출에서 먼저 처리된다. 설정 검사가 실제 AWS의 전체 실행시간을 보장하지는 않는다.
 
-`course.settings`의 필수 양의 정수는 `max_course_items`, `max_assignments`, `max_bundle_bytes`, `max_control_body_bytes`, `max_intervals_per_report`, `max_merged_intervals_per_start`, `max_reports_per_start`, `max_transaction_actions`, `max_conflict_retries`다. Dev 카탈로그를 수용하려면 과정 항목≥2·배정≥15·transaction actions≥7이며 충돌 재시도≤8이다. 실제 bundle 크기와 `max_bundle_bytes`/`storage.artifact_bytes`도 검사한다. 이것은 구현의 수용 조건이며 권장 운영 한도표가 아니다. `storage.stage`는 `dev` 또는 `development`여야 한다. `course`를 생략하면 새 API로 전환되지 않는다. API/Worker에서 같은 값을 사용한다.
+`course.settings`의 필수 양의 정수는 `max_course_items`, `max_assignments`, `max_bundle_bytes`, `max_control_body_bytes`, `max_intervals_per_report`, `max_merged_intervals_per_start`, `max_reports_per_start`, `max_transaction_actions`, `max_conflict_retries`다. Dev 카탈로그를 수용하려면 과정 항목≥2·배정≥15·transaction actions≥8(최종평가 시작 거래가 8개를 씀, D105)이며 충돌 재시도≤8이다. 실제 bundle 크기와 `max_bundle_bytes`/`storage.artifact_bytes`도 검사한다. 이것은 구현의 수용 조건이며 권장 운영 한도표가 아니다. `storage.stage`는 `dev` 또는 `development`여야 한다. API/Worker에서 같은 값을 사용한다. `course`가 없거나 null이면 개별 검사는 `configuration_invalid`(종료 2), 묶음 검사는 `ROLE_CONFIGURATION_INVALID`이고, Lambda는 SDK client를 만들기 전에 `503 TEMPORARILY_UNAVAILABLE`로 요청을 거절한다. 과거의 `course` 없는 `/mock/v1` 조립은 없다.
 
-현재 adapter는 `arc-internal-detection-pending-v3`, projection은 `arc-local-projection-v1`이다. `retained_adapter_versions`는 `[]` 또는 `["arc-local-calculator-pending-v2"]`만 지원한다. 기존 작업을 조사한 후 선택하며, v2는 저장된 유효 후보 검증·차트 복구만 지원하고 계산을 다시 실행하지 않는다. 미지원 옛 작업을 새 버전으로 바꾸거나 가짜 Fail로 확정하지 않는다. 완료 결과는 저장 bytes로 조회한다.
+현재 adapter는 `arc-internal-detection-v4`(D136), projection은 `arc-local-projection-v1`이다. `current_adapter_version`은 코드의 `CURRENT_ADAPTER_VERSION`과 같아야 하고 `retained_adapter_versions`는 코드 레지스트리 `mock_journey/contracts.py`의 `RETAINED_ADAPTER_VERSIONS`(현재 `["arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3"]`)와 순서까지 정확히 일치해야 하며 빈 목록·부분·중복·초과는 설정 오류다(D127; 로컬 Worker는 레지스트리를 직접 읽는다). 2026-09-30 사용자 승인으로 Dev 설정 `var/deployment/dev-runtime-20260923-0octlgf9/`의 `api-runtime.json`·`worker-runtime.json`을 `current_adapter_version="arc-internal-detection-v4"`, `retained_adapter_versions=["arc-local-calculator-pending-v2","arc-internal-detection-pending-v3"]`로 갱신했고(D127·D136) 세 역할 모두 `python -m mock_journey.aws_settings --role <역할> --config <파일>`이 `configuration_valid`다(AWS 접속·실제 배포는 하지 않음). 보존 버전 v2는 v2는 저장된 유효 후보 검증·차트 복구만 지원하고 계산을 다시 실행하지 않는다. 미지원 옛 작업을 새 버전으로 바꾸거나 가짜 Fail로 확정하지 않는다. 완료 결과는 저장 bytes로 조회한다.
 
 새 runtime은 하나의 `region`을 DynamoDB·S3·SQS·로그 client에 적용한다. `AWS_REGION`, `AWS_DEFAULT_REGION`, `ARC_MOCK_REGION`, `ARC_STORAGE_REGION`이 함께 있으면 일치해야 한다. AWS 예약 변수는 사용자 환경파일에 추가하지 않는다. `STAGE`, `ARC_MOCK_ENVIRONMENT`, `ARC_MOCK_TABLE_NAME`도 JSON과 일치해야 한다. 교차 리전이 필요하면 연결 확장을 검토하며 실제값을 바꾸어 검사를 우회하지 않는다. `AWS_ENDPOINT_URL*` 재지정은 거절된다.
 
@@ -432,20 +432,7 @@ API/Worker SDK는 연결1초·읽기2초·총2회, Relay는 연결1초·읽기1�
 
 차트는 소유권 검사 뒤 비공개 S3의 300초 서명 URL을 발급한다. 임시 자격증명이 먼저 만료되면 더 짧아질 수 있으며, 발급된 링크는 앱 로그아웃과 독립적으로 자체 유효기간 동안 읽힐 수 있다. 원본·metadata에 공개 URL을 발급하지 않는다. 만료·재발급은 실제 앱에서 확인한다.
 
-이번 `/api/v2` Dev는 [앱 API 계약](APP_API.md)의 16개 동작을 모두 연결한다. 0절의 `/api/v2/{proxy+}` `ANY` proxy 또는 개별 경로 연결을 사용하고 로그인/조회/업로드/삭제를 함께 검증한다. 아래는 **기존 Mock 모드**용 연결표이며 이 표만 연결하면 새 API는 열리지 않는다.
-
-| Method | 기본 AWS 경로 |
-|---|---|
-| POST | `/mock/v1/sessions` |
-| GET, DELETE | `/mock/v1/session` |
-| GET | `/mock/v1/programs` |
-| POST | `/mock/v1/attempts` |
-| GET | `/mock/v1/attempts/{attempt_id}` |
-| POST | `/mock/v1/attempts/{attempt_id}/reauthorize` |
-| POST | `/mock/v1/attempts/{attempt_id}/cancel` |
-| POST, GET | `/mock/v1/attempts/{attempt_id}/calculation` |
-| GET | `/mock/v1/attempts/{attempt_id}/chart-link` |
-| POST | `/cpr-analysis` — 단일 `X-Attempt-ID`가 필요한 인증된 별칭 |
+이번 `/api/v2` Dev는 [앱 API 계약](APP_API.md)의 16개 동작을 모두 연결한다. 0절의 `/api/v2/{proxy+}` `ANY` proxy 또는 개별 경로 연결을 사용하고 로그인/조회/업로드/삭제를 함께 검증한다. 예전 Mock 모드의 `/mock/v1/*`·`/cpr-analysis` 연결표는 경로 삭제(D103)로 제거했다. 예전 Gateway 경로가 남아 있어도 API는 `404`로 응답하며, 그 경로의 정리 여부는 사용자가 판단한다.
 
 `/healthz`는 로컬 감독기 경로이며 AWS health endpoint로 구현되어 있지 않다. API의 바이너리 설정·`isBase64Encoded`, 원본 bytes의 hash, JSON 로그인/조회까지 함께 확인한다. multipart·base64/event 포장·결과 JSON을 포함한 실제 제한을 측정한다. 로컬 기본 한도가 API Gateway/Lambda 전송 가능 크기를 보증하지 않는다. 앱 30초 대기는 업로드 시작부터이며 접수된 작업의 취소 시간과 다르다.
 
@@ -1612,7 +1599,11 @@ AWS Dev 서버가 만들어졌고 위의 기본 흐름은 통과했다. 다음�
 
 이는 팀의 앱 연결 시험을 시작할 수 있다는 기술 판정이다. 실제 앱/기기·동시 요청·세션 만료/복구·장애/백업 복원·용량/비용 검증은 별도로 남아 있다. 공식 ARC 인증/과정 공급/제출은 계속 비활성이고 CPR 완료 규칙은 `pending_policy`이며, Beta/Prod 운영 완료로 해석하지 않는다.
 
-## 7. 기존 Calculator/Gateway 배포 도구
+## 7. 기존 Calculator/Gateway 배포 도구 — 과거 자료
+
+**과거 자료(D113).** 이 절의 연결표·`deployment_preflight.py`의 calculator/gateway 검사, 8절의 `deploy_arc_lambda.sh`·`deploy_arc_api_gateway.sh`, [기존 배포 workflow](../.github/workflows/deploy_arc_lambdas.yml), `docs/iam/`의 IAM 예시 JSON은 단일 Calculator 함수와 삭제된 `/cpr-analysis` 경로(D103)를 전제한다. 현재 3역할 `/api/v2` Dev에는 쓰지 않으며 배포 정본은 0~6절의 수동 절차다. 코드는 삭제하지 않고 남긴다. 이 도구가 갱신하는 함수도 공개 진입점 `lambda_handler.run`이므로 현재 코드로 배포하면 `course`를 포함한 API 역할 설정이 필요하다. 아래 설명은 기록으로만 남긴다.
+
+보조 Lambda `hmac_authorizer`와 `config_manager_v2`는 쓰지 않으므로 저장소의 코드·시드·시험을 삭제했다(D114). 이미 배포된 AWS 자원이 있다면 정리 여부는 사용자가 판단한다.
 
 [bindings.example.json](../deploy/bindings.example.json)은 runtime JSON과 다른 **배포용 연결표**다. 최상위는 `schema_version: 1`, `environments`이며 알려진 실제 환경만 넣는다. `dev/development`→`development`, `prod/production`→`production`, `beta`는 명시 항목만 사용한다. `local` AWS 배포는 거절한다. Beta env 경로도 명시한다.
 
@@ -1661,6 +1652,8 @@ STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 var/validation-python/bin/python scr
 
 필수 의존성은 `requirements-local.txt`와 `requirements-ci.txt`이며 `requirements-dev.txt`만으로 전체 검증 준비가 끝나지 않는다. `docs/local_server/DYNAMODB_DISTRIBUTION_MANIFEST.json`의 배포물 지문을 유지한다. 시험 종료 코드·실패/skip/예상 실패·소스 버전을 구분해 기록한다.
 
+PR CI(`.github/workflows/validate_actions.yml`)는 서로 기다리지 않는 세 job을 병렬로 실행한다(D111): 소켓 없는 단위 시험 전체(`validate`), DynamoDB Local `--suite integration`(`integration` job: integration_tests·http_pipeline_tests·transport_integration_tests), `--suite boundary`(`boundary` job: local_server_tests). 세 job이 실행하는 시험 파일을 합치면 로컬 `--suite all`과 같고, tests/는 `validate`에서만 실행한다. 실행기 `scripts/validate_local_integration.py`는 스위트별 예산(`scripts/test_suites.py`의 `SUITE_TIMEOUT_SECONDS`: integration 600초, boundary 600초, all 1800초; `--timeout-seconds`로 재지정)을 넘기면 고정 메시지와 종료 코드 3으로 끝나고 DynamoDB Local 자식을 정지한다. job의 `timeout-minutes` 상한은 `scripts/validate_actions.py`의 `MAX_JOB_MINUTES`가 고정하므로 timeout을 바꿀 때는 yml·`MAX_JOB_MINUTES`·이 문단을 함께 고친다(함께 고칠 위치 목록은 그 스크립트 상단 docstring). 두 DynamoDB Local job은 각각 AWS 문서가 안내하는 공식 다운로드 호스트에서 날짜 고정 archive를 받아 sha256과 위 manifest의 파일 지문을 확인한 뒤 시험하며, 지문이 다르면 시험 전에 실패한다. job 제한 시간(12/13/12분)은 2026-09-28 로컬 실측(약 154/193/174초)의 약 3배에 설치·다운로드 여유 3분을 더한 값이며, 실제 runner 시간을 재면 D111 기준(실측의 약 2배)으로 다시 맞춘다. `integration`·`boundary` check를 필수 검사(required status check)로 등록하는 일은 사용자가 GitHub 저장소 설정에서 한다. 운영 배포 브랜치 이름은 `main`이며(D112) 현재 기본 브랜치 `master`를 `main`으로 바꾸는 일도 사용자가 GitHub에서 한다. 이 CI 구성은 아직 GitHub runner에서 실행해 확인하지 않았다(로컬 시험·정적 검사만 수행).
+
 다음은 새 빌드 폴더에서 x86_64용 의존성과 ZIP을 준비하는 기존 경로다. 실제 함수 아키텍처와 일치하는지 먼저 확인한다. 패키지 다운로드가 필요하며 AWS를 호출하지 않는다.
 
 ```sh
@@ -1677,7 +1670,7 @@ python3.12 -m venv "$ARC_BUILD_DIR/python"
 
 허용 소스·필수 prompt·검사한 의존성만 ZIP에 들어간다. DB·키·가상환경·개발 기록·테스트 자료는 제외한다. builder는 ZIP 50MiB/압축해제 250MiB를 검사하고 manifest에 파일 hash·버전·미검증 범위를 기록한다. layer 합산과 실제 Linux/Lambda 실행은 별도로 확인한다.
 
-아래 두 명령은 **기존 Calculator와 `/cpr-analysis` 갱신만** 수행한다. 사용자가 배포를 결정하고 기존 자원·권한·백업을 준비한 뒤 실행한다. Worker/Relay에 Calculator용 도구를 적용하지 않는다.
+아래 두 명령은 **과거 자료(D113)**이며 **기존 Calculator와 삭제된 `/cpr-analysis` 갱신만** 수행한다. 현재 Dev 배포에는 사용하지 않는다. 쓰려면 사용자가 배포를 결정하고 기존 자원·권한·백업을 준비한 뒤 실행한다. Worker/Relay에 Calculator용 도구를 적용하지 않는다.
 
 ```sh
 bash scripts/deploy_arc_lambda.sh development .env.dev var/deployment/bindings.json
@@ -1688,13 +1681,15 @@ bash scripts/deploy_arc_api_gateway.sh development .env.dev var/deployment/bindi
 
 Gateway 도구의 throttle은 해당 POST만 변경하지만 binaryMediaTypes는 REST API 전체에, create-deployment는 Stage에 영향을 준다. 완료 메시지는 전체 Journey 인수 성공이 아니다. 로그 retention 숫자는 기존 로그를 삭제 대상으로 만들 수 있으며 null은 기존 정책 유지다. 실제 custom LogGroup을 조회해 적용하고 공유 함수 영향을 확인한다.
 
-[기존 배포 workflow](../.github/workflows/deploy_arc_lambdas.yml)는 **수동 실행만** 한다. Dev는 `develop`, Prod는 `main`만 허용하며 같은 revision의 오프라인 회귀를 AWS 자격증명 설정 전에 실행한다. GitHub Environment는 `development`/`production`으로 연결한다. 코드에 이름을 넣는 것만으로 required reviewer 승인이 생기지는 않으므로 GitHub 설정에서 reviewer·허용 branch·Secrets를 확인한다. Environment 사용 시 OIDC trust의 subject도 실제 저장소 구성과 맞아야 한다. [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws). 과거 IAM JSON·장기 키 fallback을 그대로 활성화하지 않는다. 이 workflow는 기존 Calculator 코드·설정만 갱신하며 Gateway 경로 변경은 별도다. 이번 세 역할·`/api/v2` 전체 설치를 대신하지 않는다.
+[기존 배포 workflow](../.github/workflows/deploy_arc_lambdas.yml)는 과거 자료(D113)이며 **수동 실행만** 한다. Dev는 `develop`, Prod는 `main`만 허용하며 같은 revision의 오프라인 회귀를 AWS 자격증명 설정 전에 실행한다. GitHub Environment는 `development`/`production`으로 연결한다. 코드에 이름을 넣는 것만으로 required reviewer 승인이 생기지는 않으므로 GitHub 설정에서 reviewer·허용 branch·Secrets를 확인한다. Environment 사용 시 OIDC trust의 subject도 실제 저장소 구성과 맞아야 한다. [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws). 과거 IAM JSON·장기 키 fallback을 그대로 활성화하지 않는다. 이 workflow는 기존 Calculator 코드·설정만 갱신하며 Gateway 경로 변경은 별도다. 이번 세 역할·`/api/v2` 전체 설치를 대신하지 않는다.
 
 ## 9. 로그·인수·복구
 
 로그 버퍼는 정제한 주요 처리 이력·상세 진단만 받는다. `accepted`는 메모리 접수, `stored`는 DB 저장 확인, `unconfirmed`는 응답 미확인, `dropped`는 누락이다. 로그 장애만으로 정상 훈련을 재실행하거나 성공 결과를 실패로 바꾸지 않는다. 업무와 같은 DB의 처리량을 공유한다.
 
 배출 예산은 응답 지연을 추가할 수 있고 freeze/timeout/강제 종료 시 마지막 로그와 누계가 사라질 수 있다. `operational_log_batch_unconfirmed` 경고의 `unreported_dropped`/`unreported_unconfirmed`는 가능한 후속 writer가 보고를 시도하는 값이며 영구 집계 보장이 아니다. 경고 없음이 무누락을 증명하지 않는다. 실제 CloudWatch 수집과 DB OPS 조회를 각각 확인한다.
+
+`/api/v2`의 거절·예상 밖 오류도 운용 로그에 남는다. `/api/v2` 요청 동안 남는 기록의 `http_request_id`는 그 응답의 `X-Request-Id`와 같으므로(Worker·Relay 기록에는 없음) 앱팀이 전달한 값으로 같은 요청의 기록을 찾는 데 쓴다(D107). 실제 API·Worker·Relay에서는 Sentry를 켜지 않고 Lambda에 `SENTRY_DSN`을 설정하지 않는다(D108). 운영 감시는 CloudWatch 로그·DB 운용 로그·경보(D100/D101)로 한다.
 
 비밀번호·Bearer·복구 증표·raw body·바이너리·서명 URL을 로그에 넣지 않는다. Gateway 본문 추적도 확인한다. 보관기간 확정 전 TTL/lifecycle 자동 삭제를 새로 추가하지 않는다. 기존 보관 정책·백업·일별 파일/로그량·요청/계산시간·DB 부하와 알림 수신·비용은 실제 환경에서 확인한다.
 

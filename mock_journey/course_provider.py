@@ -1,6 +1,7 @@
 """Verified course sources. No DB writes, HTTP envelopes, or invented enrollments."""
 
 from dataclasses import replace
+from functools import partial
 
 from mock_journey.course_contracts import (
     EXECUTION_KEYS, PLACEMENT_KINDS, AssignmentBinding, CourseBundle, LearnerContext,
@@ -8,16 +9,31 @@ from mock_journey.course_contracts import (
     validate_execution_definition,
 )
 from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import fail, require_text
 from mock_journey.course_schema import (
     validate_course_metadata, validate_placement_detail, validate_placement_order,
 )
-from mock_journey.course_settings import CourseSettings
+from mock_journey.course_settings import CourseSettings, require_course_settings
 from mock_journey.models import AuthContext
 from mock_journey.typed import digest
 
 
-def _mismatch():
-    raise CourseError("UPSTREAM_CONTRACT_MISMATCH")
+_MISMATCH = "UPSTREAM_CONTRACT_MISMATCH"
+
+
+_mismatch = partial(fail, _MISMATCH)
+
+
+def _settings_type_error():
+    return TypeError("Invalid course settings.")
+
+
+def _required_text(value):
+    # course_response serializes these with a non-empty string requirement.
+    # Reject at the provider boundary so a refresh waits with a clear cause
+    # instead of one stored course failing the whole list response (D118).
+    # Same rule as course_response._text: no UTF-8 encode check.
+    require_text(value, code=_MISMATCH, check_utf8=False)
 
 
 def _as_error(value):
@@ -63,8 +79,7 @@ def _reject_quiz(detail):
 
 def validate_assignments(bindings, settings: CourseSettings) -> tuple[AssignmentBinding, ...]:
     """Complete assignment set only. A partial page is not converted into success."""
-    if type(settings) is not CourseSettings:
-        raise TypeError("Invalid course settings.")
+    require_course_settings(settings, _settings_type_error)
     if type(bindings) not in (tuple, list):
         _mismatch()
     owned = []
@@ -84,8 +99,7 @@ def validate_assignments(bindings, settings: CourseSettings) -> tuple[Assignment
 
 def validate_bundle(bundle: CourseBundle, settings: CourseSettings) -> CourseBundle:
     """Normalize a complete snapshot. Success still returns a new frozen bundle."""
-    if type(settings) is not CourseSettings:
-        raise TypeError("Invalid course settings.")
+    require_course_settings(settings, _settings_type_error)
     if type(bundle) is not CourseBundle:
         raise CourseError("INVALID_REQUEST")
     placements = bundle.placements
@@ -93,7 +107,9 @@ def validate_bundle(bundle: CourseBundle, settings: CourseSettings) -> CourseBun
         _mismatch()
     if _bundle_bytes(bundle) > settings.max_bundle_bytes:
         _mismatch()
-    validate_course_metadata(parse_owned(bundle.course_json), bundle.public_ids)
+    course = parse_owned(bundle.course_json)
+    validate_course_metadata(course, bundle.public_ids)
+    _required_text(course["courseName"])
     copied = validate_placements(placements)
     rebuilt = CourseBundle(
         scope=replace(bundle.scope, learner=replace(bundle.scope.learner)),
@@ -120,6 +136,7 @@ def validate_placements(placements):
         if item.kind not in PLACEMENT_KINDS:
             _mismatch()
         detail = validate_placement_detail(item)
+        _required_text(detail["title"])
         _reject_quiz(detail)
         wire = item_type_wire(item.kind)
         if detail.get("itemType") != wire["detail_item_type"]:

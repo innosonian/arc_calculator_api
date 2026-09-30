@@ -1,24 +1,41 @@
-"""Pure VCC wire converters. DTO/bytes → camelCase data, not HTTP timestamp assembly."""
+"""Pure VCC wire converters: DTO/bytes → camelCase data, plus the envelope and
+timestamp helpers CourseHttp uses. No HTTP framing, I/O, or clock reads.
 
-from datetime import datetime, timezone
+Error codes (D119, kept per path, not unified): this module's own checks answer
+503 UPSTREAM_CONTRACT_MISMATCH (``_fail``/``_text``/``_exact_bool``). Shared
+course_contracts checks (``require_*``, validate_condition/availability,
+item_type_wire, parse_owned) answer 400 INVALID_REQUEST; calls to ``require_*``
+pass that code explicitly. A succeeded calculation missing a stored component is
+503 STORED_INPUT_INVALID.
+"""
 
 from mock_journey.course_contracts import (
-    ATTEMPT_VIEW_FIELDS, AVAILABILITY_FIELDS, CALCULATION_VIEW_FIELDS, CHART_LINK_FIELDS,
-    CONDITION_KEYS, CONTENT_START_VIEW_FIELDS, COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS,
-    COURSE_LIST_ROW_FIELDS, COURSE_STATUSES, ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE,
-    EXCLUSION_REASON_ORDER, FILE_DETAIL_FIELDS, ITEM_DETAIL_OUTER_FIELDS, LOGIN_EXTRA_FIELDS,
-    PAGE_DEFAULT, PAGE_SIZE_DEFAULT, PROGRESS_APPLICATIONS, PROGRESS_RECEIPT_FIELDS,
-    RECEIPT_FORBIDDEN_KEYS, SESSION_VIEW_FIELDS, SUBMIT_ARC_FIELDS, SUMMARY_ITEM_FIELDS,
-    SUCCESS_MESSAGE, TOKEN_TYPE_BEARER, TRAINING_PROGRAM_DETAIL_FIELDS, USAGE_VALUES,
-    CourseView, RefreshResult, item_type_wire, parse_owned, require_hash, require_member,
-    require_public_id, require_utc, require_uuid, scope_identity, validate_availability, validate_condition,
+    APP_ROUTES, ATTEMPT_STATES, ATTEMPT_VIEW_FIELDS, AVAILABILITY_FIELDS, CALCULATION_STATUSES,
+    CALCULATION_VIEW_FIELDS, CHART_LINK_FIELDS, CONDITION_KEYS, CONTENT_START_VIEW_FIELDS,
+    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS, COURSE_STATUSES,
+    ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE, EXCLUSION_REASON_ORDER, FILE_DETAIL_FIELDS,
+    FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS, LOGIN_EXTRA_FIELDS, PAGE_DEFAULT,
+    PROGRESS_APPLICATIONS, PROGRESS_RECEIPT_FIELDS, RECEIPT_FORBIDDEN_KEYS, SESSION_VIEW_FIELDS,
+    START_ROLES, SUBMIT_ARC_FIELDS, SUBMIT_ARC_STATUSES, SUMMARY_ITEM_FIELDS, SUCCESS_MESSAGE,
+    TOKEN_TYPE_BEARER, TRAINING_PROGRAM_DETAIL_FIELDS, USAGE_VALUES, CourseView, RefreshResult,
+    item_type_wire, parse_owned, require_hash, require_member, require_public_id, require_utc,
+    require_uuid, scope_identity, validate_availability, validate_condition, waiting_reason_for,
 )
-from mock_journey.course_errors import CourseError
+from mock_journey.course_errors import AUTH_ERROR_CODES, CourseError
+from mock_journey.course_primitives import (
+    contains_key, fail, require_exact_bool, require_text, rfc3339_precise,
+)
 from mock_journey.course_schema import (
     validate_course_metadata, validate_enrollment, validate_file_detail,
     validate_placement_detail, validate_placement_order, validate_training_detail,
 )
-from mock_journey.typed import digest, json_bytes, parse_json
+from mock_journey.errors import JourneyError
+from mock_journey.typed import digest, parse_json
+
+
+_UPSTREAM = "UPSTREAM_CONTRACT_MISMATCH"
+_CONTRACT = "INVALID_REQUEST"
+_COURSE_LIST_PATH = next(spec.path for spec in APP_ROUTES if spec.route_id == "course_list")
 
 
 _IDENTITY_LEAKS = frozenset({
@@ -28,34 +45,23 @@ _IDENTITY_LEAKS = frozenset({
 })
 
 
-def _fail(code="UPSTREAM_CONTRACT_MISMATCH"):
-    raise CourseError(code)
+_RECEIPT_LEAKS = _IDENTITY_LEAKS | RECEIPT_FORBIDDEN_KEYS
+
+
+def _fail(code=_UPSTREAM):
+    fail(code)
 
 
 def utc_timestamp(epoch_seconds):
     """Wire RFC3339 UTC. Envelope timestamp is response time, not a digest input."""
-    if type(epoch_seconds) is bool or type(epoch_seconds) not in (int, float):
-        _fail("TEMPORARILY_UNAVAILABLE")
-    if type(epoch_seconds) is float and epoch_seconds != epoch_seconds:
-        _fail("TEMPORARILY_UNAVAILABLE")
-    dt = datetime.fromtimestamp(epoch_seconds, timezone.utc)
-    if dt.microsecond == 0:
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    fraction = f"{dt.microsecond:06d}".rstrip("0")
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + fraction + "Z"
+    return rfc3339_precise(epoch_seconds, code="TEMPORARILY_UNAVAILABLE")
 
 
 def _reject_leaks(value, *, secrets=False):
-    forbidden = _IDENTITY_LEAKS | (RECEIPT_FORBIDDEN_KEYS if secrets else frozenset())
-    if type(value) is dict:
-        for key, nested in value.items():
-            if key in forbidden:
-                _fail()
-            _reject_leaks(nested, secrets=secrets)
-        return
-    if type(value) is list:
-        for nested in value:
-            _reject_leaks(nested, secrets=secrets)
+    # Wire data refuses identity keys; stored receipts (secrets=True) also refuse
+    # RECEIPT_FORBIDDEN_KEYS. Wire accessToken/url fields are therefore allowed.
+    if contains_key(value, _RECEIPT_LEAKS if secrets else _IDENTITY_LEAKS):
+        _fail()
 
 
 def _ordered(keys, values, *, nullable=()):
@@ -74,20 +80,40 @@ def _ordered(keys, values, *, nullable=()):
 
 
 def _text(value):
-    if type(value) is not str or not value:
-        _fail()
-    return value
+    # Unlike course_contracts._text, no UTF-8 encode check here (kept as is).
+    return require_text(value, code=_UPSTREAM, check_utf8=False)
 
 
 def _exact_bool(value):
-    if type(value) is not bool:
-        _fail()
-    return value
+    return require_exact_bool(value, code=_UPSTREAM)
 
 
 def availability_data(state, reason):
     state, reason = validate_availability(state, reason)
     return _ordered(AVAILABILITY_FIELDS, {"state": state, "reason": reason}, nullable=("reason",))
+
+
+def availability_or_waiting(read, auth, *, absorb_unexpected):
+    """D81/D89 learning availability from ``read(auth)``, or a waiting fallback.
+
+    Auth CourseErrors (AUTH_ERROR_CODES) and JourneyError always propagate. Any
+    other CourseError becomes waiting (contract_pending or
+    arc_progress_unavailable). Other exceptions propagate unless
+    absorb_unexpected, which turns them into arc_progress_unavailable. The HTTP
+    login/refresh routes pass False; course_wiring._session_reader passes True.
+    """
+    try:
+        return aggregate_availability(read(auth))
+    except CourseError as error:
+        if error.code in AUTH_ERROR_CODES:
+            raise
+        return {"state": "waiting", "reason": waiting_reason_for(error)}
+    except JourneyError:
+        raise
+    except Exception:
+        if not absorb_unexpected:
+            raise
+        return {"state": "waiting", "reason": "arc_progress_unavailable"}
 
 
 def aggregate_availability(refresh: RefreshResult):
@@ -112,22 +138,23 @@ def aggregate_availability(refresh: RefreshResult):
     return availability_data("ready", None)
 
 
-def session_data(*, session_id, expires_at, learning_availability, access_token=None):
-    require_uuid(session_id)
+def session_data(*, session_id, expires_at, learning_availability, access_token=None, user_name=None):
+    require_uuid(session_id, code=_CONTRACT)
     payload = {
         "sessionId": session_id,
-        "expiresAt": require_utc(expires_at),
+        "expiresAt": require_utc(expires_at, code=_CONTRACT),
         "learningAvailability": _ordered(AVAILABILITY_FIELDS, learning_availability, nullable=("reason",)),
     }
     data = _ordered(SESSION_VIEW_FIELDS, payload, nullable=())
     if access_token is None:
         return data
-    extra = {"accessToken": _text(access_token), "tokenType": TOKEN_TYPE_BEARER}
+    # D129: the display name travels only with the login token, never with GET/refresh.
+    extra = {"accessToken": _text(access_token), "tokenType": TOKEN_TYPE_BEARER, "userName": _text(user_name)}
     return {**data, **_ordered(LOGIN_EXTRA_FIELDS, extra)}
 
 
 def submit_arc_data(*, status, exclusion_reasons=()):
-    require_member(status, {"disabled", "excluded"})
+    require_member(status, SUBMIT_ARC_STATUSES, code=_CONTRACT)
     if status == "disabled":
         if exclusion_reasons:
             _fail()
@@ -213,19 +240,17 @@ def _course_status(progress):
 
 def _title_and_icon(placement):
     detail = validate_placement_detail(placement)
-    title = detail.get("title")
-    icon = detail.get("iconType")
-    mapping = item_type_wire(placement.kind)
-    if icon is None:
-        icon = mapping["summary_item_type"]
-    return _text(title), _text(icon), detail
+    # The exact detail schema (ITEM_DETAIL_OUTER_FIELDS) has no iconType, so the
+    # icon is always the summary item type. The empty-title check lives here.
+    icon = item_type_wire(placement.kind)["summary_item_type"]
+    return _text(detail["title"]), _text(icon), detail
 
 
 def summary_item(placement):
     mapping = item_type_wire(placement.kind)
     title, _, _ = _title_and_icon(placement)
     return _ordered(SUMMARY_ITEM_FIELDS, {
-        "id": require_public_id(placement.public_item_id),
+        "id": require_public_id(placement.public_item_id, code=_CONTRACT),
         "itemType": mapping["summary_item_type"],
         "title": title,
         "displayOrder": placement.position,
@@ -240,8 +265,8 @@ def course_item(placement, progress_items):
         _fail()
     completed, passed = _item_progress(progress_items, placement.public_link_id)
     return _ordered(COURSE_ITEM_FIELDS, {
-        "id": require_public_id(placement.public_item_id),
-        "courseItemLinkId": require_public_id(placement.public_link_id),
+        "id": require_public_id(placement.public_item_id, code=_CONTRACT),
+        "courseItemLinkId": require_public_id(placement.public_link_id, code=_CONTRACT),
         "step": placement.position,
         "title": title,
         "iconType": icon,
@@ -276,13 +301,13 @@ def course_list_row(view: CourseView):
     placements = view.bundle.placements
     validate_placement_order(placements)
     row = {
-        "courseId": require_public_id(view.public_ids.course_id),
+        "courseId": require_public_id(view.public_ids.course_id, code=_CONTRACT),
         "courseName": _text(course.get("courseName")),
         "status": _course_status(progress),
         "summary": [summary_item(item) for item in placements],
         "certificationType": course.get("certificationType"),
-        "enrollmentId": require_public_id(view.public_ids.enrollment_id),
-        "progressId": require_public_id(view.public_ids.progress_id),
+        "enrollmentId": require_public_id(view.public_ids.enrollment_id, code=_CONTRACT),
+        "progressId": require_public_id(view.public_ids.progress_id, code=_CONTRACT),
         "learningAvailability": availability_data(view.gate.state, view.gate.reason),
     }
     if row["certificationType"] is not None and type(row["certificationType"]) is not str:
@@ -290,7 +315,7 @@ def course_list_row(view: CourseView):
     return _ordered(COURSE_LIST_ROW_FIELDS, row, nullable=("certificationType",))
 
 
-def course_list_data(views, *, count, page, page_size, path="/api/v2/courses/progress/"):
+def course_list_data(views, *, count, page, page_size, path=_COURSE_LIST_PATH):
     if type(views) not in (list, tuple):
         _fail()
     if type(count) is not int or count < 0 or type(page) is not int or type(page_size) is not int:
@@ -325,8 +350,8 @@ def course_detail_data(view: CourseView):
         "courseItems": [course_item(item, items) for item in placements],
         "enrollment": enrollment_data(view.bundle.course_json, view.public_ids.enrollment_id,
                                       course_id=view.public_ids.course_id),
-        "progressId": require_public_id(view.public_ids.progress_id),
-        "definitionHash": require_hash(view.bundle.definition_hash),
+        "progressId": require_public_id(view.public_ids.progress_id, code=_CONTRACT),
+        "definitionHash": require_hash(view.bundle.definition_hash, code=_CONTRACT),
         "learningAvailability": availability_data(view.gate.state, view.gate.reason),
     }
     return _ordered(COURSE_DETAIL_FIELDS, data)
@@ -335,7 +360,7 @@ def course_detail_data(view: CourseView):
 def _file_detail(detail):
     if detail is None:
         return None
-    return _ordered(FILE_DETAIL_FIELDS, validate_file_detail(detail), nullable=("url", "contentUrl"))
+    return _ordered(FILE_DETAIL_FIELDS, validate_file_detail(detail), nullable=FILE_DETAIL_NULLABLE)
 
 
 def _training_detail(detail):
@@ -347,7 +372,7 @@ def _training_detail(detail):
 def item_detail_data(view: CourseView, placement_id: int):
     if type(view) is not CourseView:
         _fail()
-    require_public_id(placement_id)
+    require_public_id(placement_id, code=_CONTRACT)
     validate_placement_order(view.bundle.placements)
     for placement in view.bundle.placements:
         if placement.public_link_id != placement_id:
@@ -361,17 +386,18 @@ def item_detail_data(view: CourseView, placement_id: int):
             nested_wire = _training_detail(nested)
         else:
             _fail()
-        usage = parsed.get("usage")
-        require_member(usage, USAGE_VALUES)
+        # validate_placement_detail checked the exact key set, so every key is present.
+        usage = parsed["usage"]
+        require_member(usage, USAGE_VALUES, code=_CONTRACT)
         payload = {
-            "id": require_public_id(parsed.get("id", placement.public_item_id)),
-            "title": _text(parsed.get("title")),
+            "id": require_public_id(parsed["id"], code=_CONTRACT),
+            "title": _text(parsed["title"]),
             "itemType": mapping["detail_item_type"],
-            "displayOrder": parsed.get("displayOrder", placement.position),
-            "courseItemLinkId": require_public_id(placement.public_link_id),
+            "displayOrder": parsed["displayOrder"],
+            "courseItemLinkId": require_public_id(placement.public_link_id, code=_CONTRACT),
             "usage": usage,
-            "logicalId": require_uuid(parsed.get("logicalId")),
-            "description": parsed.get("description"),
+            "logicalId": require_uuid(parsed["logicalId"], code=_CONTRACT),
+            "description": parsed["description"],
             "detail": nested_wire,
         }
         if type(payload["displayOrder"]) is not int:
@@ -382,12 +408,12 @@ def item_detail_data(view: CourseView, placement_id: int):
 
 def content_start_data(*, start_id, course_id, enrollment_id, course_item_link_id, content_version, definition_hash):
     data = {
-        "startId": require_uuid(start_id),
-        "courseId": require_public_id(course_id),
-        "enrollmentId": require_public_id(enrollment_id),
-        "courseItemLinkId": require_public_id(course_item_link_id),
+        "startId": require_uuid(start_id, code=_CONTRACT),
+        "courseId": require_public_id(course_id, code=_CONTRACT),
+        "enrollmentId": require_public_id(enrollment_id, code=_CONTRACT),
+        "courseItemLinkId": require_public_id(course_item_link_id, code=_CONTRACT),
         "contentVersion": _text(content_version),
-        "definitionHash": require_hash(definition_hash),
+        "definitionHash": require_hash(definition_hash, code=_CONTRACT),
     }
     return _ordered(CONTENT_START_VIEW_FIELDS, data)
 
@@ -395,7 +421,7 @@ def content_start_data(*, start_id, course_id, enrollment_id, course_item_link_i
 def progress_receipt_data(
     *, start_id, report_id, course_item_link_id, is_completed, is_passed, course_status, application,
 ):
-    require_member(application, PROGRESS_APPLICATIONS)
+    require_member(application, PROGRESS_APPLICATIONS, code=_CONTRACT)
     if application == "historical_only":
         is_completed = None
         is_passed = None
@@ -405,11 +431,11 @@ def progress_receipt_data(
     else:
         if is_passed is not None and type(is_passed) is not bool:
             _fail()
-        require_member(course_status, COURSE_STATUSES)
+        require_member(course_status, COURSE_STATUSES, code=_CONTRACT)
     data = {
-        "startId": require_uuid(start_id),
-        "reportId": require_uuid(report_id),
-        "courseItemLinkId": require_public_id(course_item_link_id),
+        "startId": require_uuid(start_id, code=_CONTRACT),
+        "reportId": require_uuid(report_id, code=_CONTRACT),
+        "courseItemLinkId": require_public_id(course_item_link_id, code=_CONTRACT),
         "isCompleted": is_completed,
         "isPassed": is_passed,
         "courseStatus": course_status,
@@ -430,18 +456,16 @@ def attempt_view_data(
     *, attempt_id, state, created_at, condition, course_id=None, enrollment_id=None,
     course_item_link_id=None, definition_hash=None, role=None, legacy=False,
 ):
-    require_member(state, {
-        "created", "queued", "processing", "evaluated", "cancelled", "failed", "outcome_unknown",
-    })
-    if legacy:
+    require_member(state, ATTEMPT_STATES, code=_CONTRACT)
+    if legacy:  # legacy (D103): stored v1 attempt, course fields null
         data = {
-            "attemptId": require_uuid(attempt_id),
+            "attemptId": require_uuid(attempt_id, code=_CONTRACT),
             "state": state,
             "courseId": None,
             "enrollmentId": None,
             "courseItemLinkId": None,
             "definitionHash": None,
-            "createdAt": require_utc(created_at),
+            "createdAt": require_utc(created_at, code=_CONTRACT),
             "role": None,
             "condition": _condition_wire(condition),
         }
@@ -451,15 +475,15 @@ def attempt_view_data(
         )
     if None in (course_id, enrollment_id, course_item_link_id, definition_hash, role):
         _fail()
-    require_member(role, {"training", "final_assessment"})
+    require_member(role, START_ROLES, code=_CONTRACT)
     data = {
-        "attemptId": require_uuid(attempt_id),
+        "attemptId": require_uuid(attempt_id, code=_CONTRACT),
         "state": state,
-        "courseId": require_public_id(course_id),
-        "enrollmentId": require_public_id(enrollment_id),
-        "courseItemLinkId": require_public_id(course_item_link_id),
-        "definitionHash": require_hash(definition_hash),
-        "createdAt": require_utc(created_at),
+        "courseId": require_public_id(course_id, code=_CONTRACT),
+        "enrollmentId": require_public_id(enrollment_id, code=_CONTRACT),
+        "courseItemLinkId": require_public_id(course_item_link_id, code=_CONTRACT),
+        "definitionHash": require_hash(definition_hash, code=_CONTRACT),
+        "createdAt": require_utc(created_at, code=_CONTRACT),
         "role": role,
         "condition": _condition_wire(condition),
     }
@@ -470,7 +494,7 @@ def calculation_view_data(
     *, attempt_id, calculation_status, calculation=None, evaluation=None,
     progress_application=None, submit_arc=None,
 ):
-    require_member(calculation_status, {"pending", "succeeded"})
+    require_member(calculation_status, CALCULATION_STATUSES, code=_CONTRACT)
     if calculation_status == "pending":
         calculation = None
         evaluation = None
@@ -485,10 +509,10 @@ def calculation_view_data(
             _fail()
         if submit_arc.get("ok") is True:
             _fail()
-        require_member(submit_arc.get("status"), {"disabled", "excluded"})
+        require_member(submit_arc.get("status"), SUBMIT_ARC_STATUSES, code=_CONTRACT)
         submit_arc = _ordered(SUBMIT_ARC_FIELDS, submit_arc, nullable=("error",))
     data = {
-        "attemptId": require_uuid(attempt_id),
+        "attemptId": require_uuid(attempt_id, code=_CONTRACT),
         "calculationStatus": calculation_status,
         "calculation": calculation,
         "evaluation": evaluation,
@@ -507,7 +531,7 @@ def chart_link_data(*, url, expires_at):
         return _ordered(CHART_LINK_FIELDS, {"url": None, "expiresAt": None}, nullable=CHART_LINK_FIELDS)
     if url is None or expires_at is None:
         _fail()
-    data = {"url": _text(url), "expiresAt": require_utc(expires_at)}
+    data = {"url": _text(url), "expiresAt": require_utc(expires_at, code=_CONTRACT)}
     return _ordered(CHART_LINK_FIELDS, data)
 
 
@@ -516,7 +540,7 @@ def success_envelope(data, *, timestamp):
         "success": True,
         "data": data,
         "message": SUCCESS_MESSAGE,
-        "timestamp": require_utc(timestamp),
+        "timestamp": require_utc(timestamp, code=_CONTRACT),
     }
     return body
 
@@ -527,16 +551,8 @@ def error_envelope(error: CourseError, *, timestamp):
     return {
         "success": False,
         "error": {"code": error.code, "message": error.message, "details": None},
-        "timestamp": require_utc(timestamp),
+        "timestamp": require_utc(timestamp, code=_CONTRACT),
     }
-
-
-def course_list_bytes(views, *, count, page, page_size):
-    return json_bytes(course_list_data(views, count=count, page=page, page_size=page_size))
-
-
-def item_detail_bytes(view, placement_id):
-    return json_bytes(item_detail_data(view, placement_id))
 
 
 def parse_receipt_data(response_json):

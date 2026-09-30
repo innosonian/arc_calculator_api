@@ -6,12 +6,18 @@ Clients, clocks, credentials, bindings and contracts are supplied separately.
 """
 
 from dataclasses import dataclass
+import math
 import re
 from urllib.parse import urlsplit
+
+from mock_journey.aws_scope import MAX_ENVIRONMENT_LENGTH  # noqa: F401 (re-export; the one 128)
 
 
 _ERROR = "Invalid journey settings."
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+# Shared bounds (also enforced by DynamoStateRepository and the AWS settings
+# patterns). Each module keeps its own error type and message.
+MAX_CONFLICT_RETRIES = 8
 
 
 def _invalid():
@@ -27,9 +33,32 @@ def _text(value):
         raise _invalid() from None
 
 
+def require_positive(value, error, *, number=False, finite=False):
+    """A positive value of an exact type (bool is never accepted); raise ``error()`` otherwise.
+
+    ``number`` also admits float; ``finite`` applies math.isfinite (which
+    raises OverflowError for an int beyond float range). Checks run in that
+    order. Callers choose the options and the error they already used.
+    """
+    if (type(value) not in ((int, float) if number else (int,))
+            or (finite and not math.isfinite(value)) or value <= 0):
+        raise error()
+    return value
+
+
 def _positive(*values):
-    if any(type(value) is not int or value <= 0 for value in values):
-        raise _invalid()
+    for value in values:
+        require_positive(value, _invalid)
+
+
+def base64_body_bytes(decoded_bytes):
+    """Base64 text length of a decoded byte quota (4 * ceil(n / 3)).
+
+    Same bound as local_server LocalJourneyLimits.payload_limit. It is a
+    necessary size relation only, not an estimate of the JSON envelope.
+    """
+    _positive(decoded_bytes)
+    return 4 * ((decoded_bytes + 2) // 3)
 
 
 def _state(value):
@@ -67,6 +96,19 @@ def _queue_url(value):
         raise _invalid() from None
 
 
+# Public name of the queue URL check (the Relay checkpoint binds the same URL).
+check_queue_url = _queue_url
+
+
+def lease_renewal_exceeds(lease_seconds, interval_seconds, timeout_seconds):
+    """The shared lease-renewal timing rule: renew at least three times per lease and finish in time.
+
+    Only the comparison is shared; callers keep their own type/sign checks and
+    their own error (AWS settings: invalid(), AwsLeaseGuardFactory: ValueError).
+    """
+    return interval_seconds > lease_seconds / 3 or interval_seconds + timeout_seconds >= lease_seconds
+
+
 @dataclass(frozen=True)
 class StateSettings:
     table_name: str
@@ -75,7 +117,7 @@ class StateSettings:
     def __post_init__(self):
         _text(self.table_name)
         _positive(self.max_conflict_retries)
-        if self.max_conflict_retries > 8:
+        if self.max_conflict_retries > MAX_CONFLICT_RETRIES:
             raise _invalid()
 
 
@@ -110,7 +152,7 @@ class ApiSettings:
         _state(self.state)
         _storage(self.storage)
         _text(self.environment)
-        if len(self.environment) > 128:
+        if len(self.environment) > MAX_ENVIRONMENT_LENGTH:
             raise _invalid()
         _positive(self.payload_limit)
 

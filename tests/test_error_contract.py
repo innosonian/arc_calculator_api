@@ -11,19 +11,13 @@
 import base64
 import json
 
-import pytest
 
 import lambda_handler
+from services.http import legacy_request
+from services.http.schemas import DEFAULT_CONDITION
 from tests._synth import comp_session, condition_json, cpr_session, multipart_event
 
 GUIDELINE_ERROR_MESSAGE = "This guideline is not supported."
-
-
-@pytest.fixture(autouse=True)
-def _lambda_env(monkeypatch):
-    monkeypatch.setenv("STAGE", "test")
-    monkeypatch.delenv("ARC_SUBMIT_LAMBDA_NAME", raising=False)
-    monkeypatch.delenv("SENTRY_DSN", raising=False)
 
 
 def _post(parts):
@@ -60,7 +54,7 @@ class TestGuidelineErrors:
         assert body == {"type": "client_error", "message": GUIDELINE_ERROR_MESSAGE}
 
     def test_missing_guideline_defaults_to_aha2020(self):
-        assert lambda_handler.DEFAULT_CONDITION["guideline"] == "AHA2020"
+        assert DEFAULT_CONDITION["guideline"] == "AHA2020"
         status, body = _post({
             "rawHexBPfile": comp_session(60),
             "condition": condition_json(training_type="compression_only", guideline=None),
@@ -92,7 +86,7 @@ class TestCprFileErrors:
         response = lambda_handler._run_trusted_calculation(event, None)
         body = json.loads(response["body"])
         _assert_clean_client_error(response["statusCode"], body)
-        # 내부 예외(binascii.Error)의 원문 노출 금지 — 정제 문구 계약(lambda_handler._MSG_SANITIZED_CLIENT_ERROR).
+        # 내부 예외(binascii.Error)의 원문 노출 금지 — 정제 문구 계약(legacy_request._MSG_SANITIZED_CLIENT_ERROR).
         assert body["message"] == "Invalid request data."
 
 
@@ -193,7 +187,7 @@ class TestWireFormat:
         response = lambda_handler._run_trusted_calculation(event, None)
         body = json.loads(response["body"])
         assert response["statusCode"] == 400
-        assert body == {"type": "client_error", "message": lambda_handler._MSG_SANITIZED_CLIENT_ERROR}
+        assert body == {"type": "client_error", "message": legacy_request._MSG_SANITIZED_CLIENT_ERROR}
 
 
 class TestTypeMismatch:
@@ -205,7 +199,7 @@ class TestTypeMismatch:
             "vp_event_list": '{"a": 1}',
         })
         assert status == 400
-        assert body == {"type": "client_error", "message": lambda_handler._MSG_SANITIZED_CLIENT_ERROR}
+        assert body == {"type": "client_error", "message": legacy_request._MSG_SANITIZED_CLIENT_ERROR}
 
     def test_vp_event_missing_timestamp_is_400(self):
         status, body = _post({
@@ -214,7 +208,7 @@ class TestTypeMismatch:
             "vp_event_list": '[{"event": 0}]',
         })
         assert status == 400
-        assert body["message"] == lambda_handler._MSG_SANITIZED_CLIENT_ERROR
+        assert body["message"] == legacy_request._MSG_SANITIZED_CLIENT_ERROR
 
     def test_non_dict_organization_is_400(self):
         status, body = _post({
@@ -223,7 +217,7 @@ class TestTypeMismatch:
             "Organization": "[1]",
         })
         assert status == 400
-        assert body["message"] == lambda_handler._MSG_SANITIZED_CLIENT_ERROR
+        assert body["message"] == legacy_request._MSG_SANITIZED_CLIENT_ERROR
 
     def test_non_string_regional_option_is_400(self):
         status, body = _post({
@@ -232,7 +226,7 @@ class TestTypeMismatch:
             "Usage": '{"Regional_Option": 5}',
         })
         assert status == 400
-        assert body["message"] == lambda_handler._MSG_SANITIZED_CLIENT_ERROR
+        assert body["message"] == legacy_request._MSG_SANITIZED_CLIENT_ERROR
 
     def test_list_guideline_uses_fixed_guideline_message(self):
         status, body = _post({

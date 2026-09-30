@@ -12,9 +12,11 @@ from mock_journey.course_contracts import AttemptTemplate, CourseBinding, POLICY
 from mock_journey.course_errors import CourseError
 from mock_journey.course_policy import placement_key
 from mock_journey.course_settings import fixture_course_settings
-from mock_journey.course_state import DynamoCourseRepository, InMemoryBlobStore, _final_key, _head_key, _session_key, _user_key
+from mock_journey.course_state import DynamoCourseRepository
+from mock_journey.storage_keys import course_final_key, course_head_key, session_key, user_key
+from tests.course_store_fakes import InMemoryBlobStore
 from mock_journey.state import DynamoCourseStore, DynamoStateRepository, _encode
-from tests.test_vcc_state_races import (
+from tests.vcc_state_races_support import (
     assert_new_definition_wins_report, assert_parent_generation_wins_refresh,
     assert_reset_wins_report, assert_revocation_wins_start, assert_first_final_initializes_item, provision_race,
     assert_refresh_replacement_preserves_pass_lock,
@@ -24,8 +26,8 @@ from tests.test_vcc_state_races import (
     assert_public_id_remap_cannot_retarget_prepared_start,
     assert_document_evidence_capacity_is_atomic,
 )
-from tests.test_vcc_state import EPOCH
-from tests.test_vcc_policy import completed_progress
+from tests.vcc_state_support import EPOCH
+from tests.vcc_policy_support import completed_progress
 from mock_journey.typed import json_bytes
 
 
@@ -87,10 +89,10 @@ def test_first_final_creates_item_and_role_atomically(race_context):
 def test_two_sessions_reach_final_start_transaction_together(race_context):
     repo, store, auth, bundle, view, _ = race_context
     other_id = str(uuid.uuid4())
-    session = store.get_item(_session_key(auth.session_id))
-    store.seed({**session, **_session_key(other_id), "session_id": other_id})
+    session = store.get_item(session_key(auth.session_id))
+    store.seed({**session, **session_key(other_id), "session_id": other_id})
     other_auth = replace(auth, session_id=other_id)
-    head = store.get_item(_head_key(view.scope_key, EPOCH))
+    head = store.get_item(course_head_key(view.scope_key, EPOCH))
     progress = completed_progress(bundle, 1001, 1002, 1003, 1004)
     store.seed({**head, "progress_json": json_bytes(progress).decode(),
                 "completed_placements": progress["completed_placements"]})
@@ -126,7 +128,7 @@ def test_two_sessions_reach_final_start_transaction_together(race_context):
         store.transact = original
     assert sorted(row[0] for row in results) == ["FINAL_ASSESSMENT_ACTIVE", "created"]
     winner = next(row[1] for row in results if row[0] == "created")
-    final = store.get_item(_final_key(view.scope_key, EPOCH))
+    final = store.get_item(course_final_key(view.scope_key, EPOCH))
     assert final["phase"] == "active" and final["active_attempt_id"] == winner
     receipts = [repo.find_created(owner, command, kind="attempt")
                 for owner, command in zip((auth, other_auth), commands)]
@@ -167,7 +169,7 @@ def test_cancel_retry_does_not_release_new_final(race_context):
     state._write = write
     state.cancel_attempt(auth, first.attempt_id, "original_request")
     assert state.get_attempt(auth, first.attempt_id)["state"] == "cancelled"
-    final = store.get_item(_final_key(view.scope_key, EPOCH))
+    final = store.get_item(course_final_key(view.scope_key, EPOCH))
     assert final["phase"] == "active"
     assert final["active_attempt_id"] == next_attempt[0]
 
@@ -178,21 +180,21 @@ def test_reset_wins_cancel_without_changing_old_course_rows(race_context):
     state = store._state
     original = state._write
     fired = False
-    old_head = store.get_item(_head_key(view.scope_key, EPOCH))
-    old_final = store.get_item(_final_key(view.scope_key, EPOCH))
+    old_head = store.get_item(course_head_key(view.scope_key, EPOCH))
+    old_final = store.get_item(course_final_key(view.scope_key, EPOCH))
     new_epoch = str(uuid.uuid4())
 
     def write(actions):
         nonlocal fired
         if not fired:
             fired = True
-            user = store.get_item(_user_key(auth.principal))
+            user = store.get_item(user_key(auth.principal))
             store.seed({**user, "epoch": new_epoch, "revision": user["revision"] + 1})
         return original(actions)
 
     state._write = write
     state.cancel_attempt(auth, first.attempt_id, "test_reset")
     assert state.get_attempt(auth, first.attempt_id)["state"] == "cancelled"
-    assert store.get_item(_user_key(auth.principal))["epoch"] == new_epoch
-    assert store.get_item(_head_key(view.scope_key, EPOCH)) == old_head
-    assert store.get_item(_final_key(view.scope_key, EPOCH)) == old_final
+    assert store.get_item(user_key(auth.principal))["epoch"] == new_epoch
+    assert store.get_item(course_head_key(view.scope_key, EPOCH)) == old_head
+    assert store.get_item(course_final_key(view.scope_key, EPOCH)) == old_final

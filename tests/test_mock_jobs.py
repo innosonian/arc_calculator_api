@@ -9,7 +9,7 @@ import pytest
 from mock_journey.errors import JourneyError
 from mock_journey.jobs import DynamoJobRepository, JobLeaseLost
 from mock_journey.state import DynamoStateRepository
-from tests.test_mock_state import ScriptedClient, item, snapshot
+from tests.mock_state_support import ScriptedClient, item, snapshot
 
 
 DEFINITION = json.dumps({"goal": {"kind": "cycles", "required": 3}, "adapter_version": "v1", "projection_version": "v1"})
@@ -109,12 +109,12 @@ def test_chart_winner_is_reused_without_rewriting_another_candidate():
 ])
 def test_completion_evaluation_rejects_type_and_policy_substitution(change):
     value = {**assessment(), **change}
-    expect("CALCULATOR_CONTRACT_MISMATCH", lambda: DynamoJobRepository._evaluation(value, {"definition_json": DEFINITION}))
+    expect("CALCULATOR_CONTRACT_MISMATCH", lambda: DynamoJobRepository.check_evaluation(value, {"definition_json": DEFINITION}))
 
 
 def test_valid_evaluation_is_detached_from_mutable_caller_data():
     original = assessment()
-    checked = DynamoJobRepository._evaluation(original, {"definition_json": DEFINITION})
+    checked = DynamoJobRepository.check_evaluation(original, {"definition_json": DEFINITION})
     checked["goal"]["observed"] = 999
     assert original["goal"]["observed"] == 3
 

@@ -30,6 +30,10 @@ DEFAULT_REFERENCE = Path(
     "/Users/mac/Library/Mobile Documents/com~apple~CloudDocs/Innosonian/hstm_v2_calcuator_api"
 )
 CURRENT_ROOT = Path(__file__).resolve().parents[1]
+# Deliberate literals, not config.guideline_registry: the worker below also runs
+# inside the reference checkout (sys.path points there), where that module does
+# not exist. The tuple order feeds case ID generation, so keep it as is;
+# tests/test_guideline_registry.py checks these sets against the registry.
 GUIDELINES = ("ARC2020", "ARC2025", "AHA2020", "ERC2020", "STD2015")
 TARGETS = ("adult", "child", "infant")
 TRAINING_TYPES = ("cpr", "compression_only", "ventilation_only")
@@ -488,7 +492,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference-dir", type=Path, default=DEFAULT_REFERENCE)
     parser.add_argument("--current-dir", type=Path, default=CURRENT_ROOT)
-    parser.add_argument("--output-dir", type=Path)
+    # 결정 Q15=A(2026-09-28): 기본값으로 tests/fixtures/reference_parity 골든을 덮어쓰지 않도록 필수로 받는다.
+    # 내부 --worker 하위 프로세스(_run_worker)는 파일을 쓰지 않고 이 인자도 받지 않으므로 파싱 뒤에 검사한다.
+    parser.add_argument("--output-dir", type=Path,
+                        help="Required. Write reports to a separate folder so golden fixtures are not overwritten "
+                             "(골든 fixture 를 덮어쓰지 않도록 별도 폴더 지정).")
     parser.add_argument("--case", action="append", help="Case ID substring; repeat to select a union.")
     parser.add_argument("--guard-check-only", action="store_true")
     parser.add_argument("--no-oracle", action="store_true", help="Write report/manifest without full result fixtures.")
@@ -498,10 +506,12 @@ def main():
     sys.dont_write_bytecode = True
     if args.worker:
         return _worker(args.worker.resolve(), args.guard_check_only, args.reference_oracle)
+    if args.output_dir is None:
+        parser.error("the following arguments are required: --output-dir")
 
     reference = args.reference_dir.resolve()
     current = args.current_dir.resolve()
-    output = (args.output_dir or current / "tests/fixtures/reference_parity").resolve()
+    output = args.output_dir.resolve()
     if output == reference or reference in output.parents:
         parser.error("Output must not be inside the read-only reference repository.")
     if reference == current:

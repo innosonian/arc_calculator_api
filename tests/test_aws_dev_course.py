@@ -1,6 +1,6 @@
 """Dummy AWS composition only; no test catalog files or real AWS connections."""
 
-from dataclasses import asdict, replace
+from dataclasses import replace
 import json
 
 import pytest
@@ -12,22 +12,15 @@ from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
 from mock_journey.course_contracts import CourseScope, AssignmentBinding
 from mock_journey.course_errors import CourseError
 from mock_journey.course_settings import fixture_course_settings
-from mock_journey.course_state import bundle_record
+from mock_journey.course_records import bundle_record
 from mock_journey.course_submission import collect_exclusion_reasons
-from mock_journey.dev_course import CATALOG_VERSION, MODE, DummyDevCourseProvider
+from mock_journey.dev_course import DummyDevCourseProvider
 from mock_journey.errors import JourneyError
 from mock_journey.execution_definitions import execution_catalog
 from mock_journey.handler import handle
 from mock_journey.models import AuthContext
 from mock_journey.typed import json_bytes, parse_json
-from tests.test_aws_runtime import FakeSdk, configuration, context, environment
-
-
-def course_configuration(role="api"):
-    config = configuration(role)
-    config["course"] = {"mode": MODE, "catalog_version": CATALOG_VERSION,
-                        "settings": asdict(fixture_course_settings())}
-    return config
+from tests.aws_runtime_support import FakeSdk, context, course_configuration, environment  # noqa: F401 (re-export)
 
 
 def provider():
@@ -53,6 +46,9 @@ def test_explicit_dummy_dev_mode_is_composed_without_initial_aws_requests(role):
     else:
         assert runtime.target.completion_plan is not None
         assert runtime.target.course_recovery is not None
+        # Worker only validates the course section; it serves no course HTTP.
+        assert not hasattr(runtime.target, "provider")
+        assert not hasattr(runtime.target, "course_http")
 
 
 @pytest.mark.parametrize("change", ["mode", "version", "production", "beta", "missing_limit", "bool_limit",

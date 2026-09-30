@@ -62,7 +62,7 @@ def test_oracle_atomic_same_packet_cycles_are_fixed_before_scoring():
 def test_recorded_infant_tail_has_only_one_confirmation_and_twenty_complete_breaths():
     from data_handlers.data_parser import DataParser
     from services.config import Config
-    from tests.test_detection_completion import condition
+    from tests.request_support import condition
 
     source = Path(__file__).parent / "dataset/vo_1.bin"
     packets = DataParser().parse_cpr_bytes(source.read_bytes(), Config(condition("infant", "ventilation_only")))
@@ -79,7 +79,7 @@ def test_recorded_infant_tail_has_only_one_confirmation_and_twenty_complete_brea
 def test_recorded_fourth_breath_cannot_reuse_previous_confirmation_volume():
     from data_handlers.data_parser import DataParser
     from services.config import Config
-    from tests.test_detection_completion import condition
+    from tests.request_support import condition
 
     source = Path(__file__).parent / "dataset/cpr_4.bin"
     packets = DataParser().parse_cpr_bytes(source.read_bytes(), Config(condition("adult", "cpr")))
@@ -96,7 +96,7 @@ def test_expected_pipeline_never_uses_candidate_detector_or_action_builder(monke
     from data_handlers.detection import PacketActionDetector
     from data_handlers.action_data import ActionDataPrepare
     from tests._synth import vo_session
-    from tests.test_detection_completion import condition
+    from tests.request_support import condition
 
     def forbidden(*args, **kwargs):
         pytest.fail("Expected values must not call candidate detection/preparation.")

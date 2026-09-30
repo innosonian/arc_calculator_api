@@ -1,0 +1,57 @@
+{
+  "fixture": "legacy_mock_v1_rows",
+  "purpose": "Rows and private objects written by the /mock/v1 API before its removal; seeded by tests/legacy_rows_support.py to check /api/v2 compatibility (design R1-R6).",
+  "captured_on": "2026-09-28",
+  "source": "HEAD 337cf47 + base_after_phase1.patch (write-tree 80d99bc961e317c02460813ddf10b119378240d0)",
+  "captured_via": "/mock/v1 REST proxy events -> mock_journey.handler.handle over build_application; evaluated job delivered by build_relay OutboxRelay.dispatch -> worker.handle; queued job accepted but never relayed or processed",
+  "storage_backend": "DynamoDB Local 3.3.1 (isolated temporary table with GSI1), MemoryS3 private objects",
+  "capture_clock": 1800000000,
+  "clock_at_end": 1800000007,
+  "session_expires_at": 1800086400,
+  "environment": "journey-harness",
+  "resume_key_version": "v1",
+  "resume_key_fingerprint": "33cfd70b1f930640b549ae402a29590c409294285a9a5665eec79023f1620715",
+  "resume_key_source": "tests/journey_support.py HARNESS_RESUME_KEYS (synthetic test-only key; not stored here)",
+  "storage_stage": "development",
+  "storage_bucket": "brayden-online-v2-api-storage",
+  "storage_directory": "calculator_result/interpreted_rtdata/arc",
+  "principal": "dummy-tester",
+  "session_id": "a9ed2aae-021f-4a22-9163-703f3f4a18b2",
+  "session_token": "not stored; SESSION.token_hash hashes a discarded token (see issue_session_token)",
+  "catalog_version": "mock-catalog-v1",
+  "adapter_version": "arc-internal-detection-pending-v3",
+  "projection_version": "arc-local-projection-v1",
+  "attempts": {
+    "created": "87e88f6e-b61a-484a-8830-ad8e2a19ef50",
+    "queued": "9c26c841-b7a7-46e5-a66f-2390bc295145",
+    "evaluated": "e70c5bd5-37ca-406d-b1f7-d8fa4a313408"
+  },
+  "attempt_programs": {
+    "created": [
+      "mock-cpr",
+      "adult"
+    ],
+    "queued": [
+      "mock-compression-only",
+      "adult"
+    ],
+    "evaluated": [
+      "mock-ventilation-only",
+      "adult"
+    ]
+  },
+  "jobs": {
+    "queued": "095f2ed0-db50-42e8-9ede-615759536f6a",
+    "evaluated": "b8ad2a3c-d2d4-4293-9e6a-7a152af89283"
+  },
+  "measurements": "tests/journey_support.py synthetic_measurement (compression 60 / ventilation 8 breaths)",
+  "row_counts": {
+    "ATTEMPT/META": 3,
+    "JOB/STATE": 2,
+    "OUTBOX/DISPATCH": 2,
+    "SESSION/AUTH": 1,
+    "SESSION/CREATE": 3,
+    "USER/STATE": 1
+  },
+  "object_count": 10
+}

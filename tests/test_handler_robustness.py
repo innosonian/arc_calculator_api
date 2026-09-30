@@ -9,6 +9,7 @@ import json
 import pytest
 
 import lambda_handler
+from services.http import legacy_request
 from tests._synth import comp_session, condition_json, cpr_session, multipart_event
 
 INVALID = "Invalid request data."
@@ -172,9 +173,9 @@ class TestConditionValueTypes:
     @pytest.mark.parametrize(
         "key, message",
         [
-            ("guideline", lambda_handler._MSG_UNSUPPORTED_GUIDELINE),
-            ("target", lambda_handler._MSG_UNSUPPORTED_TARGET),
-            ("training_type", lambda_handler._MSG_UNSUPPORTED_TRAINING_TYPE),
+            ("guideline", legacy_request._MSG_UNSUPPORTED_GUIDELINE),
+            ("target", legacy_request._MSG_UNSUPPORTED_TARGET),
+            ("training_type", legacy_request._MSG_UNSUPPORTED_TRAINING_TYPE),
         ],
     )
     @pytest.mark.parametrize("value", [["ARC2025"], ["adult"], ["cpr"], {"a": 1}, 5, None, True, 1.5, ""])
@@ -190,10 +191,10 @@ class TestConditionValueTypes:
         # guideline → target → training_type → CPR 파일. 복수 위반 시 첫 항목 문구.
         condition = dict(self._BASE, guideline=["x"], target=["y"], training_type=["z"])
         status, body = _post({"condition": json.dumps(condition)})
-        assert (status, body["message"]) == (400, lambda_handler._MSG_UNSUPPORTED_GUIDELINE)
+        assert (status, body["message"]) == (400, legacy_request._MSG_UNSUPPORTED_GUIDELINE)
         condition = dict(self._BASE, target=["y"], training_type=["z"])
         status, body = _post({"condition": json.dumps(condition)})
-        assert (status, body["message"]) == (400, lambda_handler._MSG_UNSUPPORTED_TARGET)
+        assert (status, body["message"]) == (400, legacy_request._MSG_UNSUPPORTED_TARGET)
 
 
 class TestRequestContext:

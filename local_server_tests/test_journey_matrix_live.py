@@ -1,4 +1,4 @@
-"""All 15 product selections through the real default CLI and internal core."""
+"""All 15 Dummy Dev courses through the real default CLI, /api/v2 and internal core."""
 
 from copy import deepcopy
 import hashlib
@@ -6,11 +6,16 @@ import json
 
 import pytest
 
-from local_server_tests.test_journey_runtime import JourneyServer
-from local_server_tests.test_live_server import ROOT, require
-from mock_journey.catalog import PROGRAMS, TARGETS
+from local_server_tests.test_journey_runtime import DUMMY_EXCLUDED, JourneyServer
+from local_server_tests.test_live_server import ROOT, dummy_courses, require
 from mock_journey import typed
 from tests._synth import multipart_event
+
+# Real loopback sockets: opted out of the directory network guard (conftest.py).
+pytestmark = pytest.mark.loopback
+
+
+COURSES = dummy_courses()
 
 
 @pytest.fixture(scope="module")
@@ -18,15 +23,15 @@ def matrix(tmp_path_factory):
     server = JourneyServer(tmp_path_factory.mktemp("arc-full-journey"))
     try:
         server.start()
-        token = server.login()["session_token"]
+        token = server.token()
         yield server, token
         server.assert_private_logs()
     finally:
         server.stop()
 
 
-def reference(attempt, data, aed):
-    """Unchanged core + response helper; only output capture is injected here.
+def reference(condition, data, aed):
+    """Unchanged core + legacy response helper; only output capture is injected here.
 
     The child under test receives no hooks, adapters, fixture definitions or
     storage objects from this reference path.
@@ -35,49 +40,51 @@ def reference(attempt, data, aed):
     from mock_journey.legacy_bridge import parse_measurement
     from services.calculation_context import AcceptedRaw, CalculationExecutionContext
     from services.legacy_response import DocumentSelection, finalize_legacy_response
-    from services.submission_response import compose_calculation_snapshot
     from util.uploader import build_key_stem
 
-    parts = {"rawHexBPfile": data, "condition": json.dumps(attempt["condition"])}
+    parts = {"rawHexBPfile": data, "condition": json.dumps(condition)}
     if aed:
         parts["aedHexBPfile"] = aed
     parsed = parse_measurement(multipart_event(parts))
-    charts = []
+    charts, evidence = [], []
     context = CalculationExecutionContext(
         accepted_raw=AcceptedRaw(hashlib.sha256(data).hexdigest(), len(data),
                                  hashlib.sha256(aed).hexdigest(), len(aed), build_key_stem(), "_no_org"),
-        publish_chart=lambda chart: charts.append(deepcopy(chart)), observe=lambda _: None,
+        publish_chart=lambda chart: charts.append(deepcopy(chart)), observe=evidence.append,
     )
     core = run_calculator(data, aed, deepcopy(parsed["condition"]), parsed.get("vp_event_list") or [],
                           usage=parsed.get("Usage"), organization=parsed.get("Organization"),
                           stage="local", execution_context=context)
     final = finalize_legacy_response(parsed, core, document_selection=DocumentSelection("none"))
     require(len(charts) == 1, "Reference core must produce exactly one chart capture.")
-    return json.loads(compose_calculation_snapshot(json.dumps(final).encode())), charts[0]
+    # D136: the closed ``cpr`` cycle count of the same run (mock_journey.cycle_goal rule, applied here
+    # independently so the child's goal is compared with the evidence, not with itself).
+    closed_cycles = sum(1 for cycle in evidence[0].cycles if cycle.calc_case == "cpr")
+    return json.loads(json.dumps(final)), charts[0], closed_cycles
 
 
-@pytest.mark.parametrize("program,target", [(p, t) for p in PROGRAMS for t in TARGETS],
-                         ids=[f"{p[0]}-{t}" for p in PROGRAMS for t in TARGETS])
-def test_every_program_target_returns_unchanged_core_and_real_chart(matrix, program, target):
+@pytest.mark.parametrize("course", COURSES, ids=[f"{c.program}-{c.target}" for c in COURSES])
+def test_every_course_practice_returns_unchanged_core_and_real_chart(matrix, course):
     server, token = matrix
-    ident, _, kind, required = program
-    attempt = server.attempt(token, program=ident, target=target)
+    attempt = server.start_attempt(token, course)
     condition = attempt["condition"]
-    require(condition["guideline"] == "ARC2025" and condition["target"] == target,
-            "Product selection must carry its approved target and guideline.")
-    require(condition["cpr_cycle_type"] == ("152" if target == "infant" else "302"),
+    require(attempt["courseId"] == course.course_id and attempt["courseItemLinkId"] == course.practice_link_id
+            and attempt["role"] == "training", "The start must pin the requested Dummy course practice.")
+    require(condition["guideline"] == "ARC2025" and condition["target"] == course.target,
+            "Course definition must carry its approved target and guideline.")
+    require(condition["cpr_cycle_type"] == ("152" if course.target == "infant" else "302"),
             "Approved age-specific CPR ratio must remain a string.")
-    require(attempt["goal"] == {"kind": kind, "required": required}, "Program goal must remain the approved mock value.")
-    filename = ("cco_1.bin" if kind == "compressions" else
-                "vo_1.bin" if kind == "ventilations" and target == "infant" else
-                "adult_vo_1.bin" if kind == "ventilations" else "cpr_1.bin")
+    filename = ("cco_1.bin" if course.kind == "compressions" else
+                "vo_1.bin" if course.kind == "ventilations" and course.target == "infant" else
+                "adult_vo_1.bin" if course.kind == "ventilations" else "cpr_1.bin")
     data = (ROOT / "tests/dataset" / filename).read_bytes()
-    aed = (ROOT / "tests/dataset/aed_1.bin").read_bytes() if ident == "mock-two-rescuer-aed" else b""
+    aed = (ROOT / "tests/dataset/aed_1.bin").read_bytes() if course.program == "mock-two-rescuer-aed" else b""
     require(server.upload(token, attempt, data=data, aed=aed or None).status in (200, 202),
-            "Every product selection must accept its real recorded measurement.")
+            "Every Dummy course must accept its real recorded measurement.")
     response = server.result(token, attempt)
-    actual = response.json()
-    expected, expected_chart = reference(attempt, data, aed)
+    result = response.data()
+    actual = deepcopy(result["calculation"])
+    expected, expected_chart, closed_cycles = reference(condition, data, aed)
     url = actual.pop("chart_dataset_url")
     expected.pop("chart_dataset_url")
     require(typed.canonical_bytes(actual) == typed.canonical_bytes(expected),
@@ -88,21 +95,28 @@ def test_every_program_target_returns_unchanged_core_and_real_chart(matrix, prog
             "Downloaded chart differs from the original core output.")
     require(hashlib.sha256(chart.body).hexdigest() == url.rsplit("/", 1)[-1].split(".")[4],
             "Downloaded bytes must match the signed content hash.")
-    view = server.request("GET", f'/mock/v1/attempts/{attempt["attempt_id"]}', token=token)
-    require(view.status == 200, "Program evaluation must have its own successful response.")
-    assessment = view.json()["evaluation"]
+    require(result["submit_arc"] == DUMMY_EXCLUDED, "Dummy results must stay excluded from ARC submission.")
+    assessment = result["evaluation"]
     require(assessment["score"]["decision"] in ("pass", "fail"), "Score decision must remain independent of goal readiness.")
-    if kind == "cycles":
-        require(assessment["goal"] == {"kind": kind, "required": required, "observed": None,
-                                       "met": None, "status": "pending_policy"},
-                "Unresolved full-cycle policy must not prevent results or fabricate completion.")
-        require(assessment["program_completed"] is False
-                and "GOAL_POLICY_UNRESOLVED" in assessment["reason_codes"], "Pending CPR must not mark shared completion.")
+    if course.kind == "cycles":
+        require(assessment["goal"] == {"kind": course.kind, "required": course.required, "observed": closed_cycles,
+                                       "met": closed_cycles >= course.required, "status": "evaluated"},
+                "CPR goal must count the calculator's closed cpr cycles (D136).")
+        require(assessment["program_completed"] is (assessment["goal"]["met"]
+                                                    and assessment["score"]["decision"] == "pass"),
+                "CPR completion is cycle goal met AND score pass (D136).")
+        require(("GOAL_NOT_MET" in assessment["reason_codes"]) is (not assessment["goal"]["met"])
+                and "GOAL_POLICY_UNRESOLVED" not in assessment["reason_codes"],
+                "Current CPR results carry no pending-policy reason (D136).")
     else:
-        count = actual["action_count"]["comp" if kind == "compressions" else "vent"]
+        count = actual["action_count"]["comp" if course.kind == "compressions" else "vent"]
+        require(assessment["goal"]["kind"] == course.kind and assessment["goal"]["required"] == course.required,
+                "The approved goal must stay pinned to its Dummy course.")
         require(assessment["goal"]["observed"] == count and assessment["goal"]["status"] == "evaluated",
                 "Only goal assessment must use the actual measured action count.")
-        require(assessment["program_completed"] is (count >= required and assessment["score"]["decision"] == "pass"),
+        require(assessment["program_completed"] is (count >= course.required and assessment["score"]["decision"] == "pass"),
                 "Only completion must require both the goal and the existing tester Pass.")
-    require(server.request("GET", attempt["calculation_path"], token=token).body == response.body,
-            "Reading separate evaluation must not rewrite the stored calculation.")
+    require(server.item(token, course)["isCompleted"] is assessment["program_completed"],
+            "Course progress must follow exactly the committed completion decision.")
+    require(server.calculation(token, attempt).stable_body() == response.stable_body(),
+            "Reading course progress must not rewrite the stored calculation bytes.")

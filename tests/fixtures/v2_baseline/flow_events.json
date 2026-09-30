@@ -1,0 +1,434 @@
+[
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "login_succeeded",
+  "fields": {
+   "http_request_id": "<uuid:1>",
+   "request_id": "<uuid:42>",
+   "session_id": "<uuid:2>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "attempt_reauthorized",
+  "fields": {
+   "attempt_id": "<uuid:8>",
+   "http_request_id": "<uuid:12>",
+   "request_id": "<uuid:43>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "attempt_cancelled",
+  "fields": {
+   "attempt_id": "<uuid:8>",
+   "http_request_id": "<uuid:13>",
+   "reason": "user_stopped",
+   "request_id": "<uuid:44>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "request_start",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "http_request_id": "<uuid:18>",
+   "level": "info",
+   "message": "request_start",
+   "path": "/cpr-analysis",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:45>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "parse_complete",
+  "fields": {
+   "aed_bytes": 0,
+   "attempt_id": "<uuid:17>",
+   "cpr_bytes": 3388,
+   "http_request_id": "<uuid:18>",
+   "level": "info",
+   "message": "parse_complete",
+   "parse_ms": "<ms>",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:45>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "calculation_accepted",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "http_request_id": "<uuid:18>",
+   "job_id": "<uuid:46>",
+   "progress_epoch": "<uuid:22>",
+   "replayed": false,
+   "request_id": "<uuid:45>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "calculation_started",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "job_id": "<uuid:46>",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_start",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "comp_count": 60,
+   "job_id": "<uuid:46>",
+   "level": "info",
+   "message": "calc_start",
+   "prepared_aed_count": 0,
+   "prepared_cpr_count": 1,
+   "progress_epoch": "<uuid:22>",
+   "stage": "development",
+   "vent_count": 0,
+   "whole_action_count": 60
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_complete",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:46>",
+   "level": "info",
+   "message": "calc_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "serialize_complete",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:46>",
+   "level": "info",
+   "message": "serialize_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "chart_complete",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:46>",
+   "level": "info",
+   "message": "chart_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_response_complete",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:46>",
+   "level": "info",
+   "message": "calc_response_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "calculation_completed",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "job_id": "<uuid:46>",
+   "progress_epoch": "<uuid:22>",
+   "state": "evaluated"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "progress_application",
+  "fields": {
+   "applied": true,
+   "attempt_id": "<uuid:17>",
+   "job_id": "<uuid:46>",
+   "program_completed": true,
+   "progress_epoch": "<uuid:22>",
+   "reason": "APPLIED"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "request_start",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "http_request_id": "<uuid:23>",
+   "level": "info",
+   "message": "request_start",
+   "path": "/cpr-analysis",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:47>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "parse_complete",
+  "fields": {
+   "aed_bytes": 0,
+   "attempt_id": "<uuid:17>",
+   "cpr_bytes": 3388,
+   "http_request_id": "<uuid:23>",
+   "level": "info",
+   "message": "parse_complete",
+   "parse_ms": "<ms>",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:47>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "calculation_replayed",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "http_request_id": "<uuid:23>",
+   "job_id": "<uuid:46>",
+   "progress_epoch": "<uuid:22>",
+   "replayed": true,
+   "request_id": "<uuid:47>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "request_start",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "http_request_id": "<uuid:28>",
+   "level": "info",
+   "message": "request_start",
+   "path": "/cpr-analysis",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:48>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "diagnostic",
+  "event": "parse_complete",
+  "fields": {
+   "aed_bytes": 0,
+   "attempt_id": "<uuid:27>",
+   "cpr_bytes": 3388,
+   "http_request_id": "<uuid:28>",
+   "level": "info",
+   "message": "parse_complete",
+   "parse_ms": "<ms>",
+   "progress_epoch": "<uuid:22>",
+   "request_id": "<uuid:48>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "calculation_accepted",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "http_request_id": "<uuid:28>",
+   "job_id": "<uuid:49>",
+   "progress_epoch": "<uuid:22>",
+   "replayed": false,
+   "request_id": "<uuid:48>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "calculation_started",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "job_id": "<uuid:49>",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_start",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "comp_count": 60,
+   "job_id": "<uuid:49>",
+   "level": "info",
+   "message": "calc_start",
+   "prepared_aed_count": 0,
+   "prepared_cpr_count": 1,
+   "progress_epoch": "<uuid:22>",
+   "stage": "development",
+   "vent_count": 0,
+   "whole_action_count": 60
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_complete",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:49>",
+   "level": "info",
+   "message": "calc_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "serialize_complete",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:49>",
+   "level": "info",
+   "message": "serialize_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "chart_complete",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:49>",
+   "level": "info",
+   "message": "chart_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "diagnostic",
+  "event": "calc_response_complete",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "elapsed_ms": "<ms>",
+   "job_id": "<uuid:49>",
+   "level": "info",
+   "message": "calc_response_complete",
+   "progress_epoch": "<uuid:22>"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "calculation_completed",
+  "fields": {
+   "attempt_id": "<uuid:27>",
+   "job_id": "<uuid:49>",
+   "progress_epoch": "<uuid:22>",
+   "state": "evaluated"
+  }
+ },
+ {
+  "role": "worker",
+  "category": "operation",
+  "event": "progress_application",
+  "fields": {
+   "applied": true,
+   "attempt_id": "<uuid:27>",
+   "job_id": "<uuid:49>",
+   "program_completed": true,
+   "progress_epoch": "<uuid:22>",
+   "reason": "APPLIED"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "progress_reset",
+  "fields": {
+   "http_request_id": "<uuid:34>",
+   "progress_epoch": "<uuid:50>",
+   "request_id": "<uuid:51>",
+   "session_id": "<uuid:2>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "request_rejected",
+  "fields": {
+   "error_code": "SESSION_REVOKED",
+   "http_request_id": "<uuid:35>",
+   "http_status": 403,
+   "request_id": "<uuid:52>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "login_succeeded",
+  "fields": {
+   "http_request_id": "<uuid:36>",
+   "request_id": "<uuid:53>",
+   "session_id": "<uuid:37>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "request_rejected",
+  "fields": {
+   "error_code": "NOT_FOUND",
+   "http_request_id": "<uuid:38>",
+   "http_status": 404,
+   "request_id": "<uuid:54>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "attempt_reauthorized",
+  "fields": {
+   "attempt_id": "<uuid:17>",
+   "http_request_id": "<uuid:39>",
+   "request_id": "<uuid:55>"
+  }
+ },
+ {
+  "role": "api",
+  "category": "operation",
+  "event": "progress_reset",
+  "fields": {
+   "http_request_id": "<uuid:41>",
+   "progress_epoch": "<uuid:56>",
+   "request_id": "<uuid:57>",
+   "session_id": "<uuid:37>"
+  }
+ }
+]

@@ -10,10 +10,93 @@ from mock_journey.projection import LoadedInput, ProjectedInput
 from mock_journey.typed import canonical_bytes
 
 
+# Adapter versions. Names are part of stored definitions/bindings; never rename.
+#
+# * arc-local-calculator-pending-v2 (RETAINED_PENDING_GOAL_ADAPTER_VERSION):
+#   the first pending-goal adapter. Verify-only: it validates its stored
+#   candidates and never runs a calculation (D25/D136).
+# * arc-internal-detection-pending-v3 (PENDING_GOAL_ADAPTER_VERSION): the
+#   current detection under the pending profile. Retained, but it still
+#   calculates attempts that were started with its definition, finishing a
+#   cycles goal as pending_policy (D136, 3A). It is not verify-only.
+# * arc-internal-detection-v4 (CYCLE_GOAL_ADAPTER_VERSION): the current
+#   adapter. Same detection; a cycles goal is evaluated by the D136 closed
+#   cycle rule (mock_journey.cycle_goal) under the cycles profile.
 RETAINED_PENDING_GOAL_ADAPTER_VERSION = "arc-local-calculator-pending-v2"
 PENDING_GOAL_ADAPTER_VERSION = "arc-internal-detection-pending-v3"
 PENDING_GOAL_ADAPTER_VERSIONS = frozenset({PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION})
 PENDING_GOAL_PROFILE_VERSION = "tester-goal-pending-v2"
+CYCLE_GOAL_ADAPTER_VERSION = "arc-internal-detection-v4"
+CYCLE_GOAL_PROFILE_VERSION = "tester-goal-cycles-v1"
+# Every adapter whose goal carries a status (the versioned goal shape).
+VERSIONED_GOAL_ADAPTER_VERSIONS = PENDING_GOAL_ADAPTER_VERSIONS | {CYCLE_GOAL_ADAPTER_VERSION}
+# Version registry (S6-10, D127, D136). New execution definitions select the
+# current adapter. The retained tuple is the registration order of the old
+# adapters the Worker must keep addressable for already accepted jobs; the
+# AWS setting must equal it exactly. Retained is not the same as verify-only:
+# only VERIFY_ONLY_ADAPTER_VERSIONS never start a calculation.
+# execution_definitions re-exports PROJECTION_VERSION.
+PROJECTION_VERSION = "arc-local-projection-v1"
+CURRENT_ADAPTER_VERSION = CYCLE_GOAL_ADAPTER_VERSION
+RETAINED_ADAPTER_VERSIONS = (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION)
+VERIFY_ONLY_ADAPTER_VERSIONS = frozenset({RETAINED_PENDING_GOAL_ADAPTER_VERSION})
+
+# Input/call binding (S6-07): the arc-binding metadata digest of stored input,
+# candidate and final objects is typed.digest over exactly these fields (the
+# digest sorts keys; callers keep this field order in the dicts they build).
+INPUT_BINDING_FIELDS = ("attempt_id", "epoch", "input_digest", "adapter_version", "projection_version")
+CALL_BINDING_FIELDS = INPUT_BINDING_FIELDS + ("job_id", "call_id")
+
+
+def input_binding(job):
+    return {key: job[key] for key in INPUT_BINDING_FIELDS}
+
+
+def call_binding(job):
+    return {**input_binding(job), "job_id": job["job_id"], "call_id": job["call_id"]}
+
+
+def is_versioned_adapter(version):
+    """A pending-goal or cycle-goal adapter: its goal carries a status under a fixed profile."""
+    return version in VERSIONED_GOAL_ADAPTER_VERSIONS
+
+
+def is_versioned_goal(definition):
+    """A versioned-adapter definition (see is_versioned_adapter)."""
+    return is_versioned_adapter(definition.get("adapter_version"))
+
+
+def expected_goal_status(kind, adapter_version):
+    """The goal status the adapter reports for this goal kind; None when the goal has no status.
+
+    A pending adapter keeps a cycles goal pending_policy (its stored results
+    and in-flight attempts keep that meaning). The cycle-goal adapter reports
+    every goal kind evaluated (D136).
+    """
+    if adapter_version in PENDING_GOAL_ADAPTER_VERSIONS:
+        return "pending_policy" if kind == "cycles" else "evaluated"
+    if adapter_version == CYCLE_GOAL_ADAPTER_VERSION:
+        return "evaluated"
+    return None
+
+
+def expected_profile_version(adapter_version):
+    """The profile a versioned adapter's definition must carry; None for other adapters."""
+    if adapter_version in PENDING_GOAL_ADAPTER_VERSIONS:
+        return PENDING_GOAL_PROFILE_VERSION
+    if adapter_version == CYCLE_GOAL_ADAPTER_VERSION:
+        return CYCLE_GOAL_PROFILE_VERSION
+    return None
+
+
+def is_retained_adapter(version):
+    """Registered for already accepted jobs (D127). Not the same as verify-only."""
+    return version in RETAINED_ADAPTER_VERSIONS
+
+
+def is_verify_only_adapter(version):
+    """Validates stored candidates only; never starts a calculation."""
+    return version in VERIFY_ONLY_ADAPTER_VERSIONS
 
 
 @dataclass(frozen=True)

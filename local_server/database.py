@@ -2,7 +2,11 @@
 
 The CLI holds the installation lock and starts a verified loopback-only DB
 process before connecting. This module never launches a process, repairs a
-foreign database, resets state, or configures calculation execution.
+foreign database, resets state, or configures calculation execution. It only
+creates/validates the installation table: new installations get the journey
+schema with its due index, and an existing table is accepted only with exactly
+that schema (D122: no former control-only installation remains, so there is
+no in-place migration; another schema is refused without any write).
 """
 
 import base64
@@ -22,10 +26,10 @@ import botocore.session
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from mock_journey.auth import AuthManager
-from mock_journey.catalog import Catalog
-from mock_journey.service import JourneyService
-from mock_journey.state import DynamoStateRepository
+from local_server.private_fs import (
+    is_canonical_key, private_directory_violation, private_file_violation,
+    read_small_private_file, reject_symlink_components, sync_directory, unique_pairs, write_private_json,
+)
 
 
 TABLE_NAME = "arc_mock_local_v1"
@@ -69,7 +73,7 @@ def _fail():
 
 def _private_directory(path):
     info = path.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+    if private_directory_violation(info):
         raise LocalDatabaseError("Local data directories must be owned by this user with mode 0700.")
 
 
@@ -78,14 +82,13 @@ def _no_symlink_components(path):
     # a symlink that could redirect private data to a different installation.
     if not path.is_absolute() or ".." in path.parts:
         raise _fail()
-    for parent in reversed((path, *path.parents)):
-        if stat.S_ISLNK(parent.lstat().st_mode):
-            raise LocalDatabaseError("Local data paths must not contain symbolic links.")
+    # Root first: a linked ancestor is reported before a missing descendant.
+    reject_symlink_components(path, root_first=True, error=lambda: LocalDatabaseError(
+        "Local data paths must not contain symbolic links."))
 
 
 def _private_file(info):
-    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+    if private_file_violation(info):
         raise LocalDatabaseError("Local data files must be private regular files with mode 0600.")
 
 
@@ -99,73 +102,41 @@ def _validate_database_files(path):
             _private_file(info)
 
 
-def _pairs(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise _fail()
-        result[key] = value
-    return result
+# Duplicate keys fail with the generic message. NaN/Infinity parse (no
+# parse_constant) and then fail the exact field type checks below.
+_pairs = unique_pairs(_fail)
 
 
-def _read_record(path):
-    _private_file(path.lstat())
-    # Reject FIFO/device paths before opening, and retain non-blocking open
-    # plus fstat validation in case the path changes after lstat.
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    try:
-        info = os.fstat(fd)
-        _private_file(info)
-        if info.st_size > 4096:
-            raise _fail()
-        with os.fdopen(fd, "rb", closefd=False) as stream:
-            record = json.loads(stream.read(4097), object_pairs_hook=_pairs)
-        if type(record) is not dict or set(record) != _MATERIAL_KEYS:
-            raise _fail()
-        ident = record["installation_id"]
-        if (type(record["version"]) is not int or record["version"] != 1
-                or type(ident) is not str or not _IDENT.fullmatch(ident)
-                or record["environment"] != "local-" + ident
-                or type(record["resume_key"]) is not str
-                or type(record["database_initialized"]) is not bool):
-            raise _fail()
-        decoded = base64.b64decode(record["resume_key"], validate=True)
-        if len(decoded) != 32 or base64.b64encode(decoded).decode("ascii") != record["resume_key"]:
-            raise _fail()
-        return record
-    finally:
-        os.close(fd)
-
-
-def _sync_directory(path):
-    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+def read_installation_record(path):
+    """Read and validate installation.json (also used by object_storage)."""
+    # Reject FIFO/device paths before opening (lstat_first), and retain the
+    # non-blocking open plus fstat validation in case the path changes after lstat.
+    raw = read_small_private_file(path, check=_private_file, too_large=_fail, lstat_first=True)
+    record = json.loads(raw, object_pairs_hook=_pairs)
+    if type(record) is not dict or set(record) != _MATERIAL_KEYS:
+        raise _fail()
+    ident = record["installation_id"]
+    if (type(record["version"]) is not int or record["version"] != 1
+            or type(ident) is not str or not _IDENT.fullmatch(ident)
+            or record["environment"] != "local-" + ident
+            or type(record["resume_key"]) is not str
+            or type(record["database_initialized"]) is not bool):
+        raise _fail()
+    if not is_canonical_key(record["resume_key"]):
+        raise _fail()
+    return record
 
 
 def _write_record(path, record, *, replace=False):
-    destination = path.with_name(".installation-" + uuid.uuid4().hex) if replace else path
-    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        _private_file(os.fstat(fd))
-        raw = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        with os.fdopen(fd, "wb", closefd=False) as stream:
-            stream.write(raw)
-            stream.flush()
-            os.fsync(fd)
-    finally:
-        os.close(fd)
-    if replace:
+    def verify():
         # Verify the destination immediately before replacing it; never follow
         # a link or overwrite another installation's secrets during recovery.
-        before = _read_record(path)
+        before = read_installation_record(path)
         expected = dict(record, database_initialized=before["database_initialized"])
         if before != expected:
             raise _fail()
-        os.replace(destination, path)
-    _sync_directory(path.parent)
+    write_private_json(path, record, check=_private_file, verify=verify,
+                       temporary=path.with_name(".installation-" + uuid.uuid4().hex) if replace else None)
 
 
 def prepare_material(data_dir, *, initialize=True):
@@ -192,12 +163,12 @@ def prepare_material(data_dir, *, initialize=True):
                       "resume_key": base64.b64encode(secrets.token_bytes(32)).decode("ascii"),
                       "database_initialized": False}
             _write_record(material_path, record)
-        record = _read_record(material_path)
+        record = read_installation_record(material_path)
         if not db_dir.exists() and not db_dir.is_symlink():
             if record["database_initialized"] or not initialize:
                 raise LocalDatabaseError("Initialized local database files are missing. Restore the installation together.")
             db_dir.mkdir(mode=0o700)
-            _sync_directory(data_dir)
+            sync_directory(data_dir)
         _validate_database_files(db_dir)
         return LocalMaterial(data_dir, db_dir, record["environment"],
                              base64.b64decode(record["resume_key"], validate=True),
@@ -249,21 +220,19 @@ def _same_attributes(value, expected):
 
 
 def _table_kind(table, *, pending=False):
-    """Recognize only the original table or its one exact additive job index."""
+    """Return "journey" for exactly the PK/SK table with its one GSI1 job index, else None.
+
+    The former PK/SK-only "control" schema is not recognized any more (D122);
+    a table without exactly this index is refused, never migrated. With
+    ``pending`` the index may still be CREATING (a first start waits for it).
+    """
     try:
         if (type(table) is not dict or table.get("LocalSecondaryIndexes", []) != []
                 or not _same_attributes(table.get("KeySchema"), _KEY_SCHEMA)):
             return None
         status = table.get("TableStatus")
         indexes = table.get("GlobalSecondaryIndexes", [])
-        if type(indexes) is not list:
-            return None
-        if not indexes:
-            if (not _same_attributes(table.get("AttributeDefinitions"), _ATTRIBUTES)
-                    or status not in (("ACTIVE", "CREATING") if pending else ("ACTIVE",))):
-                return None
-            return "control"
-        if (len(indexes) != 1 or type(indexes[0]) is not dict
+        if (type(indexes) is not list or len(indexes) != 1 or type(indexes[0]) is not dict
                 or not _same_attributes(table.get("AttributeDefinitions"), _ATTRIBUTES + _JOB_ATTRIBUTES)):
             return None
         index = indexes[0]
@@ -282,17 +251,16 @@ def _table_kind(table, *, pending=False):
         return None
 
 
-def _table_valid(table, *, journey=False):
-    kind = _table_kind(table)
-    return kind == "journey" if journey else kind in ("control", "journey")
+def _table_valid(table):
+    return _table_kind(table) == "journey"
 
 
-def _wait_for_schema(client, table, kind):
+def _wait_for_schema(client, table):
     deadline = time.monotonic() + _SCHEMA_WAIT_SECONDS
     while True:
-        if _table_kind(table, pending=True) != kind:
+        if _table_kind(table, pending=True) != "journey":
             raise _fail()
-        if _table_kind(table) == kind:
+        if _table_valid(table):
             return table
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -302,11 +270,11 @@ def _wait_for_schema(client, table, kind):
 
 
 class LocalDatabase:
-    def __init__(self, client, application, sentinel, *, journey=False, operations=None):
+    """An owned, validated DB client; the API/worker roles are assembled elsewhere."""
+
+    def __init__(self, client, sentinel, *, operations=None):
         self._client = client
         self._sentinel = sentinel
-        self._journey = journey
-        self.application = application
         self.operations = operations
 
     @property
@@ -323,7 +291,7 @@ class LocalDatabase:
         try:
             table = self._client.describe_table(TableName=TABLE_NAME)["Table"]
             item = self._client.get_item(TableName=TABLE_NAME, Key=_SENTINEL_KEY, ConsistentRead=True).get("Item")
-            return _table_valid(table, journey=self._journey) and item == self._sentinel
+            return _table_valid(table) and item == self._sentinel
         except Exception:
             return False
 
@@ -336,17 +304,20 @@ class LocalDatabase:
         self._client.close()
 
 
-def connect_application(endpoint, material, *, journey=False, initialize=True, operations_role=None):
+def connect_application(endpoint, material, *, initialize=True, operations_role=None):
     """Connect after the CLI verifies its own DB and holds installation_lock.
 
-    ``journey`` requires the exact active due index. Only the parent's default
-    initialize=True path creates setup records or adds that index. A child
-    passes initialize=False with already initialized material to attach using
-    its own client; it performs no schema, sentinel or material writes.
+    A missing table is created with the journey schema (PK/SK plus the exact
+    GSI1 due index); an existing table must already have exactly that schema
+    with its index active, whatever ``initialize`` is (D122). Only the parent's
+    initialize=True path creates the table, sentinel or setup records. A child
+    or the read-only log reader passes initialize=False with already
+    initialized material to attach using its own client; it performs no
+    schema, sentinel or material writes.
     """
     client = operations = None
     try:
-        if (type(material) is not LocalMaterial or type(journey) is not bool or type(initialize) is not bool
+        if (type(material) is not LocalMaterial or type(initialize) is not bool
                 or (not initialize and not material.database_initialized)):
             raise _fail()
         # A material already supplied by the caller is a validation target,
@@ -361,20 +332,16 @@ def connect_application(endpoint, material, *, journey=False, initialize=True, o
             if (error.response.get("Error", {}).get("Code") != "ResourceNotFoundException"
                     or material.database_initialized or not initialize):
                 raise _fail() from None
-            creation = {"TableName": TABLE_NAME, "KeySchema": _KEY_SCHEMA,
-                        "AttributeDefinitions": _ATTRIBUTES + _JOB_ATTRIBUTES if journey else _ATTRIBUTES,
-                        "BillingMode": "PAY_PER_REQUEST"}
-            if journey:
-                creation["GlobalSecondaryIndexes"] = [_JOB_INDEX]
-            client.create_table(**creation)
+            client.create_table(TableName=TABLE_NAME, KeySchema=_KEY_SCHEMA,
+                                AttributeDefinitions=_ATTRIBUTES + _JOB_ATTRIBUTES,
+                                GlobalSecondaryIndexes=[_JOB_INDEX], BillingMode="PAY_PER_REQUEST")
             table = client.describe_table(TableName=TABLE_NAME)["Table"]
-        kind = _table_kind(table, pending=initialize)
-        if kind is None:
+        if _table_kind(table, pending=initialize) is None:
             raise _fail()
         if table["TableStatus"] == "CREATING":
             if material.database_initialized or not initialize:
                 raise _fail()
-            table = _wait_for_schema(client, table, kind)
+            table = _wait_for_schema(client, table)
         sentinel = _sentinel(material)
         found = client.get_item(TableName=TABLE_NAME, Key=_SENTINEL_KEY, ConsistentRead=True).get("Item")
         if found is None and not material.database_initialized and initialize:
@@ -388,29 +355,17 @@ def connect_application(endpoint, material, *, journey=False, initialize=True, o
             found = client.get_item(TableName=TABLE_NAME, Key=_SENTINEL_KEY, ConsistentRead=True).get("Item")
         if found != sentinel:
             raise _fail()
-        if journey and kind == "control":
-            if not initialize:
-                raise _fail()
-            # The exact old schema and this installation's sentinel were both
-            # checked before the only additive schema mutation.
-            client.update_table(TableName=TABLE_NAME, AttributeDefinitions=_JOB_ATTRIBUTES,
-                                GlobalSecondaryIndexUpdates=[{"Create": _JOB_INDEX}])
-            kind = "journey"
-            table = client.describe_table(TableName=TABLE_NAME)["Table"]
         if initialize:
-            table = _wait_for_schema(client, table, kind)
-        if not _table_valid(table, journey=journey):
+            table = _wait_for_schema(client, table)
+        if not _table_valid(table):
             raise _fail()
         if client.get_item(TableName=TABLE_NAME, Key=_SENTINEL_KEY, ConsistentRead=True).get("Item") != sentinel:
             raise _fail()
         if not material.database_initialized:
             path = material.data_dir / MATERIAL_FILENAME
-            record = _read_record(path)
+            record = read_installation_record(path)
             record["database_initialized"] = True
             _write_record(path, record, replace=True)
-        state = DynamoStateRepository(client, TABLE_NAME)
-        auth = AuthManager(state, material.environment, {material.key_version: material.resume_key}, material.key_version)
-        application = JourneyService(state, auth, Catalog(), calculation=None)
         if operations_role is not None:
             from services.operational_logs import AsyncLogRecorder
             from mock_journey.log_storage import DynamoLogStore
@@ -419,8 +374,7 @@ def connect_application(endpoint, material, *, journey=False, initialize=True, o
                     lambda: DynamoLogStore(_new_client(endpoint), TABLE_NAME, material.environment), role=operations_role)
             except Exception:
                 operations = None
-            application.operations = operations
-        return LocalDatabase(client, application, sentinel, journey=journey, operations=operations)
+        return LocalDatabase(client, sentinel, operations=operations)
     except Exception:
         if client is not None:
             try:

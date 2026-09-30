@@ -9,9 +9,8 @@ import pytest
 from mock_journey.dispatch import run
 from mock_journey.relay_progress import RelayProgressUncertain
 from mock_journey.state import _decode
-from tests.test_aws_relay_progress_integration import assembled
-from tests.test_aws_runtime import context
-from tests.test_relay_progress_unit import cursor, put, row, world
+from tests.aws_runtime_support import context
+from tests.relay_progress_support import assembled, cursor, put, row, world  # noqa: F401 (world fixture)
 
 
 @pytest.mark.parametrize("committed", [False, True])

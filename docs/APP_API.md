@@ -1,10 +1,10 @@
 # 앱 개발자 전달용 VCC API
 
-2026-09-18 구현을 기준으로 2026-09-19 정리한 **앱팀 전달용 Markdown 명세**다. 이 파일 안에 `/api/v2`의 **13개 경로·16개 동작, 요청·응답 자료형, 필수값·null, 전체 오류, JSON 예시**를 모았다. 별도 YAML 없이 읽고 구현할 수 있다. 예시는 합성 자료이며 실제 ARC 과정·계정·서버 주소가 아니다.
+2026-09-18 구현을 기준으로 2026-09-19 정리하고 2026-09-28 `/mock/v1` 삭제(D103)와 코드 리뷰 후속 결정을 반영한 **앱팀 전달용 Markdown 명세**다. 이 파일 안에 `/api/v2`의 **13개 경로·16개 동작, 요청·응답 자료형, 필수값·null, 전체 오류, JSON 예시**를 모았다. 별도 YAML 없이 읽고 구현할 수 있다. 예시는 합성 자료이며 실제 ARC 과정·계정·서버 주소가 아니다.
 
-**연결할 서버는 백엔드팀과 먼저 맞춘다.** 새 과정 API는 `build_course_application`으로 명시 조립한 `course_v2`에서 제공한다. 기본 로컬·AWS 조립은 `/mock/v1`이며, AWS API/Worker에 `course_v2_dummy`를 명시하면 아래 Dev 임시 과정을 제공한다. 이 명세 작성이나 로컬 검증 완료가 배포 완료를 뜻하지 않는다. 실제 ARC/MuleSoft 인증·자료 공급·결과 전송 계약, 실물 앱·AWS 인수는 남아 있다. ARC 송신은 비활성이다.
+**연결할 서버는 백엔드팀과 먼저 맞춘다.** `/api/v2`가 최종 버전이다(D103). 기본 로컬 실행과 AWS 서버는 모두 `/api/v2`만 제공하며, 둘 다 아래 Dummy Dev 임시 과정 15개를 사용한다. 이 명세 작성이나 로컬 검증 완료가 배포 완료를 뜻하지 않는다. 실제 ARC/MuleSoft 인증·자료 공급·결과 전송 계약, 실물 앱·AWS 인수는 남아 있다. ARC 송신은 비활성이다.
 
-2026-09-22 추가한 AWS Dummy Dev 카탈로그 `arc-dummy-dev-v1`에는 기존 5개 프로그램×성인·소아·영아의 **15개 임시 과정**이 있다. 이름에 `[Dummy Dev]`가 붙고 각 과정은 훈련 1개→마지막 평가 1개다. 이 카탈로그에는 영상·문서 자료가 없으며 아래 콘텐츠 API 설명은 해당 자료를 공급하는 별도 조립의 계약이다. 앱은 과정 목록에서 실제 ID와 `definitionHash`를 받아 사용한다. 실제 ARC 배정이나 공식 수료 과정으로 표시하지 않는다. 점수는 업로드한 실제 바이너리로 계산하고 CPR 완료는 계속 `pending_policy`다. Dummy 계산 결과의 `submit_arc`는 `status="excluded"`, `ok=false`, `error=null`이며 외부로 보내지 않는다. 기본 제외 사유는 `exclusionReasons=["dummy"]`이고, 계산 확정 전 진도 초기화 등의 조건에서는 `progress_reset_before_result` 같은 사유도 함께 들어간다. 요청·응답 경로와 자료형은 기존 명세와 같다. 공용 Dummy 로그아웃 뒤 다른 활성 세션은 기존 결과를 계속 조회할 수 있지만, 새 공유 진도는 `POST /api/v2/session/refresh/` 후 다시 시작한다.
+2026-09-22 추가한 Dummy Dev 카탈로그 `arc-dummy-dev-v1`(AWS Dev와 기본 로컬 실행에서 사용)에는 기존 5개 프로그램×성인·소아·영아의 **15개 임시 과정**이 있다. 이름에 `[Dummy Dev]`가 붙고 각 과정은 훈련 1개→마지막 평가 1개다. 이 카탈로그에는 영상·문서 자료가 없으며 아래 콘텐츠 API 설명은 해당 자료를 공급하는 별도 조립의 계약이다. 앱은 과정 목록에서 실제 ID와 `definitionHash`를 받아 사용한다. 실제 ARC 배정이나 공식 수료 과정으로 표시하지 않는다. 점수는 업로드한 실제 바이너리로 계산하고 CPR 완료는 계속 `pending_policy`다. Dummy 계산 결과의 `submit_arc`는 `status="excluded"`, `ok=false`, `error=null`이며 외부로 보내지 않는다. 기본 제외 사유는 `exclusionReasons=["dummy"]`이고, 계산 확정 전 진도 초기화 등의 조건에서는 `progress_reset_before_result` 같은 사유도 함께 들어간다. 요청·응답 경로와 자료형은 기존 명세와 같다. 공용 Dummy 로그아웃 뒤 다른 활성 세션은 기존 결과를 계속 조회할 수 있지만, 새 공유 진도는 `POST /api/v2/session/refresh/` 후 다시 시작한다.
 
 **2026-09-23 AWS Dev 연결 정보**
 
@@ -19,7 +19,7 @@
 
 사용자 실행으로 HTTPS 로그인/조회, 기존 압박 자료31380bytes의 일반 훈련·최종평가 계산(각101회·100점)과 과정 FINISHED를 확인했다. 일반 훈련 원본/최종 결과/운용 로그·서명 차트 다운로드·익명 접근403도 확인했다. 같은 계정의 다른 유효 세션에서는 기존 훈련·계산 결과·차트 발급이 모두404로 차단됐고 원래 세션의 결과는 보존됐다. 차트의 새 링크200→실제300초 경과 후 같은 링크의 만료403→재발급200·동일 차트와 기존 결과 보존도 확인했다. 완료한 일반 훈련의 동일 시작 요청·동일 파일/조건을 순서대로 재전송했을 때 각각200으로 같은 응답을 반환하고 기존 훈련·작업·접수 기록·결과를 보존함도 확인했다. 이 확인 범위에서 앱팀의 Dummy Dev 연결 시험을 시작할 수 있다. 앱의 실제 파일·기기와 다른 훈련 종류, 동시/처리 중 재전송·세션 만료/복구·장애·용량/비용을 포함한 전체 AWS 인수는 진행 중이다. 접속 주소의 `/dev`와 각 API의 마지막 `/`를 유지한다.
 
-현재 시험한 성인 압박 Only 과정은 공유 진도에서 이미 완료됐다. 같은 등록의 새 일반 훈련/합격 후 최종평가 시작 거절은 정상이다. 공용 Dummy 로그아웃은 다른 기기와 공유하는 진도를 초기화하므로 앱의 자동 로그아웃이나 무조건 초기화로 이를 우회하지 않는다. 과정·등록·항목 ID는 아래 일반 계약대로 실제 목록/상세 응답에서 사용한다.
+현재 시험한 성인 압박 Only 과정은 공유 진도에서 이미 완료됐다. 완료한 일반 훈련과 합격한 최종평가도 다시 시작할 수 있으며(D130) 이미 얻은 완료·합격은 유지된다(D131). 공용 Dummy 로그아웃은 다른 기기와 공유하는 진도를 초기화하므로 앱의 자동 로그아웃이나 무조건 초기화로 이를 우회하지 않는다. 과정·등록·항목 ID는 아래 일반 계약대로 실제 목록/상세 응답에서 사용한다.
 
 목차: [1. 공통 계약](#1-공통-계약) · [2. 경로·세션·과정·TrainingProgram](#2-경로와-기본-흐름) · [3. 시작·멱등성](#3-시작과-재전송) · [4. 콘텐츠 보고](#4-영상문서-진도-보고) · [5. 측정·업로드](#5-측정-시도와-업로드) · [6. 계산·완료·차트](#6-결과완료차트) · [7. 취소·복구·오류](#7-취소복구전체-오류) · [8. 기존 앱 이행](#8-기존-앱에서-바뀌는-지점)
 
@@ -45,7 +45,7 @@
 | `T 또는 null` | 키는 필수이고 값만 nullable. 상위 객체가 null이면 그 하위 키는 없음 |
 | `T[]` | 배열. 별도 최소 길이 설명이 없으면 빈 배열 가능 |
 
-성공은 다음 envelope다. `204`만 본문이 없다. 응답 헤더의 `X-Request-Id`는 문의에 사용할 서버 추적 ID이며 `Cache-Control: no-store`다.
+성공은 다음 envelope다. `204`만 본문이 없다. 응답 헤더는 `Cache-Control: no-store`다. `X-Request-Id`는 API가 요청마다 새로 만드는 소문자 UUID이며 API가 처리한 성공·오류 응답에 모두 있다. 서버 운용 로그에 `http_request_id`로 함께 기록되므로 문의할 때 이 값을 전달하면 같은 요청의 기록을 찾을 수 있다(D107). 본문에는 들어가지 않고, 앱이 보내는 `clientRequestId`와 다르며, 앱이 요청 헤더로 보낼 필요는 없다. 로컬 서버는 응답에 이 헤더를 싣지 않는다.
 
 ```json
 {
@@ -109,14 +109,15 @@ HTTP 서버가 요청 자체를 먼저 거절한 `400`/`413`은 이 JSON 형식�
   "expiresAt": "2026-09-19T00:00:00Z",
   "learningAvailability": {"state":"waiting","reason":"contract_pending"},
   "accessToken": "<발급된 불투명 토큰>",
-  "tokenType": "Bearer"
+  "tokenType": "Bearer",
+  "userName": "Test User"
 }
 ```
 
 
-`LoginRequest`의 `loginId`·`password`는 빈 문자열을 허용하지 않는다. `Session`의 `sessionId`는 `Uuid`, `expiresAt`은 `Utc`, `learningAvailability`는 아래 상태 객체다. `LoginSession`만 빈 문자열이 아닌 `accessToken`과 고정 문자열 `tokenType="Bearer"`를 추가한다. 아래 두 필드를 세션 GET/refresh에 기대하지 않는다.
+`LoginRequest`의 `loginId`·`password`는 빈 문자열을 허용하지 않는다. `Session`의 `sessionId`는 `Uuid`, `expiresAt`은 `Utc`, `learningAvailability`는 아래 상태 객체다. `LoginSession`만 빈 문자열이 아닌 `accessToken`, 고정 문자열 `tokenType="Bearer"`, 표시 이름 `userName`(string)을 추가한다. Dummy 계정의 `userName`은 고정 문자열 `"Test User"`다(D129). 아래 세 필드를 세션 GET/refresh에 기대하지 않는다.
 
-`GET session`과 `POST session/refresh`는 `sessionId`, `expiresAt`, `learningAvailability`만 반환한다. `accessToken`은 로그인 응답에만 있다. 로그인과 refresh만 공급자 자료를 갱신하며 GET은 저장된 자료를 읽는다. refresh는 토큰 갱신 API가 아니다.
+`GET session`과 `POST session/refresh`는 `sessionId`, `expiresAt`, `learningAvailability`만 반환한다. `accessToken`·`userName`은 로그인 응답에만 있다. 로그인과 refresh만 공급자 자료를 갱신하며 GET은 저장된 자료를 읽는다. refresh는 토큰 갱신 API가 아니다.
 
 | `learningAvailability.state` | `reason` | 앱 처리 |
 |---|---|---|
@@ -125,6 +126,8 @@ HTTP 서버가 요청 자체를 먼저 거절한 `400`/`413`은 이 JSON 형식�
 | `reconciliation_required` | `progress_reconciliation_required` | 진도 의미 확인 필요. 완료나 합격을 앱에서 보정하지 않음 |
 
 로그인 `201`·refresh `200`이어도 `waiting`일 수 있다. 배정 목록 자체를 확인할 수 없으면 과정 GET은 `503`이며 이를 “배정 없음”으로 표시하지 않는다. 정상적으로 배정 0개인 경우에만 빈 목록과 `ready`다. 세션 상태는 전체 배정을 집계하지만 새 시작은 해당 등록의 상태를 다시 검사한다. 자동 refresh 주기나 polling 간격은 아직 계약하지 않았다.
+
+공급 자료의 과정명(`courseName`)이나 항목 제목이 빈 문자열이면 서버는 그 과정의 갱신을 공급 계약 오류로 받지 않고 해당 과정을 `waiting`/`arc_progress_unavailable`로 둔다(D118). 이전에 저장된 과정 자료가 있으면 목록은 이전 제목과 이 대기 상태로 계속 `200`을 반환하며, 과정 하나 때문에 목록 전체를 `503`으로 만들지 않는다.
 
 ### 2.2 배정 과정 목록 — CoursePage
 
@@ -418,7 +421,7 @@ TrainingProgram의 모든 필드가 필수이며 **`training`, `assessment`, `co
 | `ventilationRateMax`, `ventilationRateMin` | 각각 integer 또는 null |
 | `compressionDepthMaxInch`, `compressionDepthMinInch` | 각각 number 또는 null. 정수/소수 모두 가능 |
 
-표시 설정의 단위, 제한값의 0/null 의미, 여러 종료 조건의 우선순위는 실제 ARC 계약 확인 대상이다. 앱이 이 설정으로 업로드용 `condition`을 재구성하지 않는다. 아래는 모든 필드를 포함하는 합성 훈련 항목의 `200` 예시다. 실제 ARC 설정값을 뜻하지 않는다.
+표시 설정의 단위, 제한값의 0/null 의미, 여러 종료 조건의 우선순위는 실제 ARC 계약 확인 대상이다. 앱이 이 설정으로 업로드용 `condition`을 재구성하지 않는다. 현재 로컬·Dev의 DummyDev 15과정은 서버가 실제 적용하는 값을 넣어 준다(D132): `compressionLimit` 60(압박 Only), `ventilationLimit` 8(호흡 Only), `cycleLimit` 3/8/10(CPR/2인 CPR/2인 AED), `duration` null, `compressionVentilationRatio` CPR 계열 30:2(영아 15:2), `cprGuideline` ARC2025 연령별 범위, `twoRescuers` 2인 계열만 `{"cycleChangeCount": 2}`, `aed` null, `assessment.passThreshold` `{"cpr": 80, "aed": null}`. 마지막 평가 항목의 `trainingMode`는 `"assessment"`, 연습 항목은 `"practice"`다. 아래는 모든 필드를 포함하는 합성 훈련 항목의 `200` 예시다. 실제 ARC 설정값을 뜻하지 않는다.
 
 ```json
 {
@@ -597,7 +600,9 @@ TrainingProgram의 모든 필드가 필수이며 **`training`, `assessment`, `co
 | `failed` | 계산 실패 / 고정 `503` 오류 |
 | `outcome_unknown` | 계산 결과 확인 필요 / `503 CALCULATION_OUTCOME_UNKNOWN` |
 
-완료한 일반 훈련은 새로 시작할 수 없다. 미완료 일반 훈련은 같은 항목·다른 항목의 동시 측정을 허용한다. 마지막 평가는 앞선 모든 항목 완료가 필요하고 같은 등록에서 한 시도만 진행한다. 불합격 후 재응시는 횟수 제한이 없지만 합격 후에는 불가하다. 계산·판정 중이나 복구/정책 확인 중에는 새 응시를 임의 생성하지 않는다.
+서버의 계산이 중단돼 다시 시작하는 일이 5번을 넘으면(6번째 중단) 그 시도는 `failed`로 끝나고 계산 GET은 `503 CALCULATION_FAILED`다(D104). 교육상 불합격이 아니며 점수·완료·진도에 반영하지 않는다. 마지막 평가였다면 그 응시의 진행 표시가 해제되어 시작 조건을 만족하면 새로 응시할 수 있다.
+
+일반 훈련은 완료·합격 여부와 관계없이 다시 시작할 수 있고, 같은 항목·다른 항목의 동시 측정을 허용한다(D130). 마지막 평가는 앞선 모든 항목 완료가 필요하고 같은 등록에서 한 번에 한 시도만 진행하며, 합격·불합격과 관계없이 횟수 제한 없이 다시 응시할 수 있다. 다시 수행한 결과가 더 나빠도 이미 얻은 항목 완료·마지막 평가 합격·과정 완료는 유지되며 그 결과는 `progressApplication.reason=ALREADY_COMPLETED`로만 기록된다(D131). 계산·판정 중이나 복구/정책 확인 중에는 새 응시를 임의 생성하지 않는다.
 
 `POST /api/v2/attempts/{attemptId}/calculation/`은 **누적 실제 바이너리**를 받는다. Dummy는 가짜 점수를 뜻하지 않는다. `X-Attempt-ID`를 추가할 필요가 없고 경로의 ID를 사용한다.
 
@@ -608,7 +613,7 @@ TrainingProgram의 모든 필드가 필수이며 **`training`, `assessment`, `co
 | `aedHexBPfile` | 아니요 | 수집한 AED binary 파일 bytes |
 | `vp_event_list` | 아니요 | 기존 VP 이벤트 JSON array 문자열. 없으면 생략 또는 `[]` |
 
-boundary는 HTTP 라이브러리가 만들게 한다. 파일을 hex 문자열이나 일반 JSON body로 바꾸지 않는다. VP 이벤트는 압박 시작/종료 `0/1`, 호흡 `10/11`, AED `20/21`이며 `timestamp`·`last_timestamp` 단위는 ms다. 기존 우선순위는 truthy인 `last_timestamp`다. `last_timestamp`가 `0`, `null`이거나 없으면 `timestamp`를 사용한다.
+boundary는 HTTP 라이브러리가 만들게 한다. `Content-Type` 헤더는 하나만 보낸다. 대소문자만 다른 중복 헤더, 여러 값, 서로 다른 두 표현처럼 모호하거나 값이 비어 있거나 쉼표·줄바꿈(CR/LF)을 포함하면 파서와 시도 조회 전에 `400 INVALID_REQUEST`다(D103). 파일을 hex 문자열이나 일반 JSON body로 바꾸지 않는다. VP 이벤트는 압박 시작/종료 `0/1`, 호흡 `10/11`, AED `20/21`이며 `timestamp`·`last_timestamp` 단위는 ms다. 기존 우선순위는 truthy인 `last_timestamp`다. `last_timestamp`가 `0`, `null`이거나 없으면 `timestamp`를 사용한다.
 
 호환용 base64 form도 유지한다. 파일 bytes를 URL-safe base64 `cpr_b64_data`/선택 `aed_b64_data`로 만들고, `condition`·선택 `vp_event_list`의 JSON 문자열과 함께 **form URL 인코딩 → 전체 percent 인코딩 → 전체 URL-safe base64 인코딩**한다. 이 최종 문자열을 `application/x-www-form-urlencoded`로 보낸다. 일반 form body·일반 JSON·Swagger의 자동 form 생성과 다르다. 새 앱은 multipart를 사용한다. 기존 파서의 추가 호환 입력이 필요한 경우 [상세 계산 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)을 확인한다.
 
@@ -673,7 +678,7 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 | `certification` | object. `Target`: `adult`, `child`, `baby`, `N/A` 중 하나인 string |
 | `chart_dataset_url` | string 또는 null |
 
-계산 snapshot 안에 `submit_arc`를 추가하지 않는다. 제출 상태는 `data.submit_arc`에 있다. 저장된 과거 결과의 키를 새로 만들거나 자료형을 강제 변환하지 않는다.
+계산 snapshot 안에 `submit_arc`를 추가하지 않는다. 제출 상태는 `data.submit_arc` 하나뿐이다. 예전 형식으로 저장된 결과에 `submit_hstm` 같은 `submit_*` 키가 남아 있어도 응답의 `calculation`에서는 빠진다(D103, 저장 파일은 바꾸지 않음). 그 밖에 저장된 과거 결과의 키를 새로 만들거나 자료형을 강제 변환하지 않는다.
 
 **ScoreFields와 CprPartScore는 가변 하위 객체다.** 아래는 알려진 키의 자료형이며 **모든 레벨에 모든 키가 필수라는 뜻이 아니다.** 훈련 종류·calc_case·total/part/cycle에 따른 누락·추가 키를 보존한다.
 
@@ -713,7 +718,7 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 | `goal.required` | 1 이상 integer |
 | `goal.observed` | 0 이상 integer 또는 null |
 | `goal.met` | boolean 또는 null |
-| `goal.status` | 현재 결과는 `evaluated` 또는 `pending_policy`. 과거 결과는 키 생략 가능 |
+| `goal.status` | 현재 어댑터(`arc-internal-detection-v4`)의 결과는 항상 `evaluated`. 이전 어댑터로 시작한 CPR 계열 시도는 `pending_policy`일 수 있고 과거 결과는 키 생략 가능 |
 | `score.decision` | `pass` 또는 `fail` |
 | `program_completed` | boolean |
 | `reason_codes` | `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `SCORE_NOT_PASS` 중 해당 값의 string[] |
@@ -731,11 +736,11 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 }
 ```
 
-Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료한다. CPR은 완전한 cycle 완료 규칙이 미정이므로 `goal.status=pending_policy`, `observed=null`, `met=null`, `program_completed=false`다. `reason_codes`는 `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `SCORE_NOT_PASS`의 해당 항목을 포함한다. 과거 어댑터로 저장한 결과는 `goal.status`가 없을 수 있다. 완료 미정·불합격도 계산이 정상이라면 `200`이다.
+Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료한다. CPR 계열(CPR·2인 CPR·2인 CPR+AED)도 D136에 따라 판정한다: `observed`는 계산기가 CPR 사이클로 분류한 사이클 수(압박 뒤 호흡이 이어져 닫힌 사이클; 마지막 미완 묶음·호흡 전용·압박 전용 묶음 제외, 2인 과정의 가상 파트너 사이클 포함), `required`는 CPR 3·2인 CPR 8·2인 CPR+AED 10이며 `met=observed>=required`, 완료는 `met` AND 점수 합격이다. 사이클 안의 압박·호흡 개수와 AED 동작은 완료가 아니라 점수로만 반영된다. 이전 어댑터(`arc-internal-detection-pending-v3`)로 시작해 아직 진행 중인 CPR 시도만 원래 정의대로 `goal.status=pending_policy`, `observed=null`, `met=null`, `program_completed=false`로 끝난다. `reason_codes`는 `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `SCORE_NOT_PASS`의 해당 항목을 포함한다. 과거 어댑터로 저장한 결과는 `goal.status`가 없을 수 있다. 완료 미정·불합격도 계산이 정상이라면 `200`이다.
 
 계산 점수는 number 또는 null이며 소수 정밀도를 유지한다. total·part·cycle에서 키 존재 여부가 다를 수 있다. null, 누락, 0, 빈 객체를 같은 값으로 바꾸지 않는다. ARC CPR 최소량(성인·소아 압박90/호흡6, 영아 압박45/호흡6)은 점수 null 처리와 관계되며 이것만으로 완료·Pass를 판단하지 않는다. `certification.Target`의 `baby`를 업로드 `condition.target=infant`와 혼동하지 않는다. 이 필드는 ARC 공식 수료증 발급을 의미하지 않는다. 아래 계산 자료형 표와 전체 성공 응답 예시에 값의 모양을 정의했다.
 
-`progressApplication.reason`은 `APPLIED`, `PROGRESS_RESET`, `GOAL_POLICY_UNRESOLVED`, `ALREADY_COMPLETED`, `REQUIREMENTS_NOT_MET`, `PROGRESS_RECONCILIATION_REQUIRED`다. `APPLIED`일 때만 `applied=true`와 해당 epoch가 있고, 나머지는 false/null이다. 평가가 교체되어 현재 과정에 반영할 수 없더라도 원래 결과·합격 근거는 보존된다. 앱이 새 평가 합격을 복제하지 않는다. 초기화 전 결과는 `PROGRESS_RESET`을 우선한다.
+`progressApplication.reason`은 `APPLIED`, `PROGRESS_RESET`, `GOAL_POLICY_UNRESOLVED`, `ALREADY_COMPLETED`, `REQUIREMENTS_NOT_MET`, `PROGRESS_RECONCILIATION_REQUIRED`다. `APPLIED`일 때만 `applied=true`와 해당 epoch가 있고, 나머지는 false/null이다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나다(D117). 이미 완료한 항목을 다시 수행해 기준에 못 미쳐도 `ALREADY_COMPLETED`다. 평가가 교체되어 현재 과정에 반영을 보류하면 초기화 전 결과가 아닌 한 `PROGRESS_RECONCILIATION_REQUIRED`다. 이때도 원래 결과·합격 근거는 보존된다. 앱이 새 평가 합격을 복제하지 않는다.
 
 `submit_arc`는 현재 다음 둘뿐이다. 전송 성공을 표시하지 않는다.
 
@@ -919,7 +924,6 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 | `404 NOT_FOUND` | 경로·배정·연결 세션 확인. 다른 소유자의 존재를 노출하지 않음 |
 | `409 DEFINITION_CHANGED` | 과정 상세 재조회 후 새 시작 요청 준비 |
 | `409 IDEMPOTENCY_CONFLICT`, `ATTEMPT_INPUT_CONFLICT`, `PROFILE_MISMATCH` | 같은 ID의 내용을 바꾸지 말고 원래 요청·condition 확인 |
-| `409 ITEM_ALREADY_COMPLETED`, `ASSESSMENT_ALREADY_PASSED` | 새 시작 차단. 최신 진도 표시 |
 | `409 PREREQUISITES_NOT_COMPLETED` | 앞선 항목 완료 후 마지막 평가 시작 |
 | `409 FINAL_ASSESSMENT_ACTIVE`, `FINAL_ASSESSMENT_RECOVERY_REQUIRED`, `COMPLETION_POLICY_PENDING` | 기존 평가·복구/정책 대기. 임의 새 응시·완료 처리 금지 |
 | `409 PROGRESS_RECONCILIATION_REQUIRED`, `CONTENT_VERSION_MISMATCH` | 진도/버전 확인. 원래 결과를 보존하고 의미를 임의 보정하지 않음 |
@@ -932,7 +936,7 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 
 ### 7.1 전체 오류 코드와 고정 메시지
 
-아래는 새 과정 오류와 재사용하는 Journey 오류의 전체 목록이다. 실제 가능한 오류는 호출 경로·상태에 따른다. 같은 HTTP의 모든 코드가 모든 경로에서 발생한다는 뜻은 아니다. `PROGRAM_ALREADY_COMPLETED`는 기존 시도 호환 코드이며 새 과정 일반 항목은 `ITEM_ALREADY_COMPLETED`로 구별한다.
+아래는 새 과정 오류와 재사용하는 Journey 오류의 전체 목록이다. 실제 가능한 오류는 호출 경로·상태에 따른다. 같은 HTTP의 모든 코드가 모든 경로에서 발생한다는 뜻은 아니다. `PROGRAM_ALREADY_COMPLETED`는 삭제된 `/mock/v1` 시도 생성의 legacy 이력 코드로 표에만 남아 있으며 새 요청에서는 발생하지 않는다. 완료한 일반 항목·합격한 마지막 평가의 재시작은 D130에 따라 허용되므로 `ITEM_ALREADY_COMPLETED`·`ASSESSMENT_ALREADY_PASSED`는 더 이상 존재하지 않는다.
 
 | HTTP | `error.code` | 고정 `error.message` |
 |---|---|---|
@@ -943,7 +947,6 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 | `403` | `SESSION_REVOKED` | The session has been revoked. |
 | `404` | `NOT_FOUND` | Not found. |
 | `405` | `METHOD_NOT_ALLOWED` | Method not allowed. |
-| `409` | `ASSESSMENT_ALREADY_PASSED` | The final assessment has already passed. |
 | `409` | `ATTEMPT_INPUT_CONFLICT` | The attempt already has different input. |
 | `409` | `COMPLETION_POLICY_PENDING` | The completion policy is not available. |
 | `409` | `CONTENT_VERSION_MISMATCH` | The content version does not match the learning start. |
@@ -953,7 +956,6 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 | `409` | `FINAL_ASSESSMENT_RECOVERY_REQUIRED` | The final assessment requires recovery. |
 | `409` | `IDEMPOTENCY_CONFLICT` | The request identifier has different input. |
 | `409` | `INVALID_STATE` | The operation is not allowed in this state. |
-| `409` | `ITEM_ALREADY_COMPLETED` | The learning item is already completed. |
 | `409` | `PREREQUISITES_NOT_COMPLETED` | Prerequisite items are not completed. |
 | `409` | `PROFILE_MISMATCH` | The attempt profile does not match. |
 | `409` | `PROGRAM_ALREADY_COMPLETED` | This program and target are already completed. |
@@ -975,7 +977,7 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 
 ## 8. 기존 앱에서 바뀌는 지점
 
-`course_v2`에서는 `/mock/v1/*`와 `/cpr-analysis`가 `404`다. 두 API 버전을 섞거나 자동 redirect를 기대하지 않는다. 기본 서버용 기존 계약은 [상세 API 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)에 보존한다.
+`/mock/v1/*`와 `/cpr-analysis`는 2026-09-28 삭제되어(D103) 로컬·AWS 모든 서버에서 `404`다. 자동 redirect는 없다. 아래 대응표는 기존 앱 코드를 옮길 때의 참고용이다. 파서·계산 JSON의 상세는 [계산 입력·결과 상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)에 있다.
 
 | 기존 `/mock/v1` | 새 `/api/v2` |
 |---|---|
@@ -987,4 +989,4 @@ Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료
 | 계산 JSON 직접 반환·별도 attempt 평가 | 성공 envelope의 `data.calculation`, `data.evaluation`, `data.progressApplication` |
 | 차트 `chart_dataset_url`, `expires_at` | chart-link의 `data.url`, `data.expiresAt` |
 
-이미 저장된 기존 시도도 새 경로로 조회·재인가·계산 복구할 수 있다. 이때 `courseId`, `enrollmentId`, `courseItemLinkId`, `definitionHash`, `role`은 모두 null이다. 새 과정 시도는 이 필드가 전부 채워진다. 저장 계산 결과의 snake_case 키·숫자·null은 그대로 유지하며 새 envelope만 보고 전체를 camelCase로 변환하지 않는다.
+이미 저장된 기존 시도도 새 경로로 조회·재인가·취소·계산 복구할 수 있다(D103 호환 범위). 아직 측정을 올리지 않은 기존 시도(`created`)에는 재인가 뒤 새 경로로 첫 측정을 올릴 수 있다(D23과 같은 취지). 기존 형식의 새 시도는 만들 수 없다. 이때 `courseId`, `enrollmentId`, `courseItemLinkId`, `definitionHash`, `role`은 모두 null이다. 새 과정 시도는 이 필드가 전부 채워진다. 저장 계산 결과의 snake_case 키·숫자·null은 그대로 유지하며 새 envelope만 보고 전체를 camelCase로 변환하지 않는다.

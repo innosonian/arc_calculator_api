@@ -1,23 +1,30 @@
 """Bound, checksummed S3 artifacts around the existing raw/chart helpers."""
 
-from dataclasses import dataclass
 import hashlib
 import re
 import uuid
 
 from botocore.exceptions import BotoCoreError, ClientError
 
+from mock_journey.contracts import INPUT_BINDING_FIELDS
 from mock_journey.errors import JourneyError
 from mock_journey.projection import LoadedInput, ProjectedInput, typed_identity
 from mock_journey import typed
-from util import uploader
+from util import legacy_layout
+# Kept although the unused LegacyBindings default (bound to the global uploader
+# and its fixed bucket) was removed: this import keeps util.uploader's import
+# order (boto3 and ARC_STORAGE_REGION are read at its import).
+from util import uploader  # noqa: F401
 
 
-_INPUT_BINDING = frozenset(("attempt_id", "epoch", "input_digest", "adapter_version", "projection_version"))
+_INPUT_BINDING = frozenset(INPUT_BINDING_FIELDS)
 _CALL_BINDING = _INPUT_BINDING | {"job_id", "call_id"}
 _VERSIONS = frozenset(("adapter_version", "projection_version"))
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+# The bound input manifest sits next to the legacy raw objects (D28 layout,
+# util/legacy_layout) under a suffix of its own; it is not part of that layout.
+MANIFEST_SUFFIX = ".request.json"
 
 
 def _hash(body):
@@ -26,19 +33,6 @@ def _hash(body):
 
 def _invalid():
     return JourneyError("STORED_INPUT_INVALID")
-
-
-@dataclass(frozen=True)
-class LegacyBindings:
-    bucket: str = uploader.BUCKET
-    directory: str = uploader.RTDATA_DIRECTORY
-    build_key_stem: object = uploader.build_key_stem
-    org_prefix: object = uploader.org_prefix
-    date_prefix: object = uploader.date_prefix
-    build_raw_input_meta: object = uploader.build_raw_input_meta
-    upload_raw_input: object = uploader.upload_raw_input
-    upload_json_file: object = uploader.upload_json_file
-    create_signed_url: object = uploader.create_signed_url
 
 
 class JourneyStorage:
@@ -57,7 +51,7 @@ class JourneyStorage:
         self.directory = namespace["directory"]
         if type(self.directory) is not str or any(not _SEGMENT.fullmatch(part) for part in self.directory.split("/")):
             raise ValueError("Invalid storage namespace.")
-        self.prefix = f"{self.directory}/{stage}/"
+        self.prefix = legacy_layout.stage_prefix(self.directory, stage)
         self.input_limit = limits["input_bytes"]
         self.artifact_limit = limits["artifact_bytes"]
 
@@ -170,24 +164,25 @@ class JourneyStorage:
         try:
             stem = self.legacy.build_key_stem()
             org = self.legacy.org_prefix((organization or {}).get("org_id"))
-            base = f"{self.prefix}{org}/{self.legacy.date_prefix(stem)}/{stem}"
-            self._planned(base + ".bin")
+            base = legacy_layout.object_base(self.directory, self.stage, org, self.legacy.date_prefix(stem), stem)
+            self._planned(base + legacy_layout.RAW_SUFFIX)
             meta = self.legacy.build_raw_input_meta(calculation["condition"], calculation["vp_event_list"], organization)
             actual = self.legacy.upload_raw_input(projected.cpr_bytes, projected.aed_bytes, meta,
                 stage=self.stage, key_stem=stem, org=org, directory=self.directory)
             if actual != base:
                 raise JourneyError("TEMPORARILY_UNAVAILABLE")
             raw = {}
-            bodies = {"cpr": (".bin", projected.cpr_bytes), "meta": (".meta.json", typed.json_bytes(meta))}
+            bodies = {"cpr": (legacy_layout.RAW_SUFFIX, projected.cpr_bytes),
+                      "meta": (legacy_layout.META_SUFFIX, typed.json_bytes(meta))}
             if projected.aed_bytes:
-                bodies["aed"] = (".aed.bin", projected.aed_bytes)
+                bodies["aed"] = (legacy_layout.AED_SUFFIX, projected.aed_bytes)
             for name, (suffix, body) in bodies.items():
                 ref = {**self._planned(base + suffix), "sha256": _hash(body), "size": len(body)}
                 self._read(ref, missing_code="TEMPORARILY_UNAVAILABLE")
                 raw[name] = ref
             manifest = {"schema": "arc-input-v1", "binding": binding, "raw_base": base,
                         "raw": raw, "payload": projected.payload}
-            ref = self._put(self._planned(base + ".request.json"), typed.json_bytes(manifest), binding)
+            ref = self._put(self._planned(base + MANIFEST_SUFFIX), typed.json_bytes(manifest), binding)
             return {"manifest_ref": ref, "input_digest": binding["input_digest"], "raw_base": base}
         except JourneyError:
             raise
@@ -201,10 +196,11 @@ class JourneyStorage:
             if manifest["schema"] != "arc-input-v1" or manifest["binding"] != expected_binding:
                 raise _invalid()
             base = manifest["raw_base"]
-            if manifest_ref["key"] != base + ".request.json" or set(manifest["raw"]) not in ({"cpr", "meta"}, {"cpr", "meta", "aed"}):
+            if manifest_ref["key"] != base + MANIFEST_SUFFIX or set(manifest["raw"]) not in ({"cpr", "meta"}, {"cpr", "meta", "aed"}):
                 raise _invalid()
             bodies = {}
-            for name, suffix in (("cpr", ".bin"), ("meta", ".meta.json"), ("aed", ".aed.bin")):
+            for name, suffix in (("cpr", legacy_layout.RAW_SUFFIX), ("meta", legacy_layout.META_SUFFIX),
+                                 ("aed", legacy_layout.AED_SUFFIX)):
                 if name in manifest["raw"]:
                     if manifest["raw"][name]["key"] != base + suffix:
                         raise _invalid()
@@ -276,7 +272,7 @@ class JourneyStorage:
 
     def _verify_raw_base(self, base, binding):
         input_binding = {key: binding[key] for key in _INPUT_BINDING}
-        body = self._read(self._planned(base + ".request.json"), complete=False, binding=input_binding)
+        body = self._read(self._planned(base + MANIFEST_SUFFIX), complete=False, binding=input_binding)
         try:
             manifest = typed.parse_json(body)
             if manifest["binding"] != input_binding or manifest["raw_base"] != base:
@@ -311,7 +307,7 @@ class JourneyStorage:
             stem = raw_base.rsplit("/", 1)[-1]
             org = raw_base[len(self.prefix):].split("/", 1)[0]
             key = self.legacy.upload_json_file(data, directory=self.directory, stage=self.stage, key_stem=stem, org=org)
-            if key != raw_base + ".json":
+            if key != raw_base + legacy_layout.CHART_SUFFIX:
                 raise _invalid()
             publication_ref = {**self._planned(key), "sha256": _hash(body), "size": len(body)}
             self._read(publication_ref, missing_code="TEMPORARILY_UNAVAILABLE")
@@ -341,10 +337,12 @@ class JourneyStorage:
             return None
         key = publication.get("key")
         checksum = publication.get("published_body_sha256")
-        if publication.get("kind") != "snapshot" or type(key) is not str or not key.endswith(".json") or type(checksum) is not str or not _SHA.fullmatch(checksum):
+        if (publication.get("kind") != "snapshot" or type(key) is not str
+                or not key.endswith(legacy_layout.CHART_SUFFIX)
+                or type(checksum) is not str or not _SHA.fullmatch(checksum)):
             raise _invalid()
         self._planned(key)
-        self._verify_raw_base(key[:-5], binding)
+        self._verify_raw_base(key[:-len(legacy_layout.CHART_SUFFIX)], binding)
         body = self._read(self._planned(key), complete=False)
         if _hash(body) != checksum:
             raise _invalid()

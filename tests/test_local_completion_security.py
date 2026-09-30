@@ -11,11 +11,11 @@ import boto3
 import pytest
 
 from mock_journey import typed
-from mock_journey.contracts import VerifiedCalculation
-from mock_journey.errors import JourneyError
-from mock_journey.internal_calculator import (
-    InternalCalculator, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
+from mock_journey.contracts import (
+    CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION, VerifiedCalculation,
 )
+from mock_journey.errors import JourneyError
+from mock_journey.internal_calculator import InternalCalculator
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.projection import ProjectionSchema, project_input, typed_identity
 from mock_journey.state import DynamoStateRepository
@@ -24,7 +24,7 @@ from mock_journey.worker import evaluate
 from services.legacy_document import _is_pass
 from tests._synth import comp_session, condition_json, cpr_session
 from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
-from tests.test_mock_state import ScriptedClient, item, snapshot
+from tests.mock_state_support import ScriptedClient, item, snapshot
 
 
 SECRET = "L1_INDEPENDENT_PRIVATE_MARKER"
@@ -121,6 +121,10 @@ def test_schema_cannot_be_relabelled_by_rebinding_another_version_candidate(targ
     ("security-legacy-calculator-v1", True, None),
     (PENDING_GOAL_ADAPTER_VERSION, 1, None),
     (PENDING_GOAL_ADAPTER_VERSION, True, lambda *args: 3),
+    # D136: the cycle-goal adapter is neither pending nor resolver-less.
+    (CYCLE_GOAL_ADAPTER_VERSION, True, None),
+    (CYCLE_GOAL_ADAPTER_VERSION, False, None),
+    (CYCLE_GOAL_ADAPTER_VERSION, True, lambda *args: 3),
 ])
 def test_constructor_cannot_change_a_version_meaning_or_choose_between_two_policies(version, pending, resolver):
     with pytest.raises(ValueError):
@@ -222,7 +226,7 @@ def test_finalization_cannot_accept_forged_completion_from_a_pending_evaluation(
     definition = loaded.projected.payload["definition"]
     evaluation = evaluate(verified.core_result, definition, verified)
     mutation(evaluation)
-    contract_error(lambda: DynamoJobRepository._evaluation(evaluation, {"definition_json": json.dumps(definition)}))
+    contract_error(lambda: DynamoJobRepository.check_evaluation(evaluation, {"definition_json": json.dumps(definition)}))
 
 
 def test_v1_definition_cannot_accept_a_v2_pending_evaluation():
@@ -230,7 +234,7 @@ def test_v1_definition_cannot_accept_a_v2_pending_evaluation():
     definition = loaded.projected.payload["definition"]
     evaluation = evaluate(verified.core_result, definition, verified)
     old = {**definition, "adapter_version": "security-legacy-calculator-v1", "profile_version": "legacy-v1"}
-    contract_error(lambda: DynamoJobRepository._evaluation(evaluation, {"definition_json": json.dumps(old)}))
+    contract_error(lambda: DynamoJobRepository.check_evaluation(evaluation, {"definition_json": json.dumps(old)}))
 
 
 @pytest.mark.parametrize("epoch,completed,reason", [("same", False, "GOAL_POLICY_UNRESOLVED"),

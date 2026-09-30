@@ -1,8 +1,10 @@
 # 이식 출처: 원본 hstm_v2 services/calculate_cpr.py (97줄) — 동작 동일 이식.
-import json
+# 단계별 try/except·로그 블록은 _step 문맥 관리자 하나로 모았다(로그 이름·필드·순서·예외 전파
+# 동일). 예외는 make_calculate_result 프레임에서 잡히므로 저장 진단의 stacktrace 첫 프레임도
+# 원본과 같이 make_calculate_result 다(내부 함수·헬퍼 프레임이 끼지 않는다).
+import time
 
 from services.operational_logs import write_diagnostic
-import time
 
 from data_handlers.chart_data import add_chart_data
 from services.calculators import calculate_cpr
@@ -33,38 +35,16 @@ def make_calculate_result(
         vent_count=prepared_data.get("vent_count"),
     )
 
-    try:
-        calc_start = time.time()
+    # Observer failures stay inside the calculate_cpr step (existing diagnostic contract).
+    with _step("calculate_cpr", "calc_complete"):
         calculation_result = calculate_cpr(prepared_data, config)
         if execution_context is not None:
             execution_context.observe_calculation(calculation_result)
-        _log("info", "calc_complete", elapsed_ms=_elapsed_ms(calc_start))
-    except Exception as e:
-        _log(
-            "error",
-            "calc_failed",
-            step="calculate_cpr",
-            error_type=type(e).__name__,
-            exception=e,
-        )
-        raise
 
-    try:
-        serialize_start = time.time()
+    with _step("serialize_result", "serialize_complete"):
         response = serialize_result(calculation_result, condition=config.condition, usage=usage)
-        _log("info", "serialize_complete", elapsed_ms=_elapsed_ms(serialize_start))
-    except Exception as e:
-        _log(
-            "error",
-            "calc_failed",
-            step="serialize_result",
-            error_type=type(e).__name__,
-            exception=e,
-        )
-        raise
 
-    try:
-        chart_start = time.time()
+    with _step("add_chart_data", "chart_complete"):
         context_kwargs = {} if execution_context is None else {"execution_context": execution_context}
         response = add_chart_data(
             response,
@@ -75,19 +55,50 @@ def make_calculate_result(
             org=org,
             **context_kwargs,
         )
-        _log("info", "chart_complete", elapsed_ms=_elapsed_ms(chart_start))
-    except Exception as e:
-        _log(
-            "error",
-            "calc_failed",
-            step="add_chart_data",
-            error_type=type(e).__name__,
-            exception=e,
-        )
-        raise
 
     _log("info", "calc_response_complete", elapsed_ms=_elapsed_ms(start_time))
     return response
+
+
+class _step:
+    """One calculation step with the existing complete/failed diagnostics.
+
+    A plain ``__exit__`` (not a generator context manager) so the failure is
+    logged with the exception's traceback as ``make_calculate_result`` sees it:
+    the stored stacktrace starts at that frame, as in the original try/except
+    blocks. The elapsed window covers only the ``with`` body; a failure is
+    logged once as calc_failed with this step name and re-raised unchanged.
+    Seams (calculate_cpr, serialize_result, add_chart_data, _log) are module
+    globals read when the step runs, so tests and scripts may replace them.
+    """
+
+    def __init__(self, step: str, completed: str) -> None:
+        self.step, self.completed = step, completed
+
+    def __enter__(self) -> "_step":
+        self.start = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if exc is None:
+            try:
+                _log("info", self.completed, elapsed_ms=_elapsed_ms(self.start))
+            except Exception as e:
+                # As in the original blocks, where the completion log sat inside the try.
+                self._failed(e)
+                raise
+        elif isinstance(exc, Exception):
+            self._failed(exc)
+        return False
+
+    def _failed(self, error: Exception) -> None:
+        _log(
+            "error",
+            "calc_failed",
+            step=self.step,
+            error_type=type(error).__name__,
+            exception=error,
+        )
 
 
 def _elapsed_ms(start_time: float) -> int:

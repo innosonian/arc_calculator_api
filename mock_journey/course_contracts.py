@@ -1,11 +1,17 @@
 """Frozen VCC internal contract v1. No SDK, files, sockets, or environment reads."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
+from functools import partial
 from types import MappingProxyType
 from typing import Protocol
 import re
 
 from mock_journey.course_errors import COURSE_ERROR_CODES, CourseError
+from mock_journey.course_primitives import (
+    contains_key, fail, require_exact_bool, require_exact_int, require_natural_int,
+    require_positive_int, require_text,
+)
 from mock_journey.course_settings import CourseSettings
 from mock_journey.models import AuthContext
 from mock_journey.typed import digest, json_bytes, parse_json
@@ -22,7 +28,9 @@ PUBLIC_ID_MAX = 9007199254740991
 SUCCESS_MESSAGE = "OK"
 TOKEN_TYPE_BEARER = "Bearer"
 
-_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
+# Lowercase canonical UUID text, unanchored; also used for the attemptId path segment.
+UUID_PATTERN = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_UUID = re.compile(UUID_PATTERN + r"\Z")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\Z")
 
@@ -96,11 +104,15 @@ RECEIPT_FORBIDDEN_KEYS = frozenset({
     "Authorization", "authorization", "cookie", "Cookie", "signedUrl", "signed_url",
     "chartUrl", "chart_url", "chart_dataset_url",
 })
+# Resume-credential internals refused by the completion write path in addition
+# to RECEIPT_FORBIDDEN_KEYS (course_submission). Receipt DTOs do not refuse
+# these; widening that is a policy change.
+RESUME_SECRET_KEYS = frozenset({"resume_credential", "resume_nonce", "resume_digest", "resume_key_version"})
 DIGEST_EXCLUDED_WIRE_FIELDS = frozenset({
     "timestamp", "accessToken", "resumeCredential", "url", "expiresAt",
 })
 SESSION_VIEW_FIELDS = ("sessionId", "expiresAt", "learningAvailability")
-LOGIN_EXTRA_FIELDS = ("accessToken", "tokenType")
+LOGIN_EXTRA_FIELDS = ("accessToken", "tokenType", "userName")
 AVAILABILITY_FIELDS = ("state", "reason")
 COURSE_LIST_ROW_FIELDS = (
     "courseId", "courseName", "status", "summary", "certificationType",
@@ -126,6 +138,7 @@ ITEM_DETAIL_OUTER_FIELDS = (
     "usage", "logicalId", "description", "detail",
 )
 FILE_DETAIL_FIELDS = ("id", "fileName", "order", "url", "contentUrl")
+FILE_DETAIL_NULLABLE = ("url", "contentUrl")
 TRAINING_PROGRAM_DETAIL_FIELDS = (
     "id", "title", "trainingType", "feedbackType", "trainingMode", "training", "assessment", "content",
 )
@@ -149,42 +162,33 @@ CHART_LINK_FIELDS = ("url", "expiresAt")
 SUBMIT_ARC_FIELDS = ("status", "ok", "error", "exclusionReasons")
 
 
-def _fail():
-    raise CourseError("INVALID_REQUEST")
+# Contract DTOs and helpers here reject with 400 INVALID_REQUEST and check that
+# text is UTF-8 encodable. Callers that must answer another code for the same
+# check pass it explicitly (D119); the default is this module's own code.
+_INVALID = "INVALID_REQUEST"
+
+
+_fail = partial(fail, _INVALID)
 
 
 def _text(value):
-    if type(value) is not str or not value:
-        _fail()
-    try:
-        value.encode("utf-8")
-    except UnicodeError:
-        raise CourseError("INVALID_REQUEST") from None
-    return value
+    return require_text(value, code=_INVALID, check_utf8=True)
 
 
 def _exact_bool(value):
-    if type(value) is not bool:
-        _fail()
-    return value
+    return require_exact_bool(value, code=_INVALID)
 
 
 def _json_int(value):
-    if type(value) is not int:
-        _fail()
-    return value
+    return require_exact_int(value, code=_INVALID)
 
 
 def _natural_int(value):
-    if type(value) is not int or value < 0:
-        _fail()
-    return value
+    return require_natural_int(value, code=_INVALID)
 
 
 def _positive_int(value):
-    if type(value) is not int or value <= 0:
-        _fail()
-    return value
+    return require_positive_int(value, code=_INVALID)
 
 
 def require_source_id(value, *, allow_null=False):
@@ -199,37 +203,37 @@ def require_source_id(value, *, allow_null=False):
     _fail()
 
 
-def require_public_id(value):
+def require_public_id(value, *, code=_INVALID):
     if type(value) is not int or value < 1 or value > PUBLIC_ID_MAX:
-        _fail()
+        fail(code)
     return value
 
 
-def require_uuid(value):
-    _text(value)
+def require_uuid(value, *, code=_INVALID):
+    require_text(value, code=code, check_utf8=True)
     if _UUID.fullmatch(value) is None:
-        _fail()
+        fail(code)
     return value
 
 
-def require_hash(value):
-    _text(value)
+def require_hash(value, *, code=_INVALID):
+    require_text(value, code=code, check_utf8=True)
     if _HASH.fullmatch(value) is None:
-        _fail()
+        fail(code)
     return value
 
 
-def require_utc(value):
-    _text(value)
+def require_utc(value, *, code=_INVALID):
+    require_text(value, code=code, check_utf8=True)
     if _UTC.fullmatch(value) is None:
-        _fail()
+        fail(code)
     return value
 
 
-def require_member(value, allowed):
-    _text(value)
+def require_member(value, allowed, *, code=_INVALID):
+    require_text(value, code=code, check_utf8=True)
     if value not in allowed:
-        _fail()
+        fail(code)
     return value
 
 
@@ -260,15 +264,8 @@ def parse_owned(body):
 
 
 def _forbid_receipt_secrets(value):
-    if type(value) is dict:
-        for key, nested in value.items():
-            if key in RECEIPT_FORBIDDEN_KEYS:
-                _fail()
-            _forbid_receipt_secrets(nested)
-        return
-    if type(value) is list:
-        for nested in value:
-            _forbid_receipt_secrets(nested)
+    if contains_key(value, RECEIPT_FORBIDDEN_KEYS):
+        _fail()
 
 
 def _owned_tuple(value, builder):
@@ -353,6 +350,11 @@ def validate_availability(state, reason):
     if state == "waiting":
         return state, require_member(reason, WAITING_REASONS)
     return state, require_member(reason, {RECONCILIATION_REASON})
+
+
+def waiting_reason_for(error):
+    """Availability reason for a non-auth CourseError that leaves learning waiting."""
+    return "contract_pending" if error.code == "CONTRACT_PENDING" else "arc_progress_unavailable"
 
 
 def item_type_wire(kind):
@@ -593,6 +595,32 @@ class CourseBinding:
         _text(self.content_version)
         _text(self.epoch)
         _text(self.policy_version)
+
+
+COURSE_BINDING_FIELDS = tuple(CourseBinding.__dataclass_fields__)
+
+
+def binding_from_row(attempt, *, null_is_legacy):
+    """The course_binding of a stored ATTEMPT row as a field-ordered dict, or None for a legacy row.
+
+    A row without the key is a legacy (pre-D103 v1) attempt. A stored null is
+    legacy only for a caller that passes ``null_is_legacy`` (jobs) and is
+    otherwise an invalid stored value (state, fail-closed); no writer stores
+    one, and the two callers' answers are kept as they were (D119). A value
+    that is not a complete binding (not a dict, or not exactly the binding
+    fields) raises ValueError, which each caller maps to its own code (state
+    TEMPORARILY_UNAVAILABLE, jobs STORED_INPUT_INVALID). CourseBinding's own
+    field checks raise as they always did.
+    """
+    if "course_binding" not in attempt:
+        return None
+    value = attempt["course_binding"]
+    if value is None and null_is_legacy:
+        return None
+    if type(value) is not dict or set(value) != set(COURSE_BINDING_FIELDS):
+        raise ValueError("Invalid stored course binding.")
+    CourseBinding(**{key: value[key] for key in COURSE_BINDING_FIELDS})
+    return {key: value[key] for key in COURSE_BINDING_FIELDS}
 
 
 @dataclass(frozen=True)
@@ -971,17 +999,116 @@ class CourseRepository(Protocol):
 
 class CourseService(Protocol):
     def stored_refresh(self, auth: AuthContext) -> RefreshResult: ...
-    def list_courses(self, auth: AuthContext, *, page: int, page_size: int) -> bytes: ...
+    def list_courses(self, auth: AuthContext, *, page: int, page_size: int) -> dict: ...
     def get_course(self, auth: AuthContext, *, course_id: int, enrollment_id: int) -> CourseView: ...
     def get_item(
         self, auth: AuthContext, *, course_id: int, enrollment_id: int, placement_id: int,
-    ) -> bytes: ...
+    ) -> dict: ...
     def start_content(self, auth: AuthContext, command: StartCommand) -> StartReceipt: ...
     def start_attempt(self, auth: AuthContext, command: StartCommand) -> StartReceipt: ...
     def report_content(
         self, auth: AuthContext, *, course_id: int, enrollment_id: int, placement_id: int, report: ContentReport,
     ) -> StoredProgressReceipt: ...
     def refresh_for_session(self, auth: AuthContext) -> RefreshResult: ...
+
+
+# -- /api/v2 HTTP hook contract (D128) ------------------------------------------------
+#
+# course_wiring binds the reused auth/state/calculation surfaces to CourseHttp as
+# a CourseHooks value; every hook returns one of the small frozen records below,
+# and course_response turns a record into the wire dict. The records carry
+# already-formatted values (RFC3339 text, wire-ready dicts) and do not validate:
+# the wire builders keep the existing error codes for each field (D119).
+
+
+@dataclass(frozen=True)
+class SessionRecord:
+    """login (auth + access_token + user_name), session read (learning_availability) or session check."""
+
+    session_id: str
+    expires_at: str
+    auth: AuthContext | None = None
+    access_token: str | None = None
+    learning_availability: dict | None = None
+    user_name: str | None = None
+
+
+@dataclass(frozen=True)
+class AttemptRecord:
+    """A stored attempt as the attempt view reads it; course fields are None for a legacy row."""
+
+    attempt_id: str
+    state: str
+    created_at: str | None
+    condition: dict | None
+    course_id: int | None = None
+    enrollment_id: int | None = None
+    course_item_link_id: int | None = None
+    definition_hash: str | None = None
+    role: str | None = None
+    legacy: bool = False
+
+
+@dataclass(frozen=True)
+class CalculationRecord:
+    """A calculation read; calculation/evaluation/progress_application are wire-ready or None."""
+
+    attempt_id: str
+    state: str
+    error_code: str | None = None
+    calculation: dict | None = None
+    evaluation: dict | None = None
+    progress_application: dict | None = None
+    submit_arc: dict | None = None
+
+
+@dataclass(frozen=True)
+class ChartLinkRecord:
+    url: str | None
+    expires_at: str | None
+
+
+@dataclass(frozen=True)
+class CourseHooks:
+    """The callables CourseHttp dispatches to; each must be callable at assembly.
+
+    authenticate(token, *, allow_logout_receipt) -> AuthContext
+    login(login_id, password) -> SessionRecord (auth, access_token, user_name set)
+    logout(auth) -> None
+    session_reader(auth) -> SessionRecord (learning_availability set)
+    session_check(auth) -> SessionRecord (session identity only; no course reads)
+    issue_resume(auth, attempt_id) -> str
+    load_attempt(auth, attempt_id) -> AttemptRecord
+    reauthorize(auth, attempt_id, resume_credential) -> AttemptRecord
+    cancel(auth, attempt_id, reason) -> None
+    measurement_submit(auth, attempt_id, event) -> CalculationRecord
+    calculation_result(auth, attempt_id) -> CalculationRecord
+    chart_link(auth, attempt_id) -> ChartLinkRecord
+    """
+
+    authenticate: Callable
+    login: Callable
+    logout: Callable
+    session_reader: Callable
+    session_check: Callable
+    issue_resume: Callable
+    load_attempt: Callable
+    reauthorize: Callable
+    cancel: Callable
+    measurement_submit: Callable
+    calculation_result: Callable
+    chart_link: Callable
+
+    def __post_init__(self):
+        for name in HOOK_NAMES:
+            if not callable(getattr(self, name)):
+                raise CourseError("TEMPORARILY_UNAVAILABLE")
+
+
+HOOK_NAMES = (
+    "authenticate", "login", "logout", "session_reader", "session_check", "issue_resume", "load_attempt",
+    "reauthorize", "cancel", "measurement_submit", "calculation_result", "chart_link",
+)
 
 
 class CourseCalculationBridge(Protocol):

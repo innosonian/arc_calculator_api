@@ -1,28 +1,13 @@
 """A role that validates alone can still strand every accepted calculation."""
 
 from copy import deepcopy
-from dataclasses import asdict
 import json
 
 import pytest
 
-from mock_journey.course_settings import fixture_course_settings
-from scripts.validate_aws_dev_bundle import BundleError, main, validate_bundle
-from tests.test_aws_runtime import configuration
-
-
-def documents():
-    result = {role: configuration(role) for role in ("api", "worker", "relay")}
-    for role in ("api", "worker"):
-        result[role]["course"] = {"mode": "course_v2_dummy", "catalog_version": "arc-dummy-dev-v1",
-                                  "settings": asdict(fixture_course_settings())}
-    return result
-
-
-def check(configs, **timing):
-    return validate_bundle({role: json.dumps(value) for role, value in configs.items()},
-        **{"api_timeout": 30, "worker_timeout": 60, "relay_timeout": 30,
-           "queue_visibility": 360, "batch_window": 0, **timing})
+from scripts.validate_aws_dev_bundle import BundleError, main
+from tests.aws_dev_bundle_support import check, documents  # noqa: F401 (re-export)
+from tests.aws_runtime_support import course_section
 
 
 def test_valid_bundle_does_not_claim_aws_verification():
@@ -38,7 +23,9 @@ def test_valid_bundle_does_not_claim_aws_verification():
     ("relay", ("state", "table_name"), "other-table", "STATE_TABLE_MISMATCH"),
     ("worker", ("storage", "bucket"), "other-private-bucket", "STORAGE_MISMATCH"),
     ("worker", ("storage", "input_bytes"), 999999, "STORAGE_MISMATCH"),
-    ("worker", ("execution", "retained_adapter_versions"), [], "EXECUTION_VERSION_MISMATCH"),
+    # D127: a retained list other than the code registry no longer parses on its
+    # own, so it is a role configuration error before any cross-role comparison.
+    ("worker", ("execution", "retained_adapter_versions"), [], "ROLE_CONFIGURATION_INVALID"),
     ("worker", ("course", "settings", "max_course_items"), 32, "DUMMY_COURSE_CONFIGURATION_MISMATCH"),
 ])
 def test_individually_valid_roles_must_use_same_state_and_contract(role, path, value, code):
@@ -51,11 +38,25 @@ def test_individually_valid_roles_must_use_same_state_and_contract(role, path, v
         check(configs)
 
 
-@pytest.mark.parametrize("role", ["api", "worker"])
-def test_legacy_role_does_not_silently_join_course_release(role):
+@pytest.mark.parametrize("shape", ["missing", "null"])
+@pytest.mark.parametrize("roles", [("api",), ("worker",), ("api", "worker")])
+def test_role_without_course_is_a_configuration_error_not_a_legacy_release(roles, shape):
+    # API/Worker have no course-less composition any more: the document itself
+    # is invalid, before any cross-role comparison (even when both omit it).
     configs = documents()
-    configs[role].pop("course")
-    with pytest.raises(BundleError, match="DUMMY_COURSE_CONFIGURATION_MISMATCH"):
+    for role in roles:
+        if shape == "missing":
+            configs[role].pop("course")
+        else:
+            configs[role]["course"] = None
+    with pytest.raises(BundleError, match="ROLE_CONFIGURATION_INVALID"):
+        check(configs)
+
+
+def test_relay_with_course_section_is_a_configuration_error():
+    configs = documents()
+    configs["relay"]["course"] = course_section()
+    with pytest.raises(BundleError, match="ROLE_CONFIGURATION_INVALID"):
         check(configs)
 
 

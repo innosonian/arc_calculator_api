@@ -1,6 +1,7 @@
 """Explicitly injected synthetic course catalog. No import-time I/O, env, or singleton."""
 
 from dataclasses import replace
+from functools import partial
 
 from mock_journey.catalog import PROGRAMS, TARGETS
 from mock_journey.course_contracts import (
@@ -9,17 +10,15 @@ from mock_journey.course_contracts import (
     parse_owned, require_public_id, require_source_id, validate_execution_definition,
 )
 from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import fail, require_text
 from mock_journey.course_provider import planned_error, validate_assignments, validate_bundle, validate_placements
 from mock_journey.course_settings import CourseSettings
 from mock_journey.models import AuthContext
 
 
-def _mismatch():
-    raise CourseError("UPSTREAM_CONTRACT_MISMATCH")
-
-
-def _pending():
-    raise CourseError("CONTRACT_PENDING")
+_MISMATCH = "UPSTREAM_CONTRACT_MISMATCH"
+_mismatch = partial(fail, _MISMATCH)
+_pending = partial(fail, "CONTRACT_PENDING")
 
 
 def _own_document(document):
@@ -68,9 +67,7 @@ def _unique_rows(rows, key):
 def fixture_mapping_registry(mapping_document) -> MappingRegistry:
     """Register the fixture mapping version to the exact 7-key rows. No program_id name guessing."""
     owned = _own_document(mapping_document)
-    version = owned.get("mapping_version")
-    if type(version) is not str or not version:
-        _mismatch()
+    version = require_text(owned.get("mapping_version"), code=_MISMATCH, check_utf8=False)
     programs = {row[0] for row in PROGRAMS}
     rows = owned.get("mappings")
     if type(rows) is not dict:
@@ -305,8 +302,7 @@ class FixtureCourseProvider:
             if type(row) is not dict or type(row.get("scope")) is not list or len(row["scope"]) != 5:
                 _mismatch()
             provider, tenant_id, learner_id, enroll_source, assigned_course = row["scope"]
-            if type(provider) is not str or not provider:
-                _mismatch()
+            require_text(provider, code=_MISMATCH, check_utf8=False)
             for source_id in (tenant_id, learner_id, enroll_source, assigned_course):
                 _mapped_source(source_id)
             learner = self._learners_by_identity.get((provider, tenant_id, learner_id))

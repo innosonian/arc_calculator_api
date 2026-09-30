@@ -1,14 +1,14 @@
 """계산 오케스트레이터(라이브러리 코어).
 
-원본 V1 main.py 이식(V1 패리티 보존). lambda_handler와 scripts/run_local.py가 공유하는
-코어이며, 로컬 실행 엔트리(`__main__` 블록)는 원본과 동일하게 두지 않는다.
+원본 V1 main.py 이식(V1 패리티 보존). 운영 호출자는 Worker의
+mock_journey/internal_calculator.py(execution_context 전달)이고, 내부 회귀 helper
+lambda_handler._run_trusted_calculation과 scripts/run_local.py·viewer 스크립트도 같은 코어를
+쓴다(execution_context=None 경로). 로컬 실행 엔트리(`__main__` 블록)는 원본과 동일하게 두지 않는다.
 
 원본 대비 미이식(스펙 §4.4·D-1): run_calculator_as_action(원본 main.py:82-101) —
 action 직접 입력 경로 제거. (원본에서도 호출부가 없고 prepare_data 인자 불일치로
 호출 시 TypeError가 나는 사장 코드였다.)
 """
-
-import json
 
 from services.operational_logs import write_diagnostic
 

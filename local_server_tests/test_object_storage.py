@@ -3,7 +3,6 @@
 import json
 import multiprocessing
 import os
-import socket
 import stat
 import struct
 from urllib.parse import urlsplit
@@ -23,12 +22,10 @@ OPTIONS = dict(bucket="local-objects", directory="calculator_result/interpreted_
 
 
 @pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("Filesystem test attempted network access.")
-    monkeypatch.setattr(socket.socket, "connect", forbidden)
-    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
-    monkeypatch.setattr(objects.uploader, "client", forbidden)
+def no_uploader_client(monkeypatch, network_guard):
+    # The directory guard (conftest.py) rejects sockets; the same rejecting
+    # callable also replaces the uploader's AWS client seam.
+    monkeypatch.setattr(objects.uploader, "client", network_guard)
 
 
 @pytest.fixture

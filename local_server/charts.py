@@ -9,6 +9,8 @@ import time
 from urllib.parse import urlsplit
 
 from mock_journey.errors import JourneyError
+from local_server.addresses import local_address, local_port
+from local_server.constants import CHART_URL_TTL_SECONDS
 from local_server.object_storage import LocalObjectClient
 
 
@@ -21,12 +23,10 @@ class LocalChartService:
 
     def __init__(self, client, *, base_url, clock=time.time):
         try:
-            from local_server.http import _address, _port
-
             if type(client) is not LocalObjectClient or type(base_url) is not str or not callable(clock):
                 raise ValueError()
             parsed = urlsplit(base_url)
-            host, port = _address(parsed.hostname), _port(parsed.port)
+            host, port = local_address(parsed.hostname), local_port(parsed.port)
             if base_url != f"http://{host}:{port}" or parsed.username is not None or parsed.password is not None:
                 raise ValueError()
             self.client, self.base_url, self.clock = client, base_url, clock
@@ -50,13 +50,13 @@ class LocalChartService:
         raw = hmac.digest(self._key, self._domain + claim.encode("ascii"), "sha256")
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
-    def create_signed_url(self, key, *, expires_in=300):
+    def create_signed_url(self, key, *, expires_in=CHART_URL_TTL_SECONDS):
         try:
-            if type(expires_in) is not int or expires_in != 300:
+            if type(expires_in) is not int or expires_in != CHART_URL_TTL_SECONDS:
                 raise ValueError()
             ident, body = self.client.chart_object(key=key)
             now = self._now()
-            claim = f"v1.{now}.{now + 300}.{ident}.{hashlib.sha256(body).hexdigest()}"
+            claim = f"v1.{now}.{now + CHART_URL_TTL_SECONDS}.{ident}.{hashlib.sha256(body).hexdigest()}"
             return self.base_url + _PREFIX + claim + "." + self._signature(claim)
         except Exception:
             # This is an internal operation after authenticated publication.
@@ -73,7 +73,7 @@ class LocalChartService:
             if not match:
                 raise ValueError()
             issued, expires = int(match[1]), int(match[2])
-            if expires - issued != 300 or not issued <= now < expires:
+            if expires - issued != CHART_URL_TTL_SECONDS or not issued <= now < expires:
                 raise ValueError()
             claim, signature = token.rsplit(".", 1)
             if not hmac.compare_digest(signature, self._signature(claim)):

@@ -2,7 +2,10 @@
 
 The read-only doubles below hold an already committed result. They deliberately
 have no write/worker API, so a status read or matching POST retry cannot silently
-calculate, sign a chart, or apply shared progress again in these tests.
+calculate, sign a chart, or apply shared progress again in these tests. The
+committed row is read through the public /api/v2 attempt and calculation routes
+(the real CourseHttp and its hooks); the removed /mock/v1 routes, their
+/cpr-analysis alias and programs view are not carried over (D103).
 """
 
 from copy import deepcopy
@@ -17,8 +20,10 @@ from main import run_calculator
 from mock_journey import typed
 from mock_journey.auth import AuthManager
 from mock_journey.calculation import CalculationService
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
+from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_keys
 from mock_journey.contracts import VerifiedCalculation
+from mock_journey.course_settings import fixture_course_settings
+from mock_journey.course_wiring import COURSE_MODE, bind_course_http
 from mock_journey.errors import JourneyError
 from mock_journey.handler import handle
 from mock_journey.internal_calculator import InternalCalculator
@@ -38,17 +43,20 @@ DATA = Path(__file__).parent / "dataset"
 PROJECTION = "local-contract-test-projection-v1"
 
 
-def _pending_versions():
-    # Import at use time so this independent file does not edit the S2 owner.
-    from mock_journey.internal_calculator import (
-        PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
+def _versions(pending):
+    """(adapter, profile): the current cycle-goal adapter (D136) or the retained pending-v3 adapter."""
+    from mock_journey.contracts import (
+        CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+        PENDING_GOAL_PROFILE_VERSION,
     )
-    return PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION
+    if pending:
+        return PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION
+    return CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION
 
 
-def _definition(program, target):
+def _definition(program, target, *, pending=False):
     ident, _, kind, required = program
-    adapter_version, profile_version = _pending_versions()
+    adapter_version, profile_version = _versions(pending)
     training = {"compressions": "compression_only", "ventilations": "ventilation_only"}.get(kind, "cpr")
     return {
         "condition": {"mode": "training", "target": target, "training_type": training,
@@ -81,8 +89,8 @@ def _real_case(program, target):
                "projection_version": PROJECTION, "job_id": str(uuid.uuid4()), "call_id": str(uuid.uuid4())}
     stem = build_key_stem()
     loaded = LoadedInput(projected, f"calculator_result/interpreted_rtdata/arc/local-validation/_no_org/{date_prefix(stem)}/{stem}")
-    adapter = InternalCalculator(version=definition["adapter_version"], projection_version=PROJECTION,
-                                 stage="local-validation", allow_pending_cycle_goal=True)
+    from mock_journey.assembly import internal_calculator
+    adapter = internal_calculator(definition["adapter_version"], projection=PROJECTION, stage="local-validation")
     return SimpleNamespace(program=program, body=body, definition=definition, projected=projected, binding=binding,
                            loaded=loaded, adapter=adapter, schema=schema)
 
@@ -91,9 +99,9 @@ class _ReadOnlyState:
     """Real session/attempt authorization checks around immutable fixture rows."""
 
     def __init__(self):
-        self.sessions, self.attempts, self.progress = {}, {}, None
+        self.sessions, self.attempts = {}, {}
 
-    def create_session(self, session, slots):
+    def create_session(self, session):
         self.sessions[session["session_id"]] = deepcopy(session)
 
     def get_session(self, ident):
@@ -104,10 +112,6 @@ class _ReadOnlyState:
         attempt = self.attempts.get(ident)
         DynamoStateRepository._check_attempt(attempt, auth)
         return deepcopy(attempt)
-
-    def get_progress(self, auth):
-        DynamoStateRepository._check_session(self.get_session(auth.session_id), auth, 1000)
-        return deepcopy(self.progress)
 
 
 class _CommittedStorage:
@@ -135,8 +139,8 @@ def _read_world(case, core, verified):
     evaluation = evaluate(final, case.definition, verified)
     state = _ReadOnlyState()
     auth = AuthManager(state, "local-contract-only", {"v1": b"L" * 32}, "v1", clock=lambda: 1000)
-    session, token = auth.login("test@test.com", "2222", Catalog().slot_keys)
-    _, other_token = auth.login("test@test.com", "2222", Catalog().slot_keys)
+    session, token = auth.login("test@test.com", "2222")
+    _, other_token = auth.login("test@test.com", "2222")
     ident = case.binding["attempt_id"]
     program_id = case.program[0]
     target = case.definition["condition"]["target"]
@@ -145,14 +149,12 @@ def _read_world(case, core, verified):
     state.attempts[ident] = {
         **case.binding, "principal": session["principal"], "bound_session_id": session["session_id"],
         "program_id": program_id, "target": target, "profile_name": "tester", "state": "evaluated",
+        "created_at": 1000,
         "definition_json": json.dumps(case.definition), "evaluation": evaluation, "active_counted": False,
         "progress_application": {"applied": applied, "applied_epoch": case.binding["epoch"] if applied else None,
                                  "reason": "GOAL_POLICY_UNRESOLVED" if pending else
                                  "APPLIED" if applied else "REQUIREMENTS_NOT_MET"},
     }
-    state.progress = {"epoch": case.binding["epoch"], "revision": 5,
-                      "slots": {key: {"completed": key == f"{program_id}:{target}" and applied,
-                                      "open_attempts": 0} for key in Catalog().slot_keys}}
     job = {**case.binding, "state": "done", "final_ref": {"test": "immutable"},
            "chart_publication": {"test": "precommitted"}}
     jobs = SimpleNamespace(get_job=lambda ident: deepcopy(job))
@@ -160,14 +162,17 @@ def _read_world(case, core, verified):
     storage = _CommittedStorage(snapshot, case.binding)
     calculation = CalculationService(state, jobs, storage, {PROJECTION: case.schema},
                                      payload_limit=1_000_000, clock=lambda: 1000)
-    service = JourneyService(state, auth, Catalog(), calculation)
+    journey = JourneyService(state, auth, calculation)
+    http = bind_course_http(journey, SimpleNamespace(), fixture_course_settings(), clock=lambda: 1000,
+                            uuid_factory=uuid.uuid4)
+    service = SimpleNamespace(course_mode=COURSE_MODE, course_http=http, operations=None)
     return SimpleNamespace(service=service, state=state, storage=storage, token=token, other_token=other_token,
                            final=final, evaluation=evaluation)
 
 
-def _request(world, case, operation="calculation", *, alias=False, retry=False, other=False, changed=False):
+def _request(world, case, operation="calculation", *, retry=False, other=False, changed=False):
     ident = case.binding["attempt_id"]
-    path = "/cpr-analysis" if alias else f"/mock/v1/attempts/{ident}" + ("/" + operation if operation else "")
+    path = f"/api/v2/attempts/{ident}/" + (operation + "/" if operation else "")
     if retry:
         data = case.body["cpr_b64_data"]
         if changed:
@@ -178,8 +183,6 @@ def _request(world, case, operation="calculation", *, alias=False, retry=False, 
         event = {"headers": {}}
     event.update(httpMethod="POST" if retry else "GET", path=path)
     event["headers"]["Authorization"] = "Bearer " + (world.other_token if other else world.token)
-    if alias:
-        event["headers"]["X-Attempt-ID"] = ident
     return handle(event, SimpleNamespace(aws_request_id="local-contract-test"), world.service)
 
 
@@ -197,7 +200,7 @@ def test_v1_integer_evaluation_shape_and_meaning_are_unchanged(kind, required, o
     assert type(evaluation["goal"]["observed"]) is int
     assert type(evaluation["goal"]["met"]) is bool
     assert evaluation["program_completed"] is (observed >= required and score == 90)
-    assert DynamoJobRepository._evaluation(evaluation, {"definition_json": json.dumps(definition)}) == evaluation
+    assert DynamoJobRepository.check_evaluation(evaluation, {"definition_json": json.dumps(definition)}) == evaluation
 
 
 @pytest.mark.parametrize("score,decision,reasons", [
@@ -206,14 +209,15 @@ def test_v1_integer_evaluation_shape_and_meaning_are_unchanged(kind, required, o
     (None, "fail", ["GOAL_POLICY_UNRESOLVED", "SCORE_NOT_PASS"]),
 ])
 def test_pending_goal_is_not_a_synthetic_score_failure(score, decision, reasons):
-    definition = _definition(PROGRAMS[0], "infant")
+    # A retained pending-v3 definition (an in-flight or stored attempt): still pending_policy (D136, 3A).
+    definition = _definition(PROGRAMS[0], "infant", pending=True)
     verified = VerifiedCalculation({}, "cycles", None, "no_chart", goal_status="pending_policy")
     evaluation = evaluate({"cpr_score": {"total_score": {"overall": score}}}, definition, verified)
     assert evaluation == {
         "goal": {"kind": "cycles", "required": 3, "observed": None, "met": None, "status": "pending_policy"},
         "score": {"decision": decision}, "program_completed": False, "reason_codes": reasons,
     }
-    assert DynamoJobRepository._evaluation(evaluation, {"definition_json": json.dumps(definition)}) == evaluation
+    assert DynamoJobRepository.check_evaluation(evaluation, {"definition_json": json.dumps(definition)}) == evaluation
 
 
 @pytest.mark.parametrize("program,target", [(program, target) for program in PROGRAMS for target in TARGETS],
@@ -227,48 +231,53 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
     assert typed.canonical_bytes(verified.core_result) == typed.canonical_bytes(expected)
     assert case.adapter.get_chart(verified, case.binding, lambda: None).data
     world = _read_world(case, verified.core_result, verified)
-    before_rows, before_progress, before_snapshot = deepcopy(world.state.attempts), deepcopy(world.state.progress), world.storage.snapshot
+    before_rows, before_snapshot = deepcopy(world.state.attempts), world.storage.snapshot
     response = _request(world, case)
     assert response["statusCode"] == 200
-    body = json.loads(response["body"])
-    assert body.pop("submit_arc") == {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
-    assert typed.canonical_bytes(body) == typed.canonical_bytes(world.final)
-    assert not {"evaluation", "progress_application", "goal_status", "submit_hstm"}.intersection(body)
+    data = json.loads(response["body"])["data"]
+    assert data["calculationStatus"] == "succeeded"
+    assert data["submit_arc"] == {"status": "disabled", "ok": False, "error": "arc_contract_pending",
+                                  "exclusionReasons": []}
+    # The stored final is returned as it is; completion stays in separate fields.
+    assert typed.canonical_bytes(data["calculation"]) == typed.canonical_bytes(world.final)
+    assert not {"evaluation", "progress_application", "goal_status", "submit_hstm"}.intersection(data["calculation"])
+    assert data["evaluation"] == world.evaluation
+    assert data["progressApplication"] == world.state.attempts[case.binding["attempt_id"]]["progress_application"]
     status = _request(world, case, "")
     assert status["statusCode"] == 200
-    status_body = json.loads(status["body"])
-    assert status_body["evaluation"] == world.evaluation
-    assert status_body["calculation_path"] == f'/mock/v1/attempts/{case.binding["attempt_id"]}/calculation'
+    status_data = json.loads(status["body"])["data"]
+    assert (status_data["attemptId"], status_data["state"]) == (case.binding["attempt_id"], "evaluated")
+    assert status_data["condition"] == case.definition["condition"]
+    assert "evaluation" not in status_data and "calculation" not in status_data
     passed = bool(_is_pass(world.final, None, None, None, target))
     assert world.evaluation["score"]["decision"] == ("pass" if passed else "fail")
+    # D136: every goal kind is evaluated by the current adapter; a cycles goal
+    # counts the calculator's closed ``cpr`` cycles (cpr_1.bin holds one).
+    goal = world.evaluation["goal"]
+    assert goal["status"] == "evaluated"
+    assert type(goal["observed"]) is int and type(goal["met"]) is bool
+    assert goal["met"] is (goal["observed"] >= goal["required"])
+    assert world.evaluation["program_completed"] is (goal["met"] and passed)
     if program[2] == "cycles":
-        assert world.evaluation["goal"]["status"] == "pending_policy"
-        assert world.evaluation["goal"]["observed"] is None and world.evaluation["goal"]["met"] is None
-        assert world.evaluation["program_completed"] is False
-    else:
-        assert world.evaluation["goal"]["status"] == "evaluated"
-        assert type(world.evaluation["goal"]["observed"]) is int
-        assert type(world.evaluation["goal"]["met"]) is bool
-    for alias in (False, True):
-        assert _request(world, case, retry=True, alias=alias) == response
-        conflict = _request(world, case, retry=True, alias=alias, changed=True)
-        assert conflict["statusCode"] == 409
-        assert json.loads(conflict["body"])["error"]["code"] == "ATTEMPT_INPUT_CONFLICT"
+        assert goal["observed"] == 1 and goal["met"] is False
+        assert world.evaluation["reason_codes"][0] == "GOAL_NOT_MET"
+    retried = _request(world, case, retry=True)
+    assert (retried["statusCode"], retried["body"]) == (response["statusCode"], response["body"])
+    conflict = _request(world, case, retry=True, changed=True)
+    assert conflict["statusCode"] == 409
+    assert json.loads(conflict["body"])["error"]["code"] == "ATTEMPT_INPUT_CONFLICT"
     denied = _request(world, case, other=True)
     assert denied["statusCode"] == 404
-    assert _request(world, case) == response
-    assert world.state.attempts == before_rows and world.state.progress == before_progress
+    again = _request(world, case)
+    assert (again["statusCode"], again["body"]) == (response["statusCode"], response["body"])
+    assert world.state.attempts == before_rows
     assert world.storage.snapshot == before_snapshot
 
 
 def test_catalog_still_exposes_five_programs_and_three_targets_without_claiming_runtime_configured():
     catalog = Catalog()
-    progress = {"epoch": "test-epoch", "revision": 1,
-                "slots": {key: {"completed": False, "open_attempts": 0} for key in catalog.slot_keys}}
-    view = catalog.programs_view(progress)
-    assert len(view["programs"]) == 5 and len(catalog.slot_keys) == 15
-    assert view["guideline"] == "ARC2025" and view["profile_name"] == "tester"
-    assert all(item["supported_targets"] == ["adult", "child", "infant"] for item in view["programs"])
+    assert len(PROGRAMS) == 5 and TARGETS == ("adult", "child", "infant") and len(definition_keys()) == 15
+    assert [program[3] for program in PROGRAMS] == [3, 60, 8, 8, 10]
     # L1 is not the L3 product runtime: a bare catalog still cannot invent an
     # execution definition merely because it advertises the approved programs.
     with pytest.raises(JourneyError) as error:

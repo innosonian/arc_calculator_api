@@ -1,6 +1,9 @@
 # 원본 hstm_v2 transformers/part_divider.py (V1 패리티 보존)
 # 스펙 §4.5(I-1): 원본 생성자의 calculation_config 파라미터는 저장만 되고 클래스 내 소비처
 # 0건(grep 재확인)이라 미이식. 호출부는 PartDivider()로 인스턴스화한다(원본 services/config.py:19 참조).
+from bisect import bisect_left
+from itertools import accumulate
+
 from config.constants import AED_SEPARATE_EVENTS, AED_EVENT_BEGIN_CPR
 
 
@@ -10,9 +13,18 @@ class PartDivider:
             (a["aed_part_data"][0]["timestamp"], a["aed_part_data"][-1]["timestamp"]) for a in aed_part_list
         ]
 
+        # 파트마다 모든 rtdata를 비교하면 O(rtdata x 파트)라, 시작 시각으로 정렬한 뒤 끝 시각의
+        # 누적 최대를 두고 이진 탐색한다: 시작 < ts 인 파트 중 가장 늦은 끝 > ts 이면 겹침.
+        # 길이 0/음수 파트(시작 >= 끝)는 어떤 ts 도 엄격히 포함하지 못하므로 미리 제외한다.
+        spans = sorted((a_ts for a_ts in aed_part_timestamp_list if a_ts[0] < a_ts[1]), key=lambda a_ts: a_ts[0])
+        starts = [a_ts[0] for a_ts in spans]
+        max_ends = list(accumulate((a_ts[1] for a_ts in spans), max))
+
         for rtdata in rtdata_list:
-            for a_ts in aed_part_timestamp_list:
-                if a_ts[0] < rtdata["timestamp"] < a_ts[1]:
+            if aed_part_timestamp_list:
+                ts = rtdata["timestamp"]
+                k = bisect_left(starts, ts)
+                if k and ts < max_ends[k - 1]:
                     rtdata["is_aed_overlapped"] = True
 
             if "is_aed_overlapped" not in rtdata:

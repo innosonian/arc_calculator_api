@@ -4,14 +4,18 @@ import hashlib
 
 from mock_journey.course_contracts import CourseBinding, RecoveryEvidence, require_hash, require_uuid
 from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import fail, require_text
 from mock_journey.typed import digest, json_bytes, parse_json
 
 
 _TERMINAL_CODES = frozenset({"STORED_INPUT_INVALID", "CALCULATOR_CONTRACT_MISMATCH", "CALCULATION_FAILED"})
 
 
-def _fail(code="STORED_INPUT_INVALID"):
-    raise CourseError(code)
+_STORED = "STORED_INPUT_INVALID"
+
+
+def _fail(code=_STORED):
+    fail(code)
 
 
 def _row(snapshot, key):
@@ -73,8 +77,10 @@ def _validate_snapshot(snapshot, job_id, owner, fence):
     job, attempt, user, head, final = (_row(snapshot, key) for key in ("job", "attempt", "user", "head", "final"))
     if job.get("job_id") != job_id:
         _fail("NOT_FOUND")
-    if type(fence) is not int or fence < 0 or (owner is not None and (type(owner) is not str or not owner)):
+    if type(fence) is not int or fence < 0:
         _fail("INVALID_REQUEST")
+    if owner is not None:
+        require_text(owner, code="INVALID_REQUEST", check_utf8=False)
     if type(job.get("fence")) is not int or job["fence"] < 0:
         _fail()
     if job.get("owner") != owner or job.get("fence") != fence:
@@ -89,8 +95,8 @@ def _validate_snapshot(snapshot, job_id, owner, fence):
     binding = _binding(attempt)
     if job.get("epoch") != attempt.get("epoch") or binding.epoch != attempt.get("epoch"):
         _fail()
-    principal = attempt.get("principal")
-    if type(principal) is not str or not principal or job.get("principal") != principal or user.get("principal") != principal:
+    principal = require_text(attempt.get("principal"), code=_STORED, check_utf8=False)
+    if job.get("principal") != principal or user.get("principal") != principal:
         _fail()
     require_hash(job.get("input_digest"))
     if attempt.get("input_digest") != job["input_digest"]:
@@ -100,8 +106,7 @@ def _validate_snapshot(snapshot, job_id, owner, fence):
     for row in (job, attempt, user, head, final):
         if type(row.get("revision")) is not int or row["revision"] < 0:
             _fail()
-    if type(user.get("epoch")) is not str or not user["epoch"]:
-        _fail()
+    require_text(user.get("epoch"), code=_STORED, check_utf8=False)
     for row in (head, final):
         if row.get("epoch") != binding.epoch or row.get("scope_key") != binding.scope_key:
             _fail()
@@ -114,11 +119,12 @@ def _validate_snapshot(snapshot, job_id, owner, fence):
     definition, definition_sha = _definition(attempt)
     if job.get("definition_sha256") != definition_sha:
         _fail()
-    if any(type(definition.get(key)) is not str or not definition[key]
-           or job.get(key) != definition[key] for key in ("adapter_version", "projection_version")):
-        _fail()
-    call_id = job.get("call_id")
-    if type(call_id) is not str or not call_id or job.get("call_phase") not in {"started", "candidate_saved"}:
+    for key in ("adapter_version", "projection_version"):
+        require_text(definition.get(key), code=_STORED, check_utf8=False)
+        if job.get(key) != definition[key]:
+            _fail()
+    require_text(job.get("call_id"), code="INVALID_STATE", check_utf8=False)
+    if job.get("call_phase") not in {"started", "candidate_saved"}:
         _fail("INVALID_STATE")
     return job, attempt
 
@@ -212,8 +218,7 @@ class CourseRecovery:
         self._reader = reader
 
     def inspect(self, job_id: str, owner: object, fence: object) -> RecoveryEvidence:
-        if type(job_id) is not str or not job_id:
-            _fail("INVALID_REQUEST")
+        require_text(job_id, code="INVALID_REQUEST", check_utf8=False)
         try:
             snapshot = self._reader.load_consistent(job_id, owner, fence)
         except CourseError:

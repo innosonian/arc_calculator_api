@@ -1,108 +1,36 @@
-"""P3 transaction/crash boundaries against explicitly configured DynamoDB Local."""
+"""P3 transaction/crash boundaries against explicitly configured DynamoDB Local.
+
+The /mock/v1 create route is removed (D103). Attempts here are legacy rows
+seeded in the captured fixture shape (tests/legacy_attempt_seeds.py): a USER
+with slots, SESSION/AUTH and created ATTEMPT/META without course_binding. The
+job repository, its transactions and the legacy slot completion kept for those
+stored rows are exercised directly; every condition is real DynamoDB Local.
+"""
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 import uuid
 
 import pytest
 
-from integration_tests.test_mock_state_dynamodb import World, OneTransactionInterruption, SLOT
+from integration_tests.jobs_world_support import (  # noqa: F401 (jobs_world fixture; re-export)
+    DEFINITION_JSON, PRINCIPAL, SLOT, JobWorld, binding, blob, evaluation, jobs_world,
+)
 from mock_journey.errors import JourneyError
-from mock_journey.jobs import DynamoJobRepository, JobLeaseLost
+from mock_journey.jobs import JobLeaseLost
+from tests.legacy_attempt_seeds import OneTransactionInterruption, check_fixture_shape
 
 
-def blob(key, letter="a"):
-    return {"bucket": "private-test-bucket", "key": key, "sha256": letter * 64, "size": 10}
-
-
-def binding(job):
-    return {key: job[key] for key in (
-        "attempt_id", "epoch", "input_digest", "adapter_version", "projection_version", "job_id", "call_id",
-    )}
-
-
-def evaluation(*, observed=3, passed=True):
-    met = observed >= 3
-    return {
-        "goal": {"kind": "cycles", "required": 3, "observed": observed, "met": met},
-        "score": {"decision": "pass" if passed else "fail"}, "program_completed": met and passed,
-        "reason_codes": ([] if met else ["GOAL_NOT_MET"]) + ([] if passed else ["SCORE_NOT_PASS"]),
-    }
-
-
-class JobWorld(World):
-    def __init__(self, client, table):
-        super().__init__(client, table)
-        self.jobs = DynamoJobRepository(self.repository)
-
-    def job_repo(self, client):
-        return DynamoJobRepository(self.repo(client))
-
-    def submit(self, auth, *, attempt=None, jobs=None, digest="a", manifest=None):
-        attempt = attempt or self.create(auth)
-        return (jobs or self.jobs).accept_input(
-            auth, attempt["attempt_id"], digest * 64, manifest or blob("input/" + uuid.uuid4().hex),
-            job_id=str(uuid.uuid4()), adapter_version="local-test", next_due_at=self.clock(),
-        )
-
-    def started(self, attempt, *, owner="worker-a"):
-        action, job = self.jobs.claim(attempt["job_id"], owner, 60)
-        assert action == "execute"
-        permitted, job = self.jobs.begin_calculation(
-            job["job_id"], owner, job["fence"], str(uuid.uuid4()),
-            {"bucket": "private-test-bucket", "key": "calculation/" + uuid.uuid4().hex},
-        )
-        assert permitted
-        return job
-
-    def candidate(self, job, *, owner="worker-a"):
-        ref = {**job["planned_candidate_ref"], "sha256": "b" * 64, "size": 10}
-        return self.jobs.mark_calculation_saved(job["job_id"], owner, job["fence"], ref)
-
-    def chart(self, job, *, owner="worker-a", letter=None):
-        selection = {**binding(job), "kind": "no_chart"}
-        if letter:
-            selection.update(kind="snapshot", snapshot_ref=blob("chart/" + letter, letter),
-                             source_sha256=letter * 64, published_body_sha256=letter * 64)
-        return self.jobs.pin_chart(job["job_id"], owner, job["fence"], selection)
-
-    def publication(self, selection):
-        result = {**binding(selection), "kind": selection["kind"], "selection_revision": selection["revision"]}
-        if selection["kind"] == "snapshot":
-            result.update(key="legacy/chart.json", published_body_sha256=selection["published_body_sha256"])
-        return result
-
-    def ready(self, auth, *, owner="worker-a", chart=None):
-        attempt = self.submit(auth)
-        job = self.candidate(self.started(attempt, owner=owner), owner=owner)
-        chosen = self.chart(job, owner=owner, letter=chart)
-        return attempt, self.jobs.get_job(job["job_id"]), self.publication(chosen)
-
-    def finalize(self, job, publication, *, owner="worker-a", jobs=None, assessment=None):
-        return (jobs or self.jobs).finalize(
-            job["job_id"], owner, job["fence"], blob("final/" + uuid.uuid4().hex, "c"),
-            assessment or evaluation(), publication,
-        )
-
-
-@pytest.fixture
-def jobs_world(dynamodb_client):
-    table = "arc_mock_p3_" + uuid.uuid4().hex
-    dynamodb_client.create_table(
-        TableName=table,
-        KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}],
-        AttributeDefinitions=[{"AttributeName": key, "AttributeType": kind} for key, kind in (
-            ("PK", "S"), ("SK", "S"), ("GSI1PK", "S"), ("GSI1SK", "N"),
-        )],
-        GlobalSecondaryIndexes=[{
-            "IndexName": "GSI1", "KeySchema": [
-                {"AttributeName": "GSI1PK", "KeyType": "HASH"}, {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
-            ], "Projection": {"ProjectionType": "ALL"},
-        }], BillingMode="PAY_PER_REQUEST",
-    )
-    try:
-        yield JobWorld(dynamodb_client, table)
-    finally:
-        dynamodb_client.delete_table(TableName=table)
+def test_seeded_legacy_rows_keep_the_captured_shape_and_slot_count(jobs_world):
+    w = jobs_world
+    auth = w.session()
+    attempt = w.create(auth)
+    check_fixture_shape(w.item("ATTEMPT#" + attempt["attempt_id"], "META"), "created_attempt")
+    check_fixture_shape(w.progress(), "user")
+    check_fixture_shape(w.item("SESSION#" + auth.session_id, "AUTH"), "session")
+    stored = w.repository.get_attempt(auth, attempt["attempt_id"])
+    assert "course_binding" not in stored and stored["state"] == "created" and stored["active_counted"] is True
+    assert stored["epoch"] == w.progress()["epoch"]
+    assert w.progress()["slots"][SLOT]["open_attempts"] == 1 and w.progress()["revision"] == 1
 
 
 def parallel(*calls):
@@ -257,7 +185,7 @@ def test_finalize_requires_explicit_typed_chart_revision_without_partial_progres
         assert error.value.code == "STORED_INPUT_INVALID"
         assert w.jobs.get_job(job["job_id"])["state"] == "running"
         assert w.repository.get_attempt(auth, attempt["attempt_id"])["state"] == "processing"
-        assert not w.repository.get_progress(auth)["slots"][SLOT]["completed"]
+        assert not w.progress()["slots"][SLOT]["completed"]
     assert w.finalize(job, publication)["state"] == "evaluated"
 
 
@@ -328,9 +256,10 @@ def test_two_passes_race_records_one_shared_completion_and_zero_open_count(jobs_
     assert {r["progress_application"]["reason"] for r in results} == {"APPLIED", "ALREADY_COMPLETED"}
     assert all(r["evaluation"]["program_completed"] for r in results)
     assert w.progress()["slots"][SLOT]["completed"] and w.progress()["slots"][SLOT]["open_attempts"] == 0
-    with pytest.raises(JourneyError) as error:
-        w.create(auth)
-    assert error.value.code == "PROGRAM_ALREADY_COMPLETED"
+    # The single completion names the APPLIED attempt. (Refusing a new create for
+    # a completed slot was /mock/v1-only and is gone with it.)
+    applied = next(r for r in results if r["progress_application"]["reason"] == "APPLIED")
+    assert w.progress()["slots"][SLOT]["completed_by_attempt"] == applied["attempt_id"]
 
 
 @pytest.mark.parametrize("assessment", [evaluation(passed=False), evaluation(observed=2)])
@@ -341,7 +270,8 @@ def test_later_fail_or_short_goal_cannot_erase_another_completion(jobs_world, as
     _, second, pub2 = w.ready(auth, owner="worker-b")
     w.finalize(first, pub1)
     failed = w.finalize(second, pub2, owner="worker-b", assessment=assessment)
-    assert failed["progress_application"]["reason"] == "REQUIREMENTS_NOT_MET"
+    # Q17 (2026-09-28): the course_submission._progress order also applies here.
+    assert failed["progress_application"]["reason"] == "ALREADY_COMPLETED"
     assert w.progress()["slots"][SLOT]["completed"]
 
 

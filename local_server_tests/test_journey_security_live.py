@@ -12,8 +12,13 @@ import stat
 import struct
 from urllib.parse import urlsplit
 
-from local_server_tests.test_journey_runtime import JourneyServer
-from local_server_tests.test_live_server import ROOT, require
+import pytest
+
+from local_server_tests.test_journey_runtime import DUMMY_EXCLUDED, JourneyServer
+from local_server_tests.test_live_server import ROOT, dummy_course, error, require
+
+# Real loopback sockets: opted out of the directory network guard (conftest.py).
+pytestmark = pytest.mark.loopback
 
 
 class QuotaJourneyServer(JourneyServer):
@@ -82,24 +87,22 @@ def material_snapshot(server):
 
 
 def complete(server):
-    token = server.login()["session_token"]
-    attempt = server.attempt(token)
+    token = server.token()
+    attempt = server.start_attempt(token)
     require(server.upload(token, attempt).status in (200, 202),
             "Recorded binary must be accepted or already calculated by the actual worker.")
-    response = server.result(token, attempt)
-    result = response.json()
-    require(result.get("submit_arc") == {"status": "disabled", "ok": False, "error": "arc_contract_pending"},
-            "A local result must not claim actual ARC submission.")
-    chart = server.chart(result["chart_dataset_url"])
+    result = server.result(token, attempt).data()
+    require(result["submit_arc"] == DUMMY_EXCLUDED, "A local result must not claim actual ARC submission.")
+    chart = server.chart(result["calculation"]["chart_dataset_url"])
     require(chart.status == 200, "The default runtime must serve its own signed chart.")
-    return token, attempt, response, result, chart
+    return token, attempt, result, chart
 
 
 def test_actual_cli_chart_is_narrow_and_survives_logout_without_exposing_originals(tmp_path):
     server = JourneyServer(tmp_path / "chart-boundary")
     try:
         server.start()
-        token, attempt, response, result, chart = complete(server)
+        token, attempt, result, chart = complete(server)
         files, records = objects_snapshot(server)
         material = material_snapshot(server)
         original = (ROOT / "tests/dataset/cco_1.bin").read_bytes()
@@ -111,7 +114,7 @@ def test_actual_cli_chart_is_narrow_and_survives_logout_without_exposing_origina
                 and chart.headers.get("X-Content-Type-Options") == "nosniff"
                 and chart.headers.get("Content-Type") == "application/json",
                 "Signed charts must retain the privacy and type headers.")
-        path = urlsplit(result["chart_dataset_url"]).path
+        path = urlsplit(result["calculation"]["chart_dataset_url"]).path
         replacement = "A" if path[-1] != "A" else "B"
         invalid = server.request("GET", path[:-1] + replacement)
         require(invalid.status == 404 and invalid.json().get("error", {}).get("code") == "NOT_FOUND",
@@ -124,13 +127,14 @@ def test_actual_cli_chart_is_narrow_and_survives_logout_without_exposing_origina
             denied = server.request("GET", target)
             require(denied.status == 404, "Private files and directories must have no HTTP download route.")
             require(original not in denied.body, "Original measurement bytes leaked through an invalid route.")
-        require(server.request("GET", attempt["calculation_path"]).status == 401,
-                "A chart capability must not authorize calculation-result access.")
-        require(server.request("DELETE", "/mock/v1/session", token=token).status == 204,
+        chart_token = path.rsplit("/", 1)[-1]
+        for protected in (server.calculation_path(attempt), f'/api/v2/attempts/{attempt["attemptId"]}/chart-link/'):
+            error(server.request("GET", protected), 401, "SESSION_REQUIRED")
+            error(server.request("GET", protected, token=chart_token), 401, "SESSION_REQUIRED")
+        require(server.request("DELETE", "/api/v2/session/", token=token).status == 204,
                 "The actual session must log out.")
-        require(server.request("GET", attempt["calculation_path"], token=token).status == 403,
-                "The revoked session must not authorize result access.")
-        require(server.chart(result["chart_dataset_url"]).body == chart.body,
+        error(server.calculation(token, attempt), 403, "SESSION_REVOKED")
+        require(server.chart(result["calculation"]["chart_dataset_url"]).body == chart.body,
                 "An already issued chart must remain readable until its existing expiry after logout.")
         after, _ = objects_snapshot(server)
         require(after == files, "HTTP reads and logout must not alter stored measurement or result objects.")
@@ -145,7 +149,8 @@ def test_actual_cli_lower_quota_restart_keeps_reads_and_replay_but_rejects_new_u
     server = QuotaJourneyServer(tmp_path / "quota-restart")
     try:
         server.start()
-        token, attempt, response, result, chart = complete(server)
+        token, attempt, result, chart = complete(server)
+        committed = server.calculation(token, attempt).stable_body()
         before, _ = objects_snapshot(server)
         material = material_snapshot(server)
         server.stop()
@@ -153,25 +158,24 @@ def test_actual_cli_lower_quota_restart_keeps_reads_and_replay_but_rejects_new_u
         server.start()
         require(server.request("GET", "/healthz").status == 200,
                 "A storage quota does not invalidate already readable files and owned workers.")
-        require(server.request("GET", attempt["calculation_path"], token=token).body == response.body,
-                "Lowering only storage quota must preserve existing calculation response bytes.")
-        require(server.chart(result["chart_dataset_url"]).body == chart.body,
+        require(server.calculation(token, attempt).stable_body() == committed,
+                "Lowering only storage quota must preserve the existing calculation bytes.")
+        require(server.chart(result["calculation"]["chart_dataset_url"]).body == chart.body,
                 "Existing unexpired charts must remain readable with a full quota.")
-        replay = server.upload(token, attempt, alias=False)
-        require(replay.status == 200 and replay.body == response.body,
+        replay = server.upload(token, attempt)
+        require(replay.stable_body() == committed,
                 "A matching committed input replay must not require a new object write.")
-        pending = server.attempt(token, program="mock-ventilation-only")
+        pending = server.start_attempt(token, dummy_course("mock-ventilation-only"))
         failure = server.upload(token, pending, data=(ROOT / "tests/dataset/adult_vo_1.bin").read_bytes())
-        require(failure.status == 503 and failure.json().get("error", {}).get("code") == "TEMPORARILY_UNAVAILABLE",
-                "A new upload beyond quota must fail safely instead of claiming a calculated result.")
-        status = server.request("GET", "/mock/v1/attempts/" + pending["attempt_id"], token=token).json()
-        require(status.get("state") == "created" and status.get("evaluation") is None,
-                "A storage rejection must not create a completed or accepted calculation.")
+        error(failure, 503, "TEMPORARILY_UNAVAILABLE")
+        status = server.attempt(token, pending).data()
+        require(status["state"] == "created", "A storage rejection must not create an accepted calculation.")
+        error(server.calculation(token, pending), 409, "INVALID_STATE")
         after, _ = objects_snapshot(server)
         require(after == before, "Quota rejection must not overwrite or delete existing objects.")
         require(material_snapshot(server) == material, "Quota configuration must not regenerate installation keys.")
-        require(server.request("GET", attempt["calculation_path"], token=token).body == response.body,
-                "A failed new upload must leave the prior result available.")
+        require(server.calculation(token, attempt).stable_body() == committed,
+                "A failed new upload must leave the prior result bytes available.")
         server.assert_private_logs()
     finally:
         server.stop()

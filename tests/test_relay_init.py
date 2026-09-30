@@ -9,7 +9,7 @@ import pytest
 
 from mock_journey.relay_init import initialization_request, main
 from mock_journey.state import _decode
-from tests.test_aws_runtime import configuration
+from tests.aws_runtime_support import configuration
 
 
 def test_generated_request_is_create_only_and_contains_no_due_or_ttl_fields():

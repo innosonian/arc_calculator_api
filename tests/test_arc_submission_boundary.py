@@ -1,4 +1,9 @@
-"""Adversarial tests for the disabled submission boundary, not an ARC contract."""
+"""Adversarial tests for the disabled submission boundary, not an ARC contract.
+
+compose_calculation_response is the trusted lambda_handler result overlay. The
+v1 GET snapshot overlay (compose_calculation_snapshot) was removed with
+/mock/v1 (D103); /api/v2 returns the stored final as it is.
+"""
 
 from copy import deepcopy
 import json
@@ -10,9 +15,9 @@ import sys
 import pytest
 
 import submit_arc
+import services.submission_response as submission_response
 from services.submission_response import (
     compose_calculation_response,
-    compose_calculation_snapshot,
     disabled_submission_status,
 )
 
@@ -49,19 +54,12 @@ def _assert_same_json_values_and_types(left, right):
             assert math.copysign(1, left) == math.copysign(1, right)
 
 
-@pytest.mark.parametrize("wire", ["mapping", "snapshot"])
-def test_stale_success_is_not_submission_authority_and_values_keep_their_types(wire):
+def test_stale_success_is_not_submission_authority_and_values_keep_their_types():
     original = _calculation()
     original["submit_hstm"] = {"ok": True, "receipt": "untrusted-legacy-receipt"}
     original["submit_arc"] = {"status": "succeeded", "ok": True, "error": None}
     before = deepcopy(original)
-    if wire == "mapping":
-        actual = compose_calculation_response(original)
-    else:
-        encoded = json.dumps(original, ensure_ascii=False).encode("utf-8")
-        output = compose_calculation_snapshot(encoded)
-        assert type(output) is bytes
-        actual = json.loads(output)
+    actual = compose_calculation_response(original)
     assert original == before
     assert "submit_hstm" not in actual
     assert actual.pop("submit_arc") == DISABLED
@@ -96,20 +94,10 @@ def test_status_results_are_fresh_and_cannot_poison_future_calls(factory):
     assert factory() == DISABLED
 
 
-@pytest.mark.parametrize("snapshot", [
-    b"", b"{", b"{} trailing", b"\xff", b'{"text":"\xff"}',
-    b"null", b"true", b"123", b'"object-looking string"', b"[]",
-    b'{"metric":1,"metric":2}',
-    b'{"nested":{"metric":1,"metric":2}}',
-    b'{"submit_arc":{"ok":true},"submit_arc":{"ok":false}}',
-    b'{"n":NaN}', b'{"n":Infinity}', b'{"n":-Infinity}',
-    b'{"n":1e400}', b'{"nested":[-1e400]}',
-    "{}", bytearray(b"{}"), memoryview(b"{}"), None, {},
-])
-def test_malformed_or_ambiguous_snapshot_is_rejected_without_details(snapshot):
-    with pytest.raises(ValueError) as raised:
-        compose_calculation_snapshot(snapshot)
-    assert str(raised.value) == "Invalid calculation snapshot."
+def test_v1_snapshot_overlay_is_removed():
+    assert not hasattr(submission_response, "compose_calculation_snapshot")
+    assert {name for name in vars(submission_response) if name.startswith("compose_")} == {
+        "compose_calculation_response"}
 
 
 @pytest.mark.parametrize("value", [
@@ -124,12 +112,13 @@ def test_non_json_calculation_cannot_be_silently_coerced(value):
     assert str(raised.value) == "Invalid calculation result."
 
 
-def test_snapshot_and_mapping_paths_agree_without_normalizing_valid_scalar_types():
+def test_mapping_path_keeps_valid_scalar_types_through_json():
     original = _calculation()
     original["large_integer"] = 2**80 + 1
     response = compose_calculation_response(original)
-    decoded = json.loads(compose_calculation_snapshot(json.dumps(original).encode()))
+    decoded = json.loads(json.dumps(response, allow_nan=False))
     _assert_same_json_values_and_types(response, decoded)
+    assert type(response["large_integer"]) is int and response["large_integer"] == 2**80 + 1
 
 
 def test_response_reads_do_not_invoke_the_submission_module(monkeypatch):
@@ -139,8 +128,6 @@ def test_response_reads_do_not_invoke_the_submission_module(monkeypatch):
     monkeypatch.setattr(submit_arc, "submit_arc", forbidden)
     monkeypatch.setattr(submit_arc, "run", forbidden)
     assert compose_calculation_response(_calculation())["submit_arc"] == DISABLED
-    encoded = compose_calculation_snapshot(json.dumps(_calculation()).encode())
-    assert json.loads(encoded)["submit_arc"] == DISABLED
 
 
 def test_import_direct_lambda_and_read_paths_have_no_network_sdk_or_secret_output():
@@ -178,7 +165,7 @@ builtins.__import__ = guarded_import
 sys.addaudithook(audit)
 
 import submit_arc
-from services.submission_response import compose_calculation_response, compose_calculation_snapshot
+from services.submission_response import compose_calculation_response
 expected = {"status": "disabled", "ok": False, "error": "arc_contract_pending"}
 assert submit_arc.submit_arc() == expected
 event = {
@@ -189,13 +176,12 @@ event = {
 }
 assert submit_arc.run(event, None) == expected
 assert compose_calculation_response({"value": None})["submit_arc"] == expected
-assert json.loads(compose_calculation_snapshot(b'{"value":null}'))["submit_arc"] == expected
 try:
-    compose_calculation_snapshot(('{"' + secret + '":').encode())
+    compose_calculation_response({secret: float("nan")})
 except ValueError as error:
-    assert str(error) == "Invalid calculation snapshot."
+    assert str(error) == "Invalid calculation result."
 else:
-    raise AssertionError("Malformed snapshot was accepted.")
+    raise AssertionError("A non-JSON calculation was accepted.")
 assert not forbidden.intersection(sys.modules)
 '''
     completed = subprocess.run(

@@ -8,56 +8,15 @@ import uuid
 from botocore.exceptions import ClientError, ReadTimeoutError
 import pytest
 
-from mock_journey.dispatch import OutboxRelay, handle_stream
+from mock_journey.dispatch import handle_stream
 from mock_journey.errors import JourneyError
-from mock_journey.jobs import DynamoJobRepository
 from mock_journey.relay_progress import (
     DynamoRelayProgress, RelayGuardedClient, RelayProgressLost,
     RelayProgressUncertain, RelayTimeStopped, relay_call_guard, validate_cursor,
 )
-from mock_journey.state import DynamoStateRepository, _decode, _encode
+from mock_journey.state import _decode, _encode
 from services.operational_logs import _operation_fields
-from tests.relay_progress_support import RelayDynamo
-
-
-SCOPE = dict(environment="unit-relay", partition="aws", account_id="000000000000",
-             region="us-east-2", queue_url="https://sqs.us-east-2.amazonaws.com/000000000000/unit-relay")
-
-
-@pytest.fixture
-def world():
-    db, now, remaining, sent = RelayDynamo(), [1000], [100000], []
-    state = DynamoStateRepository(RelayGuardedClient(db), "unit-relay-table", clock=lambda: now[0], max_conflict_retries=2)
-    progress = DynamoRelayProgress(state, **SCOPE)
-    progress.initialize()
-    jobs = DynamoJobRepository(state)
-    context = SimpleNamespace(get_remaining_time_in_millis=lambda: remaining[0])
-
-    def relay():
-        value = OutboxRelay(jobs, SimpleNamespace(send=lambda ident: sent.append(ident)),
-                            progress=DynamoRelayProgress(state, **SCOPE),
-                            lease_seconds=30, retry_seconds=5, page_size=1, max_pages=1,
-                            clock=lambda: now[0])
-        value.processing_reserve_ms = 100
-        return value
-    return SimpleNamespace(db=db, state=state, progress=progress, jobs=jobs, now=now,
-                           remaining=remaining, sent=sent, context=context, relay=relay)
-
-
-def row(kind, number, *, due=100):
-    ident = str(uuid.UUID(int=number))
-    return {"PK": kind + "#" + ident, "SK": "STATE" if kind == "JOB" else "DISPATCH",
-            "GSI1PK": "DUE#" + kind, "GSI1SK": due, "next_due_at": due,
-            "job_id": ident, "lease_until": 0, "state": "queued" if kind == "JOB" else "pending"}
-
-
-def put(world, *rows):
-    for value in rows:
-        world.db.rows[world.db.key(value)] = deepcopy(value)
-
-
-def cursor(value):
-    return {key: value[key] for key in ("PK", "SK", "GSI1PK", "GSI1SK")}
+from tests.relay_progress_support import SCOPE, cursor, put, row, world  # noqa: F401 (world fixture; re-export)
 
 
 def test_initialization_is_explicit_create_only_and_scope_bound(world):

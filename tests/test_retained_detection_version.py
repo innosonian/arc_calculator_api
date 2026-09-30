@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from mock_journey import typed
-from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
+from mock_journey.contracts import (
+    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+)
 from mock_journey.errors import JourneyError
 from mock_journey.execution_definitions import execution_catalog
 from mock_journey.internal_calculator import InternalCalculator
@@ -50,7 +53,7 @@ def test_old_candidate_recovers_identical_score_count_chart_and_goal(row, monkey
     assert chart.source_sha256 == saved["chart"]["sha256"]
     definition = projected.payload["definition"]
     assessment = evaluate(verified.core_result, definition, verified)
-    checked = DynamoJobRepository._evaluation(assessment, {"definition_json": json.dumps(definition)})
+    checked = DynamoJobRepository.check_evaluation(assessment, {"definition_json": json.dumps(definition)})
     # The repository validates the historical pending-policy shape as well.
     assert checked == assessment and checked is not assessment
     if row["id"] == "mock-cpr":
@@ -79,8 +82,11 @@ def test_old_input_never_executes_current_core_or_changes_binding(row, monkeypat
 
 def test_new_definitions_select_new_detection_version():
     execution = execution_catalog()
-    assert PENDING_GOAL_ADAPTER_VERSION != RETAINED_PENDING_GOAL_ADAPTER_VERSION
-    assert all(pair[0] == PENDING_GOAL_ADAPTER_VERSION for pair in execution.required_bindings)
+    assert len({CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION}) == 3
+    assert CURRENT_ADAPTER_VERSION == CYCLE_GOAL_ADAPTER_VERSION
+    assert all(pair[0] == CURRENT_ADAPTER_VERSION for pair in execution.required_bindings)
+    # D136: the retained pending-v3 adapter still calculates its own attempts;
+    # only the v2 adapter above is verify-only.
     assert InternalCalculator(version=PENDING_GOAL_ADAPTER_VERSION,
                               projection_version="test-projection", stage="test-stage",
                               allow_pending_cycle_goal=True).can_calculate is True

@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 from dataclasses import replace
-from pathlib import Path
 import json
 import subprocess
 import sys
@@ -22,50 +21,15 @@ from mock_journey.course_provider import (
     PROVIDER_SYMBOLS, UnavailableCourseProvider, map_execution, validate_assignments,
     validate_bundle,
 )
-from mock_journey.course_settings import fixture_course_settings
-from mock_journey.models import AuthContext
 from mock_journey.typed import parse_json
+from tests.vcc_provider_support import (  # noqa: F401 (re-export)
+    BUNDLE_DOC, FIXTURES, MAPPING_DOC, ROOT, VECTORS, dummy_principal, load, make_auth, provider, real_principal,
+    settings, vector,
+)
 
 
-ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = ROOT / "tests" / "fixtures" / "vcc_contract" / "v1"
 PYTHON = sys.executable
 GOLDEN_501 = "5de0ca77a8007471240fb4ec49b413a4b524d0f7adb73613c0da3b6d13c2709c"
-
-
-def load(name):
-    return parse_json((FIXTURES / name).read_bytes())
-
-
-BUNDLE_DOC = load("course_bundle.json")
-MAPPING_DOC = load("execution_mapping.json")
-VECTORS = load("typed_id_vectors.json")
-
-
-def settings():
-    return fixture_course_settings()
-
-
-def make_auth(principal):
-    return AuthContext("60000000-0000-4000-8000-000000000001", principal, 1, 2000000000)
-
-
-def provider(**overrides):
-    payload = dict(document=BUNDLE_DOC, settings=settings(), mapping_document=MAPPING_DOC)
-    payload.update(overrides)
-    return FixtureCourseProvider(**payload)
-
-
-def real_principal():
-    return BUNDLE_DOC["learners"]["real"]["principal"]
-
-
-def dummy_principal():
-    return BUNDLE_DOC["learners"]["dummy"]["principal"]
-
-
-def vector(case_id):
-    return next(item for item in VECTORS["cases"] if item["id"] == case_id)
 
 
 class TestImportAndConstruction:

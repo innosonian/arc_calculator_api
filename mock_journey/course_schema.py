@@ -5,14 +5,15 @@ No coercion or missing-field defaults are allowed: Swift Decodable consumers mus
 receive the same scalar and nullable types for every verified snapshot.
 """
 
+from functools import partial
 from math import isfinite
 
 from mock_journey.course_contracts import (
-    ENROLLMENT_FIELDS, FILE_DETAIL_FIELDS, ITEM_DETAIL_OUTER_FIELDS,
+    ENROLLMENT_FIELDS, FILE_DETAIL_FIELDS, FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS,
     TRAINING_PROGRAM_DETAIL_FIELDS, USAGE_VALUES, item_type_wire, parse_owned,
     require_public_id, require_uuid,
 )
-from mock_journey.course_errors import CourseError
+from mock_journey.course_primitives import fail
 
 
 _TRAINING_FIELDS = (
@@ -27,8 +28,12 @@ _GUIDELINE_INTS = (
 _GUIDELINE_NUMBERS = ("compressionDepthMaxInch", "compressionDepthMinInch")
 
 
-def _mismatch():
-    raise CourseError("UPSTREAM_CONTRACT_MISMATCH")
+# Every schema failure is 503 UPSTREAM_CONTRACT_MISMATCH, including the shared
+# public-id and UUID checks that would otherwise answer 400 (D119).
+_MISMATCH = "UPSTREAM_CONTRACT_MISMATCH"
+
+
+_mismatch = partial(fail, _MISMATCH)
 
 
 def _object(value, fields):
@@ -45,10 +50,7 @@ def _scalar(value, scalar_type, *, nullable=False):
 
 
 def _id(value):
-    try:
-        require_public_id(value)
-    except CourseError:
-        _mismatch()
+    require_public_id(value, code=_MISMATCH)
 
 
 def validate_file_detail(value):
@@ -56,7 +58,7 @@ def validate_file_detail(value):
     _id(value["id"])
     _scalar(value["fileName"], str)
     _scalar(value["order"], int)
-    for key in ("url", "contentUrl"):
+    for key in FILE_DETAIL_NULLABLE:
         _scalar(value[key], str, nullable=True)
     return value
 
@@ -131,10 +133,7 @@ def validate_placement_detail(placement):
         _mismatch()
     if value["usage"] not in USAGE_VALUES:
         _mismatch()
-    try:
-        require_uuid(value["logicalId"])
-    except CourseError:
-        _mismatch()
+    require_uuid(value["logicalId"], code=_MISMATCH)
     _scalar(value["description"], str, nullable=True)
     if value["detail"] is not None:
         if placement.kind in ("video", "document"):

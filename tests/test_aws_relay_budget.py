@@ -7,7 +7,7 @@ import pytest
 from mock_journey.aws_runtime import build_runtime
 from mock_journey.aws_settings import AwsSettings
 from mock_journey.errors import JourneyError
-from tests.test_aws_runtime import configuration, environment
+from tests.aws_runtime_support import configuration, environment
 
 
 @pytest.mark.parametrize("mode,attempts,expected", [

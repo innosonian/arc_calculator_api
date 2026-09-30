@@ -14,11 +14,11 @@ import time
 
 from mock_journey.auth import AuthManager
 from mock_journey.calculation import CalculationService
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, slot_key
+from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_key, definition_keys
 from mock_journey.contracts import CalculatorRegistry
 from mock_journey.dispatch import OutboxRelay, QueueSender
 from mock_journey.jobs import DynamoJobRepository
-from mock_journey.projection import ProjectionSchema, SCALAR, _CONDITION, _DOCUMENT, _project
+from mock_journey.projection import ProjectionSchema, SCALAR, definition_core_schema, project
 from mock_journey.service import JourneyService
 from mock_journey.settings import ApiSettings, WorkerSettings, RelaySettings
 from mock_journey.state import DynamoStateRepository
@@ -48,11 +48,7 @@ def _schema_tree(value):
     raise _invalid()
 
 
-_DEFINITION_SCHEMA = {
-    "condition": _CONDITION,
-    "calculation_profile": {key: _DOCUMENT[key] for key in ("Custom", "Open_Skill", "Usage", "Organization")},
-    **{key: SCALAR for key in ("profile_version", "adapter_version", "projection_version")},
-}
+_DEFINITION_SCHEMA = definition_core_schema()
 
 
 class ExecutionCatalog:
@@ -65,7 +61,7 @@ class ExecutionCatalog:
 
     def __init__(self, definitions, schemas):
         try:
-            expected = set(Catalog().slot_keys)
+            expected = set(definition_keys())
             if type(definitions) is not dict or set(definitions) != expected or type(schemas) is not dict:
                 raise _invalid()
             schema_bytes = {}
@@ -84,7 +80,7 @@ class ExecutionCatalog:
                 # Reuse the accepted input shape, without constructing dummy
                 # measurement bytes. Removal of a credential or any coercion
                 # is a configuration error, not an invisible correction.
-                projected = _project(value, _DEFINITION_SCHEMA)
+                projected = project(value, _DEFINITION_SCHEMA)
                 if typed.canonical_bytes(projected) != typed.canonical_bytes(value):
                     raise _invalid()
                 definition_bytes[key] = typed.json_bytes(value)
@@ -105,7 +101,7 @@ class ExecutionCatalog:
             raise _invalid() from None
 
     def get_definition(self, program_id, target):
-        raw = self._definitions.get(slot_key(program_id, target))
+        raw = self._definitions.get(definition_key(program_id, target))
         if raw is None:
             raise _invalid()
         return typed.parse_json(raw)
@@ -135,56 +131,99 @@ def _storage(settings, client, legacy_bindings):
                           namespace={"bucket": settings.bucket, "directory": settings.directory})
 
 
-def build_application(settings, *, dynamodb_client, s3_client, legacy_bindings, resume_keys,
-                      current_key_version, execution, clock=time.time, operations=None):
-    """API role only: no SQS client or calculator adapter is requested."""
-    try:
-        if type(settings) is not ApiSettings or type(execution) is not ExecutionCatalog:
-            raise _invalid()
-        if type(resume_keys) is not dict or type(current_key_version) is not str:
-            raise _invalid()
-        auth = AuthManager(None, settings.environment, resume_keys, current_key_version, clock=clock)
-        state = _state(settings.state, dynamodb_client, clock)
-        storage = _storage(settings.storage, s3_client, legacy_bindings)
-        jobs = DynamoJobRepository(state, course_blobs=CourseBlobStore(storage))
-        calculation = CalculationService(state, jobs, storage, execution.schemas,
-                                         payload_limit=settings.payload_limit, clock=clock)
-        auth.state = state
-        return JourneyService(state, auth, Catalog(execution), calculation, operations=operations)
-    except Exception:
-        raise _invalid() from None
+def _build_core(settings, *, dynamodb_client, s3_client, legacy_bindings, resume_keys,
+                current_key_version, execution, clock, operations, blob_store=None):
+    """Shared API parts (auth, state, calculation) under the course application.
+
+    Private: the only public API role is build_course_application. No SQS
+    client or calculator adapter is requested. The job repository receives
+    the one course blob store (``blob_store`` or a store over this storage)
+    that the course repository is then assembled with.
+    """
+    if type(settings) is not ApiSettings or type(execution) is not ExecutionCatalog:
+        raise _invalid()
+    if type(resume_keys) is not dict or type(current_key_version) is not str:
+        raise _invalid()
+    # Every failure below surfaces as the same sanitized _invalid(), so
+    # building the state before the key-validating AuthManager is not observable.
+    state = _state(settings.state, dynamodb_client, clock)
+    auth = AuthManager(state, settings.environment, resume_keys, current_key_version, clock=clock)
+    storage = _storage(settings.storage, s3_client, legacy_bindings)
+    jobs = DynamoJobRepository(state, course_blobs=blob_store if blob_store is not None else CourseBlobStore(storage))
+    calculation = CalculationService(state, jobs, storage, execution.schemas,
+                                     payload_limit=settings.payload_limit, clock=clock)
+    return JourneyService(state, auth, calculation, operations=operations)
 
 
 def build_course_application(settings, *, dynamodb_client, s3_client, legacy_bindings, resume_keys,
                              current_key_version, execution, provider, course_settings,
                              clock=time.time, operations=None, uuid_factory=None,
                              mapping_document=None, dummy_learner=None, blob_store=None):
-    """API role with explicit course_v2 HTTP. Existing 15-definition catalog is retained."""
+    """API role: the /api/v2 course application over the approved 15-definition catalog."""
     import uuid as uuid_module
     try:
-        journey = build_application(
+        journey = _build_core(
             settings, dynamodb_client=dynamodb_client, s3_client=s3_client,
             legacy_bindings=legacy_bindings, resume_keys=resume_keys,
             current_key_version=current_key_version, execution=execution,
-            clock=clock, operations=operations,
+            clock=clock, operations=operations, blob_store=blob_store,
         )
+        # The course repository shares the job repository's blob store object.
         return assemble_course(
             journey, provider=provider, course_settings=course_settings, clock=clock,
             uuid_factory=uuid_factory or uuid_module.uuid4, mapping_document=mapping_document,
-            dummy_learner=dummy_learner, blob_store=blob_store,
+            dummy_learner=dummy_learner, blob_store=journey.calculation.jobs.course_blobs,
         )
     except Exception:
         raise _invalid() from None
 
 
+def internal_calculator(version, *, projection, stage):
+    """The InternalCalculator of one registered adapter version (its fixed meaning).
+
+    A pending adapter (v2 verify-only, v3 still calculating) keeps a cycles
+    goal pending_policy and has no resolver; the cycle-goal adapter (v4) is
+    bound to the D136 closed-cycle rule. An unregistered version is a
+    composition error, never a guess.
+    """
+    from mock_journey.contracts import CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSIONS
+    from mock_journey.internal_calculator import InternalCalculator
+    if version in PENDING_GOAL_ADAPTER_VERSIONS:
+        return InternalCalculator(version=version, projection_version=projection, stage=stage,
+                                  allow_pending_cycle_goal=True)
+    if version == CYCLE_GOAL_ADAPTER_VERSION:
+        from mock_journey.cycle_goal import closed_cycle_count
+        return InternalCalculator(version=version, projection_version=projection, stage=stage,
+                                  cycle_goal_resolver=closed_cycle_count)
+    raise _invalid()
+
+
+def worker_adapters(current, retained, *, projection, stage):
+    """Internal calculators for the current and each retained adapter version, in that order.
+
+    One list for the AWS and the local worker composition. Retained versions
+    are named by the caller; nothing is discovered from stored jobs.
+    """
+    return [internal_calculator(version, projection=projection, stage=stage)
+            for version in (current, *retained)]
+
+
+def worker_required_bindings(execution, retained, *, projection):
+    """build_worker's required_bindings: the catalog's bindings, then each retained (version, projection)."""
+    return execution.required_bindings + tuple((version, projection) for version in retained)
+
+
 def build_worker(settings, *, dynamodb_client, s3_client, legacy_bindings, adapters,
                  required_bindings, clock=time.time, lease_guard_factory=None, operations=None,
-                 completion_plan=None):
+                 completion_plan=None, processing_reserve_ms=None):
     """Worker role: explicitly retain every supplied current/old binding.
 
-    Pass execution.required_bindings plus the verified retained-job bindings.
-    This function does not query a table to discover which versions to retain.
-    It never receives the API's login/resume keys or creates an HTTP adapter.
+    Pass execution.required_bindings plus the verified retained-job bindings
+    (worker_required_bindings). This function does not query a table to
+    discover which versions to retain. It never receives the API's
+    login/resume keys or creates an HTTP adapter. ``processing_reserve_ms``
+    is the AWS invocation time admission read by ``worker.handle``; None
+    (local) admits every record.
     """
     try:
         if type(settings) is not WorkerSettings or type(adapters) not in (list, tuple):
@@ -203,16 +242,26 @@ def build_worker(settings, *, dynamodb_client, s3_client, legacy_bindings, adapt
             registry.resolve(version, projection)
         state = _state(settings.state, dynamodb_client, clock)
         storage = _storage(settings.storage, s3_client, legacy_bindings)
-        return JourneyWorker(DynamoJobRepository(state, course_blobs=CourseBlobStore(storage)), storage, registry,
-                             lease_seconds=settings.lease_seconds, retry_seconds=settings.retry_seconds,
-                             clock=clock, lease_guard_factory=lease_guard_factory, operations=operations,
-                             completion_plan=completion_plan if completion_plan is not None else CourseCompletionPlan())
+        worker = JourneyWorker(DynamoJobRepository(state, course_blobs=CourseBlobStore(storage)), storage, registry,
+                               lease_seconds=settings.lease_seconds, retry_seconds=settings.retry_seconds,
+                               clock=clock, lease_guard_factory=lease_guard_factory, operations=operations,
+                               completion_plan=completion_plan if completion_plan is not None else CourseCompletionPlan())
+        if processing_reserve_ms is not None:
+            # JourneyWorker takes no such constructor argument; the attribute
+            # stays absent (getattr default None) for local compositions.
+            worker.processing_reserve_ms = processing_reserve_ms
+        return worker
     except Exception:
         raise _invalid() from None
 
 
-def build_relay(settings, *, dynamodb_client, sqs_client, clock=time.time, progress_scope=None):
-    """Relay role only: no user keys, S3 binding, profile or calculator."""
+def build_relay(settings, *, dynamodb_client, sqs_client, clock=time.time, progress_scope=None,
+                processing_reserve_ms=None, relay_budget=None):
+    """Relay role only: no user keys, S3 binding, profile or calculator.
+
+    ``processing_reserve_ms``/``relay_budget`` are the AWS invocation time
+    admission (AwsSettings); None (local) admits every step.
+    """
     try:
         if type(settings) is not RelaySettings or sqs_client is None:
             raise _invalid()
@@ -232,6 +281,7 @@ def build_relay(settings, *, dynamodb_client, sqs_client, clock=time.time, progr
         return OutboxRelay(DynamoJobRepository(state), QueueSender(sqs_client, settings.queue_url),
                            lease_seconds=settings.lease_seconds, retry_seconds=settings.retry_seconds,
                            page_size=settings.page_size, max_pages=settings.max_pages, clock=clock,
-                           progress=progress)
+                           progress=progress, processing_reserve_ms=processing_reserve_ms,
+                           relay_budget=relay_budget)
     except Exception:
         raise _invalid() from None

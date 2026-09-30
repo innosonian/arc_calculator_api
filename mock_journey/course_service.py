@@ -4,18 +4,23 @@ from mock_journey.course_contracts import (
     AssignmentBinding, AttemptTemplate, ContentReport, CourseBundle, CourseView, GateView,
     InventoryTicket, InventoryView, LearnerContext, RefreshResult, StartCommand, StartReceipt,
     StoredProgressReceipt, PAGE_DEFAULT, PAGE_SIZE_MAX, learner_identity, require_public_id, scope_identity,
+    waiting_reason_for,
 )
-from mock_journey.course_errors import CourseError
-from mock_journey.course_response import course_list_bytes, item_detail_bytes
+from mock_journey.course_errors import AUTH_ERROR_CODES, CourseError
+from mock_journey.course_response import course_list_data, item_detail_data
 from mock_journey.models import AuthContext
-from mock_journey.typed import digest
+from mock_journey.typed import canonical_bytes, digest
 
 
-_AUTH_CODES = frozenset({
-    "LOGIN_FAILED", "SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_REVOKED",
-})
 _CONTENT_KINDS = frozenset({"video", "document"})
 _ATTEMPT_KINDS = frozenset({"training", "assessment"})
+
+
+def _wire(data):
+    # The wire dict is handed to the HTTP envelope as is; this keeps the typed
+    # JSON check the former bytes round trip performed (finite numbers, str keys).
+    canonical_bytes(data)
+    return data
 
 
 class CourseService:
@@ -36,7 +41,7 @@ class CourseService:
             if type(learner) is not LearnerContext or learner.principal != auth.principal:
                 raise CourseError("UPSTREAM_CONTRACT_MISMATCH")
         except CourseError as error:
-            if error.code in _AUTH_CODES or ticket is None:
+            if error.code in AUTH_ERROR_CODES or ticket is None:
                 raise
             return self._stored_refresh_result(auth, self._repository.apply_inventory(auth, ticket, error))
         except Exception:
@@ -67,7 +72,7 @@ class CourseService:
             try:
                 gates.append(self._repository.load_view(auth, binding.public_ids).gate)
             except CourseError as error:
-                if error.code in _AUTH_CODES:
+                if error.code in AUTH_ERROR_CODES:
                     raise
                 gates.append(self._waiting_gate(binding, error))
         return RefreshResult(inventory, tuple(gates))
@@ -76,7 +81,7 @@ class CourseService:
         """Read the session availability snapshot without starting an ARC refresh."""
         return self._stored_refresh_result(auth, self._repository.load_inventory_for_session(auth))
 
-    def list_courses(self, auth: AuthContext, *, page: int, page_size: int) -> bytes:
+    def list_courses(self, auth: AuthContext, *, page: int, page_size: int) -> dict:
         if type(page) is not int or type(page_size) is not int or page < PAGE_DEFAULT:
             raise CourseError("INVALID_REQUEST")
         if page_size < 1 or page_size > PAGE_SIZE_MAX:
@@ -85,11 +90,11 @@ class CourseService:
         views = [self._repository.load_view(auth, binding.public_ids) for binding in assignments]
         views.sort(key=lambda view: (view.public_ids.course_id, view.public_ids.enrollment_id))
         start = (page - 1) * page_size
-        return course_list_bytes(views[start:start + page_size], count=len(views), page=page, page_size=page_size)
+        return _wire(course_list_data(views[start:start + page_size], count=len(views), page=page, page_size=page_size))
 
     def get_course(self, auth: AuthContext, *, course_id: int, enrollment_id: int) -> CourseView:
-        require_public_id(course_id)
-        require_public_id(enrollment_id)
+        require_public_id(course_id, code="INVALID_REQUEST")
+        require_public_id(enrollment_id, code="INVALID_REQUEST")
         _, assignments = self._stored_assignments(auth)
         binding = self._assignment(assignments, course_id, enrollment_id)
         view = self._repository.load_view(auth, binding.public_ids)
@@ -99,10 +104,10 @@ class CourseService:
 
     def get_item(
         self, auth: AuthContext, *, course_id: int, enrollment_id: int, placement_id: int,
-    ) -> bytes:
-        require_public_id(placement_id)
+    ) -> dict:
+        require_public_id(placement_id, code="INVALID_REQUEST")
         view = self.get_course(auth, course_id=course_id, enrollment_id=enrollment_id)
-        return item_detail_bytes(view, placement_id)
+        return _wire(item_detail_data(view, placement_id))
 
     def start_content(self, auth: AuthContext, command: StartCommand) -> StartReceipt:
         return self._start(auth, command, kind="content")
@@ -114,9 +119,9 @@ class CourseService:
         self, auth: AuthContext, *, course_id: int, enrollment_id: int, placement_id: int,
         report: ContentReport,
     ) -> StoredProgressReceipt:
-        require_public_id(course_id)
-        require_public_id(enrollment_id)
-        require_public_id(placement_id)
+        require_public_id(course_id, code="INVALID_REQUEST")
+        require_public_id(enrollment_id, code="INVALID_REQUEST")
+        require_public_id(placement_id, code="INVALID_REQUEST")
         if type(report) is not ContentReport:
             raise CourseError("INVALID_REQUEST")
         return self._repository.report(
@@ -160,7 +165,7 @@ class CourseService:
         try:
             assignments = self._provider.list_assignments(learner)
         except CourseError as error:
-            if error.code in _AUTH_CODES:
+            if error.code in AUTH_ERROR_CODES:
                 raise
             return error
         except Exception:
@@ -179,14 +184,14 @@ class CourseService:
             self._repository.ensure_epoch(auth, binding)
             refresh_ticket = self._repository.begin_refresh(auth, binding, ticket)
         except CourseError as error:
-            if error.code in _AUTH_CODES:
+            if error.code in AUTH_ERROR_CODES:
                 raise
             return self._waiting_gate(binding, error)
         bundle_or_error = self._fetch_bundle(binding)
         try:
             return self._repository.apply_refresh(auth, refresh_ticket, bundle_or_error)
         except CourseError as error:
-            if error.code in _AUTH_CODES:
+            if error.code in AUTH_ERROR_CODES:
                 raise
             return self._waiting_gate(binding, error)
 
@@ -194,7 +199,7 @@ class CourseService:
         try:
             bundle = self._provider.fetch_bundle(binding)
         except CourseError as error:
-            if error.code in _AUTH_CODES:
+            if error.code in AUTH_ERROR_CODES:
                 raise
             return error
         except Exception:
@@ -204,7 +209,7 @@ class CourseService:
         return bundle
 
     def _waiting_gate(self, binding, error):
-        reason = "contract_pending" if error.code == "CONTRACT_PENDING" else "arc_progress_unavailable"
+        reason = waiting_reason_for(error)
         return GateView(digest(scope_identity(binding.scope)), "unavailable", "waiting", reason, 0, None)
 
     def _assignment(self, assignments, course_id, enrollment_id):

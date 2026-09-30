@@ -1,10 +1,95 @@
 # 검증 상태와 재현 방법
 
-최신 전체 회귀: **2026-09-22 AWS Dev Dummy 배포 준비 고도화 후 로컬 전체 3312 passed, 9 subtests passed**, exit 0. 이번 검토는 `/api/v2`·공유 Dummy Dev 범위이며 아래의 2026-09-18 AI 5인 인수 기록과 구별한다. **소스·배포 ZIP 준비 검증과 사용자 실행 AWS HTTPS 로그인·조회, 기존 압박 파일 한 건의 실제 계산·일반 훈련 완료·진도 반영, S3 원본·최종 결과 일치와 운용 로그·서명 차트 다운로드·익명 접근 차단은 통과했다. 동일 파일의 최종평가 합격·두 항목 완료/통과·과정 FINISHED, 같은 계정의 다른 유효 세션에서 기존 훈련·결과·차트 발급 차단과 원래 결과 보존도 확인했다. 서명 차트의 실제300초 만료 거절과 재발급·동일 차트 확인, 완료한 일반 훈련의 순차 재전송과 훈련·작업·접수 기록·결과 보존도 통과했다. 이 범위의 기본 Dev 시험은 통과해 앱 연결 시험을 시작할 수 있다. 동시/처리 중 재전송·세션 만료/복구·장애·실물 앱·용량/비용 등을 포함한 전체 AWS 인수는 미완료**다. 2026-09-23~24 사용자의 자원 생성·실행 출력과 에이전트의 오프라인 설정 검증은 아래에 구별한다.
+**최신 로컬 전체 회귀(2026-09-30, 2차 정리 D122~D128·테스터 이슈 D129~D132·후속 D133~D135·CPR 사이클 규칙 D136 반영 후):** `scripts/validate_local_integration.py --suite all`(새 임시 DynamoDB Local 3.3.1) **5381 passed, 9 subtests passed**, 경고 0건, 8분 17초, exit 0. CI 오프라인 부분집합(`scripts/run_actions_regression.py`)은 **4308 passed, 9 subtests passed**, 1분 45초. 같은 날 실제 로컬 CLI 스모크(임시 포트 18090/18091): 성인 CPR 연습에 `cpr_2.bin` → `goal {observed 3, required 3, met true, status evaluated}`·점수 pass → `isCompleted/isPassed true`, 완료 후 재시작 201, 마지막 평가 합격 → 과정 `FINISHED`. 두 실행은 겹치므로 합산하지 않는다. 같은 날 실제 로컬 CLI 스모크(임시 폴더·임시 포트 18080/18081): 로그인 `userName`, 항목 상세 `training` 조건·`trainingMode`, 영아 호흡 Only 연습 완료(`isCompleted/isPassed` true), 완료 후 재시작 201, 로그에 토큰 없음. 이전 기준(2026-09-29): `scripts/validate_local_integration.py --suite all`(새 임시 DynamoDB Local 3.3.1) **5159 passed, 9 subtests passed**, 경고 0건(`pytest.ini`가 서드파티 botocore의 `datetime.utcnow` 폐기 예고 경고만 숨김), 9분 51초, exit 0. 같은 날 작업 전 기준선은 3312 passed, 9 subtests passed(4분 17초)였다. CI 오프라인 부분집합(`scripts/run_actions_regression.py`, waitress 없는 CI 의존성, 소켓 연결·AWS client 차단)은 **4094 passed, 9 subtests passed**, 2분 41초다. 두 실행은 겹치므로 합산하지 않는다. 임시 데이터 폴더·임시 포트로 띄운 실제 로컬 CLI에서 `/healthz` 200(`mode: course_v2`), Dummy 로그인 201, 과정 목록 15개, `/mock/v1` 404를 확인했다.
 
-이는 사람의 인증·실물 앱 인수·AWS 운영 승인·ARC 공식 승인이 아니다. 기본 서버는 `/mock/v1`, 새 과정 모델은 명시 조립한 `course_v2`/`/api/v2`다. 실제 외부 송신은 비활성이고 에이전트가 기본 서버 전환·commit·push·AWS 배포를 수행하지 않았다.
+**이번 검증 범위:** 로컬 Mac의 시험과 CI 오프라인 부분집합의 로컬 실행뿐이다. 실물 앱·마네킨, 2026-09-28 코드의 AWS 실제 실행(ZIP 재빌드·Lambda 갱신 포함), ARC 공식 인수는 하지 않았다. 새 PR CI 구성(D111)은 GitHub runner에서 실행된 적이 없다. commit·push·배포는 하지 않았다. 작업 내용은 [2026-09-28 코드 리뷰 후속 작업](#2026-09-28-코드-리뷰-후속-작업)에 있다.
+
+**AWS Dev(2026-09-23~24 사용자 실행 출력, 코드 리뷰 후속 변경 이전 ZIP):** 이 검토는 `/api/v2`·공유 Dummy Dev 범위이며 아래의 2026-09-18 AI 5인 인수 기록과 구별한다. **소스·배포 ZIP 준비 검증과 사용자 실행 AWS HTTPS 로그인·조회, 기존 압박 파일 한 건의 실제 계산·일반 훈련 완료·진도 반영, S3 원본·최종 결과 일치와 운용 로그·서명 차트 다운로드·익명 접근 차단은 통과했다. 동일 파일의 최종평가 합격·두 항목 완료/통과·과정 FINISHED, 같은 계정의 다른 유효 세션에서 기존 훈련·결과·차트 발급 차단과 원래 결과 보존도 확인했다. 서명 차트의 실제300초 만료 거절과 재발급·동일 차트 확인, 완료한 일반 훈련의 순차 재전송과 훈련·작업·접수 기록·결과 보존도 통과했다. 이 범위의 기본 Dev 시험은 통과해 앱 연결 시험을 시작할 수 있다. 동시/처리 중 재전송·세션 만료/복구·장애·실물 앱·용량/비용 등을 포함한 전체 AWS 인수는 미완료**다. 2026-09-23~24 사용자의 자원 생성·실행 출력과 에이전트의 오프라인 설정 검증은 아래에 구별한다.
+
+이는 사람의 인증·실물 앱 인수·AWS 운영 승인·ARC 공식 승인이 아니다. 현재 코드의 기본 로컬 실행과 AWS API 조립은 모두 `/api/v2`이며 `/mock/v1`·`/cpr-analysis`는 삭제됐다(D103). 실제 외부 송신은 비활성이고 에이전트는 commit·push·AWS 배포를 수행하지 않았다.
 
 현재 구조는 [ARCHITECTURE](ARCHITECTURE.md), 확정 정책과 미정 계약은 [DECISIONS](DECISIONS.md), 앱 연결 계약은 [APP_API](APP_API.md), 실행 환경 준비는 [LOCAL_RUN](LOCAL_RUN.md)을 따른다. 이 문서는 현재 재현 가능한 시험과 최신 검토 결과만 유지한다.
+
+## 2026-09-28 코드 리뷰 후속 작업
+
+코드 리뷰 뒤 사용자 결정 D102~D121을 구현하고 `/mock/v1`을 삭제했으며(D103), 결과가 바뀌지 않는 품질 정리를 했다. 시험 수는 이 문서 첫 문단을 따른다. 모두 로컬 시험이며 AWS·실물 앱·ARC 검증이 아니다.
+
+### 결정 구현
+
+| 결정 | 구현·검증 |
+|---|---|
+| D102·D121 계산 파일 해시 재등록 | `calculators/waveform.py`(탭 필터 폭 O(n))·`transformers/part_divider.py`(AED 겹침 정렬+이진 탐색)의 provenance 해시를 파일별로 재등록하고 미사용 `config/guidelines.py`를 삭제했다. 기존 계산 골든·참고 구현 대조·독립 검출 oracle에 더해 `tests/test_repin_equivalence.py`가 원래 구현 복사본과 고정 seed 무작위 입력 각 3000건을 대조한다(결과·키 순서·반환 객체 동일, 변이 4종 검출). 로컬 Mac에서 전체 회귀와 동시에 잰 참고값: 압박 Only 적대 입력 48000패킷(1.34MB) 112.75초→0.99초, CPR 17800패킷+AED 이벤트 50000개(0.998MB) 16.89초→0.64초. 결과 sha256은 전후 동일 |
+| D104 계산 재시작 5회 한도 | `tests/test_job_restart_limit.py`, `integration_tests/test_job_restart_limit_dynamodb.py`: legacy·과정 작업의 강제 종료/예외 중단, 후보 재개, 부분 쓰기 0, stale 증거·fence 거절, 종결 뒤 Relay 비각성. D117 사유 순서 매트릭스 포함 |
+| D105·D106·D116·D118 | 거래 action 하한·업로드 크기 관계·커밋 시점 세션 만료·빈 과정명/제목 거절. `tests/test_course_guards_settings.py`, `integration_tests/test_course_session_expiry_dynamodb.py` |
+| D107 거절 로그·`http_request_id` | `tests/test_v2_observability.py`, `http_pipeline_tests/test_v2_observability_http.py`. 앱 응답은 불변 |
+| D109 Relay 처리량 | `tests/test_relay_backlog_throughput.py`. 메모리 DynamoDB 대역 시뮬레이션(종류별 한도 20×5)에서 due JOB 1000건을 모두 깨우는 호출 수가 1000회→10회. 처리할 항목이 없는 호출의 SDK 호출 9회는 그대로 |
+| D111 PR CI | 스위트 정의 `scripts/test_suites.py`와 `tests/test_ci_suites.py`, `scripts/validate_actions.py`의 workflow 정적 검사, actionlint. 세 job 분할(validate/integration/boundary)의 로컬 실측(2026-09-29 분할 작업 사본 기준): offline 4093·integration 303·boundary 762 passed(합계 = 당시 `--suite all` 5158). 2026-09-30 최신 수치는 문서 상단. GitHub runner 실행은 없음 |
+| D114·D115 | 보조 Lambda 코드·시드·시험 삭제. `scripts/verify_reference_parity.py`는 `--output-dir` 없이 실행하면 종료 2이며 골든을 읽거나 쓰지 않음(`tests/test_verify_reference_parity_cli.py`) |
+| D108·D110·D112·D113·D119·D120 | 코드 동작 변경 없음. D119의 경로별 현재 오류 코드는 `tests/test_course_api_layer_characterization.py`가 고정 |
+| D129 로그인 `userName` | `tests/test_vcc_api.py`·`tests/test_course_api_layer_characterization.py`(로그인 `data` 순서 …, accessToken, tokenType, userName="Test User"; 세션 GET/refresh는 3필드), `local_server_tests/test_live_server.py`(실제 CLI 로그인), `integration_tests/test_aws_dev_course_journey.py`. 골든 `v2_baseline/flow_responses.json`·`legacy_compat.json`·`vcc_contract/v1/wire_cases.json`의 로그인 응답에 `userName`만 추가 |
+| D130·D131 통과 무관 반복 수행·진도 비후퇴 | `tests/test_repeat_after_pass.py`(메모리)·`integration_tests/test_repeat_after_pass_dynamodb.py`(DynamoDB Local; 같은 시나리오 `tests/repeat_after_pass_support.py`): 완료 훈련 재시작 201·재수행 결과 `ALREADY_COMPLETED`·`isCompleted/isPassed` 유지, 합격 후 재응시 201·FINAL `passed_attempt_id` 유지·목록 FINISHED 유지·동시 두 번째 409 `FINAL_ASSESSMENT_ACTIVE`·불합격 종료/취소/복구 해제 뒤 phase `passed` 복귀·재합격 시 합격 근거 최신 시도로 갱신·앞선 항목 미완료 409 유지. 기대값이 바뀐 기존 시험: `tests/test_vcc_policy.py`·`test_vcc_state.py`, `http_pipeline_tests/test_vcc_course_lifecycle_http.py`, `integration_tests/test_course_worker_recovery.py`·`test_local_completion_state.py`·`test_session_attempt_state_dynamodb.py`·`test_aws_dev_course_journey.py`, `local_server_tests/test_journey_runtime.py`·`test_journey_state_live.py`. 골든 변화: `wire_cases.json`의 409 사례 2개 삭제, `write_requests.json`의 ITEM ConditionCheck 3건에서 `completed=false` 조건 제거(시작이 완료 여부를 조건으로 걸지 않음). `ITEM_ALREADY_COMPLETED`·`ASSESSMENT_ALREADY_PASSED` 코드 삭제 |
+| D136 CPR 사이클 완료 규칙 | `tests/test_cycle_goal.py`(101건: resolver 단위·합성 사이클·실제 데이터셋 cpr_1~5 판정표 observed 1/3/2/3/4·2인 8/10 기준·v4 생성자 거절·pending-v3 계산 가능·pending-v2 검증 전용·AWS 설정 매트릭스·healthz cycles=evaluated·V2Journey CPR 연습/최종평가), `integration_tests/test_cycle_goal_dynamodb.py`. 기대값이 바뀐 기존 시험: 버전 레지스트리·조립·AWS 설정 특성화, `integration_tests/test_local_completion_state.py`·`test_local_filesystem_journey.py`·`test_course_worker_recovery.py`, `local_server_tests/test_journey_matrix_live.py`·`test_http_guard_order.py`·`test_runtime.py`(배너). 골든: DummyDev 정의의 어댑터/프로파일·`definitionHash`·정의 digest만 변경(68개 leaf, evaluation 값 변화 없음), `worker_call_order/memory_traces.json` 어댑터 문자열, `wire_cases.json`에 evaluated 케이스 추가 |
+| D132 DummyDev `training` 조건 | `tests/test_dev_course_training_settings.py`(15과정 × 연습/평가 항목: 최소량·비율·ARC2025 범위·`twoRescuers`·`passThreshold` 80·`trainingMode`, 스키마 통과). 골든 변화: DummyDev 번들 내용이 바뀌어 `v2_baseline/flow_rows.json`·`legacy_compat.json`·`write_requests.json`의 `bundle_ref`(과정별 blob sha256) 15개를 새 값으로 치환(다른 항목 diff 없음) |
+
+### `/mock/v1` 삭제(D103)
+
+- 순서는 **소비자 이전 → 제공자 삭제**다. 삭제 전 코드에서 v2 기준선 골든을 캡처하고, v1 경로를 쓰던 시험·로컬 서버·AWS 조립을 `/api/v2` 또는 저장 행 fixture로 옮긴 뒤 v1 경로·전용 코드·시험을 삭제했다.
+- 삭제한 시험마다 대체 시험을 정했다: `tests/test_mock_route_contract.py`→`tests/test_vcc_wiring.py`, `tests/test_authenticated_calculation_http.py`→`tests/test_v2_calculation_boundary.py`, `integration_tests/test_mock_journey.py`→`test_course_worker_recovery.py`·`test_legacy_worker_recovery.py`, `test_mock_state_dynamodb.py`→`test_session_attempt_state_dynamodb.py`, `test_mock_http_dynamodb.py`→`test_v2_http_dynamodb.py`. 검토에서 찾은 공백은 v2 시험으로 옮기거나 보강했다: 업로드 Content-Type 모호성 검사(`tests/test_v2_measurement_content_type.py`, `tests/test_course_http_headers.py`), typed 명령의 입력 검사·이벤트 순서(`tests/test_journey_commands.py`), live 상태 시험의 epoch·저장 행 단정.
+- legacy 호환: `tests/fixtures/legacy_mock_v1_rows/`는 삭제 전 `/mock/v1` 경로가 격리된 DynamoDB Local에 남긴 저장 행(slot 있는 USER, 세션, created/queued/evaluated 시도와 JOB/OUTBOX, 입력 파일)이다. 이 행에서 조회·재인가·취소·계산 마무리가 동작하는지 `integration_tests/test_legacy_worker_recovery.py`, `test_vcc_process_restart.py`, `test_job_restart_limit_dynamodb.py`와 v2 기준선의 `legacy_compat.json`이 확인한다.
+- 의도한 동작 변화: 새 USER 행의 v1 slot 없음, 업로드 Content-Type 400 규칙의 v2 이식, 로컬 서버의 query 허용을 `/api/v2/` 경로로 한정(`/healthz`·`/`·서명 차트 URL에 query가 있으면 400)하고 `X-Attempt-ID`를 검사하지 않음. 제품 코드의 v1 식별자 검색 결과는 허용 목록(운용 기록 호환 진단값 `/cpr-analysis`, 숨긴 `--control-only` 거절, 과거 자료인 Gateway 배포 도구)뿐이다.
+- 삭제 직후 로컬 연기 시험: `/healthz` 200 `course_v2`, 로그인 201, 과정 15개, 업로드 202, 결과 200, 다른 세션 재인가 200, 취소 204, `/mock/v1`·`/cpr-analysis` 404.
+
+### 품질 정리
+
+각 단위는 특성화 시험을 먼저 추가해 기준 코드에서 통과를 확인한 뒤 코드를 옮겼다. D102로 재등록한 두 파일 외의 해시 고정 파일과 기존 골든·기대값은 바꾸지 않았다. 구조는 [ARCHITECTURE §2](ARCHITECTURE.md#2-코드-지도와-의존-방향)에 반영했다.
+
+- legacy 파서 → `services/http/legacy_request.py`, guideline 식별자 → `config/guideline_registry.py`, `calculate_cpr` 단계 실행 helper 통합.
+- 로컬 서버 → `local_server/constants.py`·`addresses.py`·`private_fs.py`, WSGI 가드 함수 추출(검사 순서 동일).
+- 과정 API 계층 → `mock_journey/course_primitives.py`(오류 코드는 호출부 명시, D119).
+- 저장 키·레코드·식별자 → `mock_journey/storage_keys.py`·`course_records.py`·`aws_scope.py`, `util/legacy_layout.py`, `contracts.py`의 binding·버전 레지스트리.
+- `course_state.py` → `course_repo_core/inventory/refresh/start/report.py`(옮긴 정의 59개의 AST 동일), 메모리 fake → `tests/course_store_fakes.py`.
+- `JourneyWorker._process` → 단계 메서드. 조립 뒤 속성 대입 → 생성자·factory 인자와 `AwsRoleRuntime.bind_target()`, `course_v2` 표식 → `mock_journey/course_mode.py`.
+- 시험 기반: 공용 네트워크 가드 `tests/network_guard_support.py`(로컬 `pytest`의 `tests/` 단위 시험도 CI와 같은 소켓·SDK 차단), `*_support.py` 도우미, `pytest.ini` 경고 필터. `tests/_synth.py`는 reference_parity 증거의 `generator_sha256`에 묶여 바꾸지 않았다.
+- `tests/test_import_structure.py`가 import 순환과 하위 계층 상향 간선을 허용 목록으로 고정한다.
+
+2026-09-30 두 번째 정리(D122~D128, 미커밋 변경 검토 후속)도 같은 방식으로 했다.
+- 로컬 서버: 숨긴 플래그 제거(D123, argparse 오류 exit 2), 제어 전용 표 이행 제거(D122, journey 스키마만 인식·거절 시 무쓰기), `private_fs.create_private_file` 공통화, 실행기 스위트 예산(600/600/1800초·exit 3), `local_server_tests/conftest.py`의 autouse 네트워크 가드와 `loopback` 마커, `/healthz` 완료 정책을 `catalog.PROGRAMS`에서 파생.
+- 핵심 저장·Worker: `storage.py`가 `util/legacy_layout` 사용, D127 정확 일치(순서 포함·빈 목록 거절; 2원소 레지스트리 매트릭스 시험), `state.legacy_progress` 순수 함수·`_restart_limit_closure` 분리(DB 쓰기 요청 골든 바이트 동일), `worker._close_restart_limit`·`_RunContext.refresh` 통일(호출 순서 골든 불변), `contracts.binding_from_row`(state·jobs의 D119 차이는 인자로 보존), `aws_scope.MAX_ENVIRONMENT_LENGTH` 단일 출처.
+- 과정 계층: `CourseHooks`·DTO 4종(D128, `session_check` 신설로 refresh가 저장 스냅샷을 읽지 않음), `_load_snapshot` 통합(두 로더의 D119 오류 차이는 분기로 보존), 측정 base64 조각 검증(해제 1회; 조각 크기 4/8/12·무작위 3040건 동등 시험), `require_text` 18곳, `_WRITE_FORBIDDEN_KEYS` 집합 literal 고정, `course_state` 52줄로 축소, manifest `field_scope`·`routes[].query`·`methods` 대조, 오류 envelope 특성화 `tests/test_v2_error_envelope_characterization.py`(400/401/405/413/422/503·페이지 링크 literal).
+- 진입·계산: `lambda_handler` 재내보내기 축소(D126), `guideline_registry`에 `TARGETS`/`TRAINING_TYPES`, `calculate_cpr` 단계 문맥 관리자(진단 stacktrace 첫 프레임 원본과 동일 시험).
+- CI: manifest `archive`(URL·sha256)와 workflow 값 대조(`validate_actions.py check`), archive 로컬 검증(위 표), 골든 캡처 도구 `scripts/capture_baselines.py`(D125).
+- 2026-09-30 후속 결정: 시작 첫 반복의 receipt 재읽기 생략(D133, `tests/test_course_repository_sequences.py` 읽기 순서 기대값 갱신), 재시작 한도 종결 거부 시 현행 유지(D134), `validate_aws_dev_bundle`의 도달 불가 `EXECUTION_VERSION_MISMATCH` 제거(D135).
+
+구현 보고에 기록된 관찰 가능한 차이는 `request_failed`·`calc_failed` 진단의 stacktrace 문자열(파일명·줄 번호·단계 helper 프레임)이다. 로그 schema와 정제 규칙은 같다.
+
+### 동작 보존 증거
+
+| 증거 | 캡처 기준·내용 | 대조 시험 |
+|---|---|---|
+| v2 기준선 골든 `tests/fixtures/v2_baseline/` | v1 삭제 전 코드. Dummy Dev 15개 번들의 `definitionHash`·실행 정의 bytes, 대표 흐름의 `/api/v2` 응답·운용 기록·저장 행 전체, legacy 행 위의 호환 흐름. 승인된 저장 변화는 새 USER 행의 slot 부재 하나 | `tests/test_v2_baseline.py`(메모리 표), `integration_tests/test_v2_baseline_dynamodb.py` |
+| DynamoDB 쓰기 요청 골든 `tests/fixtures/v2_baseline/write_requests.json` | 저장 키·상수 추출 전 코드. 8개 흐름의 PutItem/TransactWriteItems 481건의 action 순서·조건식·이름/값·typed item·객체 키 순서 | `tests/test_write_request_baseline.py`, `integration_tests/test_write_request_baseline_dynamodb.py` |
+| Worker 호출 순서 골든 `tests/fixtures/worker_call_order/` | Worker 분해 전 코드. 대역 80개·메모리 DynamoDB 13개 시나리오의 외부 호출 순서·인자와 운용 기록 | `tests/test_worker_call_order.py` |
+| 특성화 시험 | 과정 API 오류 코드, 저장 키·binding·버전, 원본 경로 규칙, 로컬 상수·비공개 파일·가드 순서, 저장소 읽기/commit 순서. 기대값은 손으로 적은 리터럴 | `tests/test_course_api_layer_characterization.py`, `test_storage_contract_characterization.py`, `test_legacy_layout_characterization.py`, `test_course_repository_sequences.py`, `local_server_tests/test_*_characterization.py`, `test_http_guard_order.py` |
+| 계산 파일 재등록 동등성 | 원래 구현 복사본과 무작위 대조(위 D102) | `tests/test_repin_equivalence.py` |
+
+골든은 서로 다른 `PYTHONHASHSEED`와 3일 이동한 시계로 두 프로세스에서 캡처해 같은 결과를 확인했고, 실행마다 달라지는 값만 placeholder로 바꿨다. 캡처 절차는 `scripts/capture_baselines.py --output-dir DIR [--only KIND[:NAME]] [--check]`(D125)이며 `--output-dir`은 필수이고 `tests/fixtures` 안은 거부한다. `--check`는 라벨 재번호·행 순서까지 등가 비교한다(현재 코드에서 dummy_dev_definitions·flow_responses·flow_events·user_slots·worker 호출 순서는 identical, flow_rows·legacy_compat·write_requests는 equivalent). 도구는 승인된 동작 변경 뒤에만 쓰고 결과의 fixture 반영은 사용자 검토 후에 한다. `write_requests.json`은 읽기 측 조건 변경이나 시나리오 밖 예산 한계를 잡지 못한다(그런 가드는 `tests/test_job_restart_limit.py` 등 손으로 쓴 시험이 고정). 현재 출력으로 다시 만들지 않는다([ARCHITECTURE §8](ARCHITECTURE.md#8-한도와-coding-convention)).
+
+### 간헐 실패 관찰
+
+- `integration_tests/test_aws_dev_course_journey.py`: 실제 DynamoDB Local에 단위 시험용 lease 갱신 제한 0.1초를 쓰던 시험 설정이 원인이었다. 시험 설정만 고쳤고 부하 중 25회 반복 실행이 통과했다.
+- `integration_tests/test_local_database_migration.py`: 전체 실행 중 1회 실패를 관찰했다. 부하 중 25회 반복으로 재현되지 않았고 원인을 확정하지 못해 관찰 대상으로 남긴다.
+
+### AI 검토 범위와 미검증
+
+각 구현 단계 뒤 독립 AI 검토자 1~2명이 변경과 시험을 검토했고 지적은 해당 단계에서 수정했다. 이는 AI 역할의 판정이며 사람의 코드 리뷰 승인·보안 인증·운영 승인이 아니다. 2026-09-18의 AI 5인 인수와 같은 절차라고 주장하지 않는다.
+
+| 미검증 | 현재 상태 |
+|---|---|
+| PR CI(D111) | GitHub runner 실행 없음. 2026-09-30 로컬에서 CI와 같은 URL의 날짜 고정 DynamoDB Local archive를 내려받아 manifest의 sha256과 일치하고 압축 해제 파일 127개가 manifest `files`와 정확히 일치함(`verify_distribution` 통과)을 확인했다. `integration`·`boundary` check의 필수 검사 등록과 `main` 브랜치 이름 변경(D112)은 사용자의 GitHub 작업 |
+| AWS | 2026-09-28 코드는 배포·실행하지 않았다. D104~D107·D109·D116의 실제 AWS 동작과 Beta/Prod 조립 거부는 로컬 설정 검사·대역 시험으로만 확인 |
+| 실물 앱·ARC | 실물 앱·마네킨과 ARC 공식 인수 없음 |
+| 성능 수치 | 로컬 Mac(동시 부하)·메모리 대역 시뮬레이션의 참고값. Lambda 처리시간 보장이 아님 |
+| 2026-09-29 D103으로 확정된 현행 동작 | 저장된 최종 결과의 이전 `submit_*` 필드는 v2 계산 응답에서 뺀다(`mock_journey/course_wiring.py`, `tests/test_v2_calculation_boundary.py`). 이미 저장된 legacy `created` 시도에 `/api/v2`로 첫 측정을 올리는 것은 호환 범위에 포함한다(`integration_tests/test_local_completion_state.py::test_legacy_created_upload_pending_finalize_preserves_completed_slot`) |
 
 ## 2026-09-23 Lambda 설정 준비
 
@@ -219,7 +304,7 @@ STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /tmp/vcc-w5-python/bin/python \
 | 경계 | 정규 시험·확인 내용 |
 |---|---|
 | 기존 계산·자료형·null·코칭·ARC 최소량 | `tests/test_reference_parity_regression.py`, `test_result.py` 등. 독립 기대값/승인 예외와 비교하며 현재 결과를 정답으로 복제하지 않음 |
-| 기존 로컬 전체 Journey | `local_server_tests/test_journey_matrix_live.py` 등. 실제 CLI·DB·별도 Worker·기록 바이너리·차트 HTTP의 5프로그램×3연령 |
+| 로컬 전체 과정 흐름 | `local_server_tests/test_journey_matrix_live.py` 등. 실제 기본 CLI·DB·별도 Worker·기록 바이너리·차트 HTTP로 `/api/v2` Dummy Dev 15과정(5프로그램×3연령) |
 | 공급자·중첩 응답·순서·반복 배치 | `tests/test_vcc_provider.py`, `test_vcc_app_contract_hardening.py` 등. exact type, bool/int/null, ID 대응, 허용 반복 배치와 상충 정의 |
 | 앱 계산 상태·본문·차트 null | `tests/test_vcc_wiring.py`. 실제 binding/HTTP GET·POST에서 같은 호출의 202 상태/본문 유지, 검증된 no-chart 쌍 null 허용 |
 | 전체 과정 성공·재응시 정책 | `http_pipeline_tests/test_vcc_course_lifecycle_http.py`. HTTP→실제 DB→기존 내부 계산기→GET으로 영상·문서·일반 훈련·최종 평가·FINISHED 연결 |
@@ -227,14 +312,14 @@ STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /tmp/vcc-w5-python/bin/python \
 | 완료 근거와 평가 교체 | `integration_tests/test_vcc_runtime_hardening.py` 등. 같은 버전의 자산/프로그램 교체·A→B→A 보류·원래 결과 보존 |
 | 영속 과정 blob | `local_server_tests/test_vcc_course_storage.py`. 실제 private file adapter 재개방, hash/binding·손상 검증 |
 | Worker/복구/원자 확정 | `integration_tests/test_vcc_runtime_hardening.py`. 계획 누락, 후보 저장 전후 crash, 확정 후보 유실, 위조/오래된 복구 증거, seal/reopen, unknown 반복 전달 |
-| 실제 별도 프로세스 | `integration_tests/test_vcc_process_restart.py`. 부모 파일 저장소 종료 후 두 PID에서 API/Worker 재조립, 기존 작업·결과·파일 hash 보존 |
+| 실제 별도 프로세스 | `integration_tests/test_vcc_process_restart.py`. 부모 파일 저장소 종료 후 두 PID에서 API/Worker 재조립, 기존 작업·결과·파일 hash 보존. legacy 작업은 삭제 전 `/mock/v1`이 남긴 저장 행 fixture에서 만듦 |
 | 세션·소유권·취소·과거 보고 | `http_pipeline_tests/test_vcc_security.py`, `tests/test_vcc_state.py`. 유효한 다른 세션의 attempt/계산/차트 404, 잘못된 취소 400, 과거 epoch 행 불변 |
 | 저장 한도와 멱등 replay | 상태·실제 DB 경합 시험. 긴 문서 근거가 START 한도를 넘으면 413·부분 쓰기 0·기존 receipt replay 유지 |
 | 파일/차트·HTTP·로그 보안 | 기존 object/chart/transport/privacy/log 시험. 비공개 파일, 300초 서명, 입력 한도, 비밀 정제, 로그 장애의 훈련 비차단 |
 
 HTTP 전체 과정의 학생은 시험 소유 DB에 만든 합성 배정 세션이다. 실제 ARC 로그인 성공을 뜻하지 않는다. Pass 사례도 합성 원본 바이너리를 기존 계산기가 처리하며 점수·기준을 대역으로 주입하지 않는다. 모든 단위 시험이 실제 CLI/DB를 사용하는 것은 아니므로 위 경계를 구분한다.
 
-실제 프로세스 재시작 시험은 legacy queued/running/candidate 3건과 course candidate 1건을 처리했다. 첫 자식 계산 2회, 다음 자식 0회였고 후보 재계산은 0이었다. 4개 결과 hash·정의 hash·기존 파일 hash가 같았다. 검토자도 이 시험을 별도 임시 DB에서 독립 실행했다.
+2026-09-18 실행에서 실제 프로세스 재시작 시험은 legacy queued/running/candidate 3건과 course candidate 1건을 처리했다. 첫 자식 계산 2회, 다음 자식 0회였고 후보 재계산은 0이었다. 4개 결과 hash·정의 hash·기존 파일 hash가 같았다. 검토자도 이 시험을 별도 임시 DB에서 독립 실행했다.
 
 ## 3. 수정한 핵심 결함
 
@@ -282,25 +367,28 @@ HTTP 전체 과정의 학생은 시험 소유 DB에 만든 합성 배정 세션�
 
 Python 3.12·Java/Javac·검증된 DynamoDB Local 배포판을 사용한다. 별도 검증 환경에 `requirements-local.txt`와 `requirements-ci.txt`를 설치하는 절차는 [LOCAL_RUN](LOCAL_RUN.md)을 따른다. `requirements-dev.txt`만으로 전체 시험 의존성이 충족된다고 가정하지 않는다.
 
-기본 `pytest.ini`는 `tests scripts`만 수집한다. 전체 인수는 아래 실행기를 사용해야 한다. 실행기는 새로운 DB·임시 경로·loopback 포트를 생성하고 사용자 실행 서버/DB를 공유하지 않는다.
+기본 `pytest.ini`는 `tests`만 수집한다(`scripts/` 아래에는 시험이 없다). 이 기본 수집은 통합·경계·전송 시험을 포함하지 않으므로 전체 인수는 아래 실행기를 사용해야 한다. 실행기는 새로운 DB·임시 경로·loopback 포트를 생성하고 사용자 실행 서버/DB를 공유하지 않는다.
 
 ```sh
 STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python scripts/validate_local_integration.py \
   --dynamodb-home var/dynamodb-local-3.3.1 --suite all
 ```
 
-위 `python`과 DynamoDB 경로는 준비한 검증 환경에 맞춘다. 마지막 3251개 실행은 `/tmp/vcc-w5-python/bin/python`을 사용했으며 다른 PC에 이 임시 환경이 있다고 가정하지 않는다. 네트워크 제한 환경에서는 소유 loopback 시험 실행 권한이 필요하다.
+위 `python`과 DynamoDB 경로는 준비한 검증 환경에 맞춘다. 2026-09-28 실행은 이 PC의 임시 검증 환경을 사용했으며 다른 PC에 같은 경로가 있다고 가정하지 않는다. 네트워크 제한 환경에서는 소유 loopback 시험 실행 권한이 필요하다. `--suite`의 선택지는 `scripts/test_suites.py`의 `all`(`tests`·`local_server_tests`·`integration_tests`·`http_pipeline_tests`·`transport_integration_tests`), `integration`(`integration_tests`·`http_pipeline_tests`·`transport_integration_tests`), `boundary`(`local_server_tests`)다.
+
+CI와 같은 오프라인 단위 스위트는 DynamoDB Local 없이 `python scripts/run_actions_regression.py`(인자 없음)로 실행한다. `tests/test_*.py` 전체(`scripts/test_suites.py`의 `offline_unit_tests()`, 현재 제외 목록 없음)를 소켓 연결·주소 조회와 boto3/botocore client를 막은 상태로 실행하며 `requirements.txt`+`requirements-ci.txt`만 필요하다. PR CI(D111)가 같은 명령을 쓴다. 전체 스위트의 부분집합이므로 두 수를 합산하지 않는다.
 
 변경 범위별 집중 검증은 다음 기준으로 고른다.
 
 - 응답/입력: `test_vcc_contract`, `test_vcc_provider`, `test_vcc_api`, `test_vcc_wiring`, `test_vcc_app_contract_hardening`.
 - 정책/상태: `test_vcc_policy`, `test_vcc_state`, `test_vcc_state_races`와 실제 `integration_tests/test_vcc_state_races_dynamodb.py`.
 - 계산/복구/저장: `test_vcc_calculation`, `test_vcc_recovery` 계열과 실제 runtime/프로세스/파일 시험.
+- 구조 정리: `test_v2_baseline`, `test_write_request_baseline`, `test_worker_call_order`, 해당 특성화 시험, `test_import_structure`. 골든·해시는 현재 출력으로 재생성하지 않는다.
 - 공유 코드: 위 해당 경계 시험 후 전체 회귀. 기존 계산·projection·auth·storage·jobs·worker의 영향 범위를 반드시 포함.
 
-실제 DB 집중 검증은 실행기의 `--suite integration`, 로컬 경계 검증은 `--suite boundary`를 사용할 수 있다. race는 제어된 판정/commit 경계로 재현하고 무작위 sleep에만 의존하지 않는다. 오류는 정확한 코드, 결과·원본 보존, 부분 쓰기 0, 다른 scope/epoch 영향 0까지 확인한다.
+실제 DB 집중 검증은 실행기의 `--suite integration`(integration_tests·http_pipeline_tests·transport_integration_tests), 로컬 경계 검증은 `--suite boundary`(local_server_tests)를 사용할 수 있다. PR CI의 `integration`·`boundary` job이 같은 두 스위트를 실행한다. race는 제어된 판정/commit 경계로 재현하고 무작위 sleep에만 의존하지 않는다. 오류는 정확한 코드, 결과·원본 보존, 부분 쓰기 0, 다른 scope/epoch 영향 0까지 확인한다.
 
-새 참고 비교가 필요할 때만 `scripts/verify_reference_parity.py`를 사용한다. 참고 checkout·환경을 먼저 확인하고 별도 output directory에 생성한다. 기존 fixture·dataset·골든 기대값을 덮어서 통과시키지 않는다. 승인된 계산 예외와 실제 동작 정책은 DECISIONS를 따른다.
+`tests/fixtures/reference_parity/parity_manifest.json`·`guards_manifest.json`의 `source_before/after` 해시는 생성 시점 기록이며(삭제된 `config/guidelines.py`·재등록 전 해시가 남아 있어도) 검사 대상이 아니다. 시험은 `cases`만 대조한다. 새 참고 비교가 필요할 때만 `scripts/verify_reference_parity.py --output-dir <별도_검증_폴더>`를 사용한다. `--output-dir`은 필수이며 없으면 종료 코드 2로 끝나고 아무것도 읽거나 쓰지 않는다(D115). 참고 checkout·환경을 먼저 확인한다. 기존 fixture·dataset·골든 기대값을 덮어서 통과시키지 않는다. 승인된 계산 예외와 실제 동작 정책은 DECISIONS를 따른다.
 
 <a id="8-코드-품질과-배포-준비--2026-09-11"></a>
 <a id="9-dependabot-검증-ci--2026-09-11"></a>
@@ -311,7 +399,7 @@ STAGE=test PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python scripts/validate_local_integr
 | 대상 | 남은 확인 |
 |---|---|
 | 실물 iOS/Android·마네킨 | 실제 누적 입력, 재생/문서 관측, 세션 복귀, 30초 대기, 디코딩·차트와 저장 용량 |
-| 교육 완료 | CPR cycle·두 구조자·AED 완료 규칙. 현재 점수 제공과 pending_policy 유지 |
+| 교육 완료 | 두 구조자 교대 시나리오·AED 시점의 완료 기여(U01)는 미정. CPR 사이클 규칙은 D136으로 확정 |
 | ARC/MuleSoft | 공식 인증·배정·정의·진도·수정 의미·결과/완료 전달·멱등·응답 유실 계약과 승인 시험 |
 | AWS | 실제 IAM·Gateway binary·S3·DynamoDB·Queue/Stream·Lambda·Relay schedule·DLQ·로그·성능·복구 |
 | 운영 전환 | 앱 전환 일정·실제 자원·용량/비용·보관/삭제 정책·승인·호환 rollback |

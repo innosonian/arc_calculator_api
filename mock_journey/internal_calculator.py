@@ -14,23 +14,29 @@ import uuid
 
 from mock_journey import typed
 from mock_journey.contracts import (
-    PENDING_GOAL_ADAPTER_VERSION,
-    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    CYCLE_GOAL_ADAPTER_VERSION,
     PENDING_GOAL_ADAPTER_VERSIONS,
-    PENDING_GOAL_PROFILE_VERSION,
+    CALL_BINDING_FIELDS,
     VerifiedCalculation,
     VerifiedChart,
+    expected_goal_status,
+    expected_profile_version,
+    is_verify_only_adapter,
+    is_versioned_adapter,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.projection import LoadedInput, typed_identity
+from util import legacy_layout
 
 
-_BINDING = frozenset(("attempt_id", "epoch", "input_digest", "adapter_version",
-                      "projection_version", "job_id", "call_id"))
+_BINDING = frozenset(CALL_BINDING_FIELDS)
+# Candidate schemas by adapter family. The v1/v2 meanings are kept for stored
+# candidates; the cycle-goal adapter (D136) writes its own schema.
 _SCHEMA = "arc-internal-calculation-v1"
 _PENDING_SCHEMA = "arc-internal-calculation-v2"
+_CYCLE_SCHEMA = "arc-internal-calculation-v3"
 _VERSION = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
-_STEM = re.compile(r"CPR-ACTION-([0-9]{10})-([0-9a-f-]{36})\Z")
+_STEM = legacy_layout.KEY_STEM
 _CORE_KEYS = frozenset(("cpr_score", "metrics", "aed_score", "training_stats",
                         "action_count", "guide_prompts", "chart_dataset_url"))
 
@@ -79,18 +85,26 @@ class InternalCalculator:
                 or (cycle_goal_resolver is not None and not callable(cycle_goal_resolver))
                 or type(allow_pending_cycle_goal) is not bool
                 or allow_pending_cycle_goal != (version in PENDING_GOAL_ADAPTER_VERSIONS)
-                or (allow_pending_cycle_goal and cycle_goal_resolver is not None)):
+                or (allow_pending_cycle_goal and cycle_goal_resolver is not None)
+                # The cycle-goal adapter's meaning is the D136 rule: it is never
+                # constructed without a resolver (mock_journey.cycle_goal).
+                or (version == CYCLE_GOAL_ADAPTER_VERSION and cycle_goal_resolver is None)):
             raise ValueError("Invalid internal calculator configuration.")
         self.version, self.projection_version, self.stage = version, projection_version, stage
         self.cycle_goal_resolver = cycle_goal_resolver
         self.allow_pending_cycle_goal = allow_pending_cycle_goal
-        self.candidate_schema = _PENDING_SCHEMA if allow_pending_cycle_goal else _SCHEMA
+        # A versioned goal carries a status (pending or cycle-goal adapters).
+        self.versioned_goal = is_versioned_adapter(version)
+        self.candidate_schema = (_PENDING_SCHEMA if allow_pending_cycle_goal
+                                 else _CYCLE_SCHEMA if version == CYCLE_GOAL_ADAPTER_VERSION else _SCHEMA)
 
     @property
     def can_calculate(self):
-        # The retained v2 candidate is still verifiable, but running the current
-        # detector under its old name would silently change accepted-job meaning.
-        return self.version != RETAINED_PENDING_GOAL_ADAPTER_VERSION
+        # A verify-only adapter (arc-local-calculator-pending-v2) still
+        # validates its stored candidates, but running the current detector
+        # under its old name would silently change accepted-job meaning. The
+        # retained pending-v3 adapter keeps calculating its own attempts (D136).
+        return not is_verify_only_adapter(self.version)
 
     def _validate_input(self, projected, binding):
         try:
@@ -116,7 +130,8 @@ class InternalCalculator:
                     "cpr": "cycles"}.get(training) != kind:
                 raise _invalid()
             _count(definition["goal"]["required"])
-            if self.allow_pending_cycle_goal and definition.get("profile_version") != PENDING_GOAL_PROFILE_VERSION:
+            profile = expected_profile_version(self.version)
+            if profile is not None and definition.get("profile_version") != profile:
                 raise _invalid()
             return definition
         except JourneyError:
@@ -211,8 +226,8 @@ class InternalCalculator:
                     else counts["vent"] if kind == "ventilations"
                     else _count(self.cycle_goal_resolver(evidence, deepcopy(definition))))
         goal = {"kind": kind, "observed": observed}
-        if self.allow_pending_cycle_goal:
-            goal["status"] = "pending_policy" if pending else "evaluated"
+        if self.versioned_goal:
+            goal["status"] = expected_goal_status(kind, self.version)
         chart_bytes = typed.json_bytes(charts[0])
         candidate = {"schema": self.candidate_schema, "binding": deepcopy(binding), "core_result": core,
                      "goal": goal, "counts": counts,
@@ -237,7 +252,7 @@ class InternalCalculator:
                 raise _invalid()
             core, goal, counts, chart = (candidate[key] for key in ("core_result", "goal", "counts", "chart"))
             _validate_core(core)
-            goal_fields = {"kind", "observed", "status"} if self.allow_pending_cycle_goal else {"kind", "observed"}
+            goal_fields = {"kind", "observed", "status"} if self.versioned_goal else {"kind", "observed"}
             if (type(goal) is not dict or set(goal) != goal_fields
                     or goal["kind"] != definition["goal"]["kind"]
                     or type(counts) is not dict or set(counts) != {"comp", "vent"}
@@ -247,11 +262,9 @@ class InternalCalculator:
             for key in ("comp", "vent"):
                 if _count(counts[key]) != _count(core["action_count"][key]):
                     raise _invalid()
-            goal_status = None
-            if self.allow_pending_cycle_goal:
-                goal_status = "pending_policy" if goal["kind"] == "cycles" else "evaluated"
-                if goal["status"] != goal_status:
-                    raise _invalid()
+            goal_status = expected_goal_status(goal["kind"], self.version) if self.versioned_goal else None
+            if self.versioned_goal and goal["status"] != goal_status:
+                raise _invalid()
             if goal_status == "pending_policy":
                 if goal["observed"] is not None:
                     raise _invalid()
@@ -260,6 +273,12 @@ class InternalCalculator:
                 observed = _count(goal["observed"])
             expected = {"compressions": counts["comp"], "ventilations": counts["vent"]}.get(goal["kind"])
             if expected is not None and observed != expected:
+                raise _invalid()
+            # A cycle-goal candidate's observed count is the resolver's result at
+            # calculation time (not re-derived here: no core re-execution). It can
+            # never exceed the core's own cycle grouping count (D136).
+            if (self.version == CYCLE_GOAL_ADAPTER_VERSION and goal["kind"] == "cycles"
+                    and observed > core["training_stats"]["cycle_count"]):
                 raise _invalid()
             checksum = hashlib.sha256(typed.json_bytes(chart["data"])).hexdigest()
             if type(chart["sha256"]) is not str or chart["sha256"] != checksum:

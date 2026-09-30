@@ -14,20 +14,13 @@ from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.exceptions import BotoCoreError, ClientError
 
 from mock_journey.errors import JourneyError
+from mock_journey.settings import MAX_CONFLICT_RETRIES
+from mock_journey.storage_keys import attempt_key, course_final_key, course_head_key, row_key, session_key, user_key
 from services.operational_logs import record_event
 
 
 _SERIALIZER = TypeSerializer()
 _DESERIALIZER = TypeDeserializer()
-_TEMPLATE_FIELDS = (
-    "attempt_id", "principal", "creator_session_id", "bound_session_id",
-    "program_id", "target", "profile_name", "definition_json",
-    "resume_nonce", "resume_key_version", "resume_digest",
-)
-_COURSE_BINDING_FIELDS = (
-    "scope_key", "placement_key", "start_role", "definition_hash",
-    "content_version", "epoch", "policy_version",
-)
 _SESSION_FIELDS = (
     "session_id", "principal", "token_hash", "issued_at", "expires_at", "status", "revision",
 )
@@ -37,17 +30,13 @@ def _unavailable():
     return JourneyError("TEMPORARILY_UNAVAILABLE")
 
 
-def _optional_course_binding(template):
-    if "course_binding" not in template:
-        return None
-    from mock_journey.course_contracts import CourseBinding
-    value = template["course_binding"]
-    if type(value) is CourseBinding:
-        return {key: getattr(value, key) for key in _COURSE_BINDING_FIELDS}
-    if type(value) is dict and set(value) == set(_COURSE_BINDING_FIELDS):
-        CourseBinding(**{key: value[key] for key in _COURSE_BINDING_FIELDS})
-        return {key: value[key] for key in _COURSE_BINDING_FIELDS}
-    raise _unavailable()
+def _optional_course_binding(attempt):
+    """A stored attempt row's course_binding, or None for a legacy row; an unusable value is unavailable."""
+    from mock_journey.course_contracts import binding_from_row
+    try:
+        return binding_from_row(attempt, null_is_legacy=False)
+    except ValueError:
+        raise _unavailable() from None
 
 
 class _ReadConflict(Exception):
@@ -92,13 +81,62 @@ def _decode(item):
         raise _unavailable() from None
 
 
-def _key(kind, value, suffix):
-    return {"PK": f"{kind}#{value}", "SK": suffix}
+def legacy_slot_key(attempt):
+    """USER.slots key of a legacy (pre-D103 v1) attempt: "program:target" (catalog.definition_key)."""
+    return f'{attempt["program_id"]}:{attempt["target"]}'
+
+
+def empty_legacy_slot():
+    """A reset legacy USER slot (logout, R3)."""
+    return {"completed": False, "completed_by_attempt": None, "completed_at": None, "open_attempts": 0}
+
+
+def legacy_progress(attempt, user, checked, now):
+    """Progress of a finalized legacy (pre-D103 v1) attempt: (progress_application, slot completion or None).
+
+    Pure: no read or write. Same reason order as course_submission._progress
+    (Q17: v2 is final). The USER slot is read only once the earlier reasons do
+    not apply, and an unusable slot is TEMPORARILY_UNAVAILABLE like every other
+    legacy slot read. The second value is the update the caller applies to the
+    attempt's slot when the progress is APPLIED.
+    """
+    slot_key = legacy_slot_key(attempt)
+    if attempt["epoch"] != user["epoch"]:
+        reason = "PROGRESS_RESET"
+    elif checked["goal"].get("status") == "pending_policy":
+        reason = "GOAL_POLICY_UNRESOLVED"
+    elif DynamoStateRepository._slot(user, slot_key)["completed"]:
+        reason = "ALREADY_COMPLETED"
+    elif not checked["program_completed"]:
+        reason = "REQUIREMENTS_NOT_MET"
+    else:
+        return ({"applied": True, "applied_epoch": attempt["epoch"], "reason": "APPLIED"},
+                {"completed": True, "completed_by_attempt": attempt["attempt_id"], "completed_at": now})
+    return {"applied": False, "applied_epoch": None, "reason": reason}, None
+
+
+def extend_condition(action, clause, names, values=None):
+    """Append " AND clause" to a Put/ConditionCheck action in place; values are encoded like the rest."""
+    ((_, body),) = action.items()
+    body["ConditionExpression"] += " AND " + clause
+    body["ExpressionAttributeNames"].update(names)
+    if values is not None:
+        body["ExpressionAttributeValues"].update(_encode(values))
+    return action
+
+
+# Public names of the kernel that jobs.py and relay_progress.py share with this
+# module (X3-05). The underscore names stay bound to the same objects.
+ReadConflict = _ReadConflict
+encode_item = _encode
+decode_item = _decode
+unavailable = _unavailable
 
 
 class DynamoStateRepository:
-    def __init__(self, client, table_name, *, clock=time.time, max_conflict_retries=8):
-        if not table_name or type(max_conflict_retries) is not int or not 1 <= max_conflict_retries <= 8:
+    def __init__(self, client, table_name, *, clock=time.time, max_conflict_retries=MAX_CONFLICT_RETRIES):
+        if (not table_name or type(max_conflict_retries) is not int
+                or not 1 <= max_conflict_retries <= MAX_CONFLICT_RETRIES):
             raise ValueError("Invalid state repository configuration.")
         self.client = client
         self.table_name = table_name
@@ -206,7 +244,8 @@ class DynamoStateRepository:
             raise _unavailable()
         if action["op"] == "put":
             item = action.get("item")
-            if type(item) is not dict or item.get("PK") is None or item.get("SK") is None:
+            if (type(item) is not dict or item.get("PK") is None or item.get("SK") is None
+                    or "if_greater" in action):
                 raise _unavailable()
             expression, names, values = self._course_condition(action, item)
             encoded = {"Put": {"TableName": self.table_name, "Item": _encode(item)}}
@@ -226,6 +265,17 @@ class DynamoStateRepository:
         expression, names, values = self._field_equals(match, "c")
         expression = "attribute_exists(#pk) AND " + expression
         names["#pk"] = "PK"
+        greater = action.get("if_greater")
+        if greater is not None:
+            # Course session checks: expires_at > commit-time now (v1 parity).
+            if type(greater) is not dict or not greater:
+                raise _unavailable()
+            for index, (field, value) in enumerate(greater.items()):
+                if type(field) is not str or not field or type(value) is not int:
+                    raise _unavailable()
+                names[f"#g{index}"] = field
+                values[f":g{index}"] = value
+                expression += f" AND #g{index} > :g{index}"
         return self._condition({"PK": key["PK"], "SK": key["SK"]}, expression, names, values)
 
     def _course_condition(self, action, item):
@@ -277,7 +327,7 @@ class DynamoStateRepository:
 
     def _session_condition(self, auth, now):
         return self._condition(
-            _key("SESSION", auth.session_id, "AUTH"),
+            session_key(auth.session_id),
             "#s = :active AND #r = :revision AND #p = :principal AND #e > :now AND #e = :expiry",
             {"#s": "status", "#r": "revision", "#p": "principal", "#e": "expires_at"},
             {":active": "active", ":revision": auth.revision, ":principal": auth.principal,
@@ -286,13 +336,19 @@ class DynamoStateRepository:
 
     @staticmethod
     def _require_user(user, principal):
-        if not user or user.get("principal") != principal or type(user.get("revision")) is not int or not user.get("epoch") or type(user.get("slots")) is not dict:
+        # Principal/epoch/revision only (R1). New USER rows carry no slots; the
+        # slots of a legacy (pre-D103 v1) row are neither required nor removed.
+        if not user or user.get("principal") != principal or type(user.get("revision")) is not int or not user.get("epoch"):
             raise _unavailable()
         return user
 
     @staticmethod
     def _slot(user, slot_key):
-        slot = user["slots"].get(slot_key)
+        """A slot of a stored legacy (pre-D103 v1) USER row; used only for legacy attempts."""
+        slots = user.get("slots")
+        if type(slots) is not dict:
+            raise _unavailable()
+        slot = slots.get(slot_key)
         if (type(slot) is not dict or type(slot.get("completed")) is not bool
                 or type(slot.get("open_attempts")) is not int or slot["open_attempts"] < 0):
             raise _unavailable()
@@ -303,7 +359,7 @@ class DynamoStateRepository:
         names = {"#e": "epoch", "#r": "revision"}
         values = {":epoch": old["epoch"], ":revision": old["revision"]}
         if new is None:
-            return self._condition(_key("USER", old["principal"], "STATE"), expression, names, values)
+            return self._condition(user_key(old["principal"]), expression, names, values)
         return self._replace(new, expression, names, values)
 
     @staticmethod
@@ -319,18 +375,79 @@ class DynamoStateRepository:
              ":principal": old["principal"], ":state": old["state"]},
         )
 
-    def get_session(self, session_id):
-        return self._get(_key("SESSION", session_id, "AUTH"))
+    def _close_open_attempt(self, attempt, user, now):
+        """The USER row releasing a same-epoch counted legacy attempt's slot, or None."""
+        if attempt["epoch"] != user["epoch"] or not attempt["active_counted"]:
+            return None
+        slot_key = legacy_slot_key(attempt)
+        if self._slot(user, slot_key)["open_attempts"] <= 0:
+            raise _unavailable()
+        changed = deepcopy(user)
+        changed["slots"][slot_key]["open_attempts"] -= 1
+        changed.update(revision=user["revision"] + 1, updated_at=now)
+        return changed
 
-    def create_session(self, session, slot_keys):
+    # -- Public kernel for jobs.py / relay_progress.py (X3-05) ------------------
+    # Each name delegates to the underscore method through the instance, so a
+    # caller or test that replaces e.g. ``state._write`` on an instance still
+    # intercepts every use. Requests, conditions and errors are unchanged.
+    def now(self):
+        return self._now()
+
+    def read_rows(self, keys):
+        return self._read(keys)
+
+    def get_row(self, key):
+        return self._get(key)
+
+    def write(self, actions):
+        return self._write(actions)
+
+    def put_action(self, item):
+        return self._put(item)
+
+    def condition_action(self, key, expression, names, values):
+        return self._condition(key, expression, names, values)
+
+    def replace_action(self, item, expression, names, values):
+        return self._replace(item, expression, names, values)
+
+    def session_condition(self, auth, now):
+        return self._session_condition(auth, now)
+
+    def user_action(self, old, new=None):
+        return self._user_action(old, new)
+
+    def attempt_action(self, old, new):
+        return self._attempt_action(old, new)
+
+    def check_session(self, session, auth, now, *, allow_revoked=False):
+        return self._check_session(session, auth, now, allow_revoked=allow_revoked)
+
+    def check_attempt(self, attempt, auth):
+        return self._check_attempt(attempt, auth)
+
+    def require_user(self, user, principal):
+        return self._require_user(user, principal)
+
+    def legacy_slot(self, user, slot_key):
+        return self._slot(user, slot_key)
+
+    def close_open_attempt(self, attempt, user, now):
+        return self._close_open_attempt(attempt, user, now)
+
+    def get_session(self, session_id):
+        return self._get(session_key(session_id))
+
+    def create_session(self, session):
         if any(key not in session for key in _SESSION_FIELDS) or session["status"] != "active":
             raise _unavailable()
         now = self._now()
+        # A new USER row has no slots (Q10). An existing row, legacy slots
+        # included, is never replaced here (conditional put).
         user = {
-            **_key("USER", session["principal"], "STATE"),
+            **user_key(session["principal"]),
             "principal": session["principal"], "epoch": str(uuid.uuid4()), "revision": 0,
-            "slots": {key: {"completed": False, "completed_by_attempt": None,
-                            "completed_at": None, "open_attempts": 0} for key in slot_keys},
             "updated_at": now,
         }
         try:
@@ -341,104 +458,31 @@ class DynamoStateRepository:
                 raise _unavailable() from None
         except BotoCoreError:
             raise _unavailable() from None
-        stored = {**_key("SESSION", session["session_id"], "AUTH"), **{key: session[key] for key in _SESSION_FIELDS}}
+        stored = {**session_key(session["session_id"]), **{key: session[key] for key in _SESSION_FIELDS}}
         if not self._write([self._put(stored)]):
             raise _unavailable()
 
-    def get_progress(self, auth):
+    def read_session_user(self, auth):
+        """One coherent SESSION+USER read: the session is valid and the USER row is usable."""
         session, user = self._read_only([
-            _key("SESSION", auth.session_id, "AUTH"), _key("USER", auth.principal, "STATE"),
+            session_key(auth.session_id), user_key(auth.principal),
         ])
         self._check_session(session, auth, self._now())
         return self._require_user(user, auth.principal)
 
     def get_attempt(self, auth, attempt_id):
         session, attempt = self._read_only([
-            _key("SESSION", auth.session_id, "AUTH"), _key("ATTEMPT", attempt_id, "META"),
+            session_key(auth.session_id), attempt_key(attempt_id),
         ])
         self._check_session(session, auth, self._now())
         self._check_attempt(attempt, auth)
         return attempt
 
-    def get_created_attempt(self, auth, client_request_id, request_digest):
-        """Replay stored creation before consulting the current execution provider.
-
-        This is a read optimization, not a replacement for create_attempt's
-        transaction: a concurrent creator can still win after this read misses.
-        """
-        session, idem = self._read_only([
-            _key("SESSION", auth.session_id, "AUTH"),
-            _key("SESSION", auth.session_id, f"CREATE#{client_request_id}"),
-        ])
-        self._check_session(session, auth, self._now())
-        if not idem:
-            return None
-        if idem.get("request_digest") != request_digest:
-            raise JourneyError("IDEMPOTENCY_CONFLICT")
-        return self.get_attempt(auth, idem["attempt_id"])
-
-    def create_attempt(self, auth, client_request_id, request_digest, template):
-        if (any(key not in template for key in _TEMPLATE_FIELDS)
-                or template["principal"] != auth.principal
-                or template["creator_session_id"] != auth.session_id
-                or template["bound_session_id"] != auth.session_id):
-            raise _unavailable()
-        idem_key = _key("SESSION", auth.session_id, f"CREATE#{client_request_id}")
-        for _ in range(self.max_conflict_retries):
-            try:
-                session, user, idem = self._read([
-                    _key("SESSION", auth.session_id, "AUTH"), _key("USER", auth.principal, "STATE"), idem_key,
-                ])
-            except _ReadConflict:
-                continue
-            self._check_session(session, auth, self._now())
-            if idem:
-                if idem.get("request_digest") != request_digest:
-                    raise JourneyError("IDEMPOTENCY_CONFLICT")
-                return self.get_attempt(auth, idem["attempt_id"])
-            self._require_user(user, auth.principal)
-            slot_key = f'{template["program_id"]}:{template["target"]}'
-            slot = self._slot(user, slot_key)
-            if slot["completed"]:
-                raise JourneyError("PROGRAM_ALREADY_COMPLETED")
-            now = self._now()
-            self._check_session(session, auth, now)
-            attempt = {
-                **_key("ATTEMPT", template["attempt_id"], "META"),
-                **{key: template[key] for key in _TEMPLATE_FIELDS},
-                "epoch": user["epoch"], "created_at": now, "state": "created", "revision": 0,
-                "active_counted": True, "evaluation": None, "progress_application": None,
-            }
-            binding = _optional_course_binding(template)
-            counted = True
-            if binding is not None:
-                attempt["course_binding"] = binding
-                counted = template.get("active_counted") is True
-                attempt["active_counted"] = counted
-                for field in ("course_id", "enrollment_id", "course_item_link_id"):
-                    if field in template:
-                        attempt[field] = template[field]
-            new_user = deepcopy(user)
-            if counted:
-                new_user["slots"][slot_key]["open_attempts"] += 1
-            new_user["revision"] += 1
-            new_user["updated_at"] = now
-            user_action = self._user_action(user, new_user)
-            if counted:
-                user_action["Put"]["ConditionExpression"] += " AND #slots.#slot.#completed = :false"
-                user_action["Put"]["ExpressionAttributeNames"].update(
-                    {"#slots": "slots", "#slot": slot_key, "#completed": "completed"})
-                user_action["Put"]["ExpressionAttributeValues"].update(_encode({":false": False}))
-            idem = {**idem_key, "request_digest": request_digest, "attempt_id": attempt["attempt_id"]}
-            if self._write([self._session_condition(auth, now), user_action, self._put(attempt), self._put(idem)]):
-                return attempt
-        raise _unavailable()
-
     def logout(self, auth):
         for _ in range(self.max_conflict_retries):
             try:
                 session, user = self._read([
-                    _key("SESSION", auth.session_id, "AUTH"), _key("USER", auth.principal, "STATE"),
+                    session_key(auth.session_id), user_key(auth.principal),
                 ])
             except _ReadConflict:
                 continue
@@ -446,6 +490,11 @@ class DynamoStateRepository:
             if session["status"] == "revoked":
                 return
             self._require_user(user, auth.principal)
+            # Legacy (pre-D103 v1) row only (R3): its slots are reset as before. A
+            # row without slots never gains them.
+            legacy_slots = "slots" in user
+            if legacy_slots and type(user["slots"]) is not dict:
+                raise _unavailable()
             now = self._now()
             self._check_session(session, auth, now)
             epoch = str(uuid.uuid4())
@@ -453,8 +502,8 @@ class DynamoStateRepository:
                        "revoked_at": now, "logout_epoch": epoch}
             new_user = deepcopy(user)
             new_user.update(epoch=epoch, revision=user["revision"] + 1, updated_at=now)
-            new_user["slots"] = {key: {"completed": False, "completed_by_attempt": None,
-                                       "completed_at": None, "open_attempts": 0} for key in user["slots"]}
+            if legacy_slots:
+                new_user["slots"] = {key: empty_legacy_slot() for key in user["slots"]}
             session_action = self._session_condition(auth, now)["ConditionCheck"]
             session_action.pop("Key")
             session_action["Item"] = _encode(updated)
@@ -467,8 +516,8 @@ class DynamoStateRepository:
         for _ in range(self.max_conflict_retries):
             try:
                 session, attempt, user = self._read([
-                    _key("SESSION", auth.session_id, "AUTH"), _key("ATTEMPT", attempt_id, "META"),
-                    _key("USER", auth.principal, "STATE"),
+                    session_key(auth.session_id), attempt_key(attempt_id),
+                    user_key(auth.principal),
                 ])
             except _ReadConflict:
                 continue
@@ -483,28 +532,21 @@ class DynamoStateRepository:
             self._check_session(session, auth, now)
             updated = {**attempt, "state": "cancelled", "revision": attempt["revision"] + 1,
                        "active_counted": False, "cancelled_at": now, "cancel_reason": reason}
-            new_user = None
-            if attempt["epoch"] == user["epoch"] and attempt["active_counted"]:
-                slot_key = f'{attempt["program_id"]}:{attempt["target"]}'
-                if self._slot(user, slot_key)["open_attempts"] <= 0:
-                    raise _unavailable()
-                new_user = deepcopy(user)
-                new_user["slots"][slot_key]["open_attempts"] -= 1
-                new_user.update(revision=user["revision"] + 1, updated_at=now)
+            new_user = self._close_open_attempt(attempt, user, now)
             actions = [self._session_condition(auth, now), self._attempt_action(attempt, updated),
                        self._user_action(user, new_user)]
             binding = _optional_course_binding(attempt)
             if (binding is not None and binding["start_role"] == "final_assessment"
                     and attempt["epoch"] == user["epoch"]):
-                pk = f"COURSE#{binding['scope_key']}"
                 head, final = self._read_only([
-                    {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#HEAD"},
-                    {"PK": pk, "SK": f"EPOCH#{attempt['epoch']}#FINAL"},
+                    course_head_key(binding["scope_key"], attempt["epoch"]),
+                    course_final_key(binding["scope_key"], attempt["epoch"]),
                 ])
                 if (head is None or final is None or final.get("phase") != "active"
                         or final.get("active_attempt_id") != attempt_id):
                     raise _unavailable()
-                for row, changes in ((head, {}), (final, {"phase": "free", "active_attempt_id": None})):
+                from mock_journey.course_policy import resting_phase
+                for row, changes in ((head, {}), (final, {"phase": resting_phase(final), "active_attempt_id": None})):
                     changed = {**row, **changes, "revision": row["revision"] + 1}
                     expression = "#r = :r AND #e = :e"
                     names = {"#r": "revision", "#e": "epoch"}
@@ -520,13 +562,13 @@ class DynamoStateRepository:
         raise _unavailable()
 
     def get_attempt_for_reauthorization(self, attempt_id):
-        return self._get(_key("ATTEMPT", attempt_id, "META"))
+        return self._get(attempt_key(attempt_id))
 
     def reauthorize_attempt(self, auth, attempt_id, expected_resume_digest):
         for _ in range(self.max_conflict_retries):
             try:
                 session, attempt = self._read([
-                    _key("SESSION", auth.session_id, "AUTH"), _key("ATTEMPT", attempt_id, "META"),
+                    session_key(auth.session_id), attempt_key(attempt_id),
                 ])
             except _ReadConflict:
                 continue
@@ -547,17 +589,15 @@ class DynamoStateRepository:
             if old_session.get("status") not in {"active", "revoked"}:
                 raise _unavailable()
             old_condition = self._condition(
-                _key("SESSION", attempt["bound_session_id"], "AUTH"),
+                session_key(attempt["bound_session_id"]),
                 "#r = :revision AND #p = :principal AND (#s = :revoked OR (#s = :active AND #e <= :now))",
                 {"#r": "revision", "#p": "principal", "#s": "status", "#e": "expires_at"},
                 {":revision": old_session["revision"], ":principal": auth.principal,
                  ":revoked": "revoked", ":active": "active", ":now": now},
             )
             updated = {**attempt, "bound_session_id": auth.session_id, "revision": attempt["revision"] + 1}
-            attempt_action = self._attempt_action(attempt, updated)
-            attempt_action["Put"]["ConditionExpression"] += " AND #digest = :digest"
-            attempt_action["Put"]["ExpressionAttributeNames"]["#digest"] = "resume_digest"
-            attempt_action["Put"]["ExpressionAttributeValues"].update(_encode({":digest": expected_resume_digest}))
+            attempt_action = extend_condition(self._attempt_action(attempt, updated), "#digest = :digest",
+                                              {"#digest": "resume_digest"}, {":digest": expected_resume_digest})
             if self._write([self._session_condition(auth, now), old_condition, attempt_action]):
                 return updated
         raise _unavailable()

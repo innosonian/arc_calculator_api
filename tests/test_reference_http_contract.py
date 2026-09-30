@@ -2,24 +2,12 @@
 
 import base64
 import json
-from urllib.parse import quote, urlencode
 
 import pytest
 
 import lambda_handler
 from tests._synth import comp_session, condition_json, multipart_event
-
-
-def _form_event(fields):
-    # The reference decodes URL quoting twice: unquote, then parse_qs.
-    encoded = quote(urlencode(fields), safe="")
-    return {
-        "httpMethod": "POST",
-        "path": "/cpr-analysis",
-        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-        "isBase64Encoded": True,
-        "body": base64.urlsafe_b64encode(encoded.encode()).decode(),
-    }
+from tests.request_support import form_event as _form_event
 
 
 def _response(event):

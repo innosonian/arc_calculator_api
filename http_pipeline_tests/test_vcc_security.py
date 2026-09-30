@@ -8,7 +8,7 @@ import uuid
 
 from mock_journey.handler import handle
 from tests.vcc_support import event
-from integration_tests.test_vcc_state_dynamodb import application, login
+from tests.vcc_application_support import application, login
 from tests.vcc_runtime_support import runtime, start_attempt
 
 
@@ -22,7 +22,7 @@ def test_foreign_session_is_not_found(dynamodb_client, dynamodb_table):
     other_token = f"s1.{session_id}.{secrets.token_urlsafe(32)}"
     env.app.state.create_session({"session_id": session_id, "principal": env.auth.principal,
         "token_hash": hashlib.sha256(other_token.encode()).hexdigest(), "issued_at": env.now[0],
-        "expires_at": env.now[0]+86400, "status": "active", "revision": 0}, env.app.catalog.slot_keys)
+        "expires_at": env.now[0]+86400, "status": "active", "revision": 0})
     listed = handle(event("GET", "/api/v2/courses/progress/", token=other_token, query={"page": "1", "pageSize": "10"}),
                     CONTEXT, env.app)
     assert listed["statusCode"] == 200

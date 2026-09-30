@@ -1,0 +1,1976 @@
+[
+ {
+  "method": "POST",
+  "path": "/api/v2/sessions/",
+  "status": 201,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:1>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "sessionId": "<uuid:2>",
+    "expiresAt": "2027-01-16T08:00:00Z",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    },
+    "accessToken": "s1.<uuid:2>.<secret>",
+    "tokenType": "Bearer",
+    "userName": "Test User"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/session/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:3>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "sessionId": "<uuid:2>",
+    "expiresAt": "2027-01-16T08:00:00Z",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:4>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "results": [
+     {
+      "courseId": 910001,
+      "courseName": "[Dummy Dev] CPR Training (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950011,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950012,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920001,
+      "progressId": 930001,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910002,
+      "courseName": "[Dummy Dev] CPR Training (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950021,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950022,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920002,
+      "progressId": 930002,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910003,
+      "courseName": "[Dummy Dev] CPR Training (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950031,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950032,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920003,
+      "progressId": 930003,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910004,
+      "courseName": "[Dummy Dev] Chest Compression Only (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950041,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950042,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920004,
+      "progressId": 930004,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910005,
+      "courseName": "[Dummy Dev] Chest Compression Only (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950051,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950052,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920005,
+      "progressId": 930005,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910006,
+      "courseName": "[Dummy Dev] Chest Compression Only (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950061,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950062,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920006,
+      "progressId": 930006,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910007,
+      "courseName": "[Dummy Dev] Ventilation Only (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950071,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950072,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920007,
+      "progressId": 930007,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910008,
+      "courseName": "[Dummy Dev] Ventilation Only (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950081,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950082,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920008,
+      "progressId": 930008,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910009,
+      "courseName": "[Dummy Dev] Ventilation Only (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950091,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950092,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920009,
+      "progressId": 930009,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910010,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950101,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950102,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920010,
+      "progressId": 930010,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910011,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950111,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950112,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920011,
+      "progressId": 930011,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910012,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950121,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950122,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920012,
+      "progressId": 930012,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910013,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950131,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950132,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920013,
+      "progressId": 930013,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910014,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950141,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950142,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920014,
+      "progressId": 930014,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910015,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950151,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950152,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920015,
+      "progressId": 930015,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     }
+    ],
+    "count": 15,
+    "next": null,
+    "previous": null
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:5>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:6>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/",
+  "status": 201,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:7>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:8>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:00Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:00Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:9>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:01Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:10>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:8>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:00Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:01Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:8>/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:11>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:8>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:00Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:01Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:8>/reauthorize/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:12>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:8>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:00Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:01Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:8>/cancel/",
+  "status": 204,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:13>"
+  },
+  "body": null
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:8>/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:14>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:8>",
+    "state": "cancelled",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:00Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:01Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:15>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:02Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/",
+  "status": 201,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:16>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:02Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:02Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:17>/calculation/",
+  "status": 202,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:18>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "calculationStatus": "pending",
+    "calculation": null,
+    "evaluation": null,
+    "progressApplication": null,
+    "submit_arc": {
+     "status": "disabled",
+     "ok": false,
+     "error": "arc_contract_pending",
+     "exclusionReasons": []
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:02Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:17>/calculation/",
+  "status": 202,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:19>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "calculationStatus": "pending",
+    "calculation": null,
+    "evaluation": null,
+    "progressApplication": null,
+    "submit_arc": {
+     "status": "disabled",
+     "ok": false,
+     "error": "arc_contract_pending",
+     "exclusionReasons": []
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:02Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:17>/calculation/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:20>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "calculationStatus": "succeeded",
+    "calculation": {
+     "<calculation>": {
+      "keys": [
+       "action_count",
+       "aed_score",
+       "certification",
+       "chart_dataset_url",
+       "cpr_score",
+       "guide_prompts",
+       "metrics",
+       "training_stats"
+      ],
+      "overall": 100,
+      "chart_dataset_url": "https://charts.example.invalid/calculator_result/interpreted_rtdata/arc/development/_no_org/<date>/CPR-ACTION-<wallclock>-<uuid:21>.json?lifetime=300&generation=1"
+     }
+    },
+    "evaluation": {
+     "goal": {
+      "kind": "compressions",
+      "required": 60,
+      "observed": 60,
+      "met": true,
+      "status": "evaluated"
+     },
+     "score": {
+      "decision": "pass"
+     },
+     "program_completed": true,
+     "reason_codes": []
+    },
+    "progressApplication": {
+     "applied": true,
+     "applied_epoch": "<uuid:22>",
+     "reason": "APPLIED"
+    },
+    "submit_arc": {
+     "status": "excluded",
+     "ok": false,
+     "error": null,
+     "exclusionReasons": [
+      "dummy"
+     ]
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:03Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:17>/calculation/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:23>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "calculationStatus": "succeeded",
+    "calculation": {
+     "<calculation>": {
+      "keys": [
+       "action_count",
+       "aed_score",
+       "certification",
+       "chart_dataset_url",
+       "cpr_score",
+       "guide_prompts",
+       "metrics",
+       "training_stats"
+      ],
+      "overall": 100,
+      "chart_dataset_url": "https://charts.example.invalid/calculator_result/interpreted_rtdata/arc/development/_no_org/<date>/CPR-ACTION-<wallclock>-<uuid:21>.json?lifetime=300&generation=1"
+     }
+    },
+    "evaluation": {
+     "goal": {
+      "kind": "compressions",
+      "required": 60,
+      "observed": 60,
+      "met": true,
+      "status": "evaluated"
+     },
+     "score": {
+      "decision": "pass"
+     },
+     "program_completed": true,
+     "reason_codes": []
+    },
+    "progressApplication": {
+     "applied": true,
+     "applied_epoch": "<uuid:22>",
+     "reason": "APPLIED"
+    },
+    "submit_arc": {
+     "status": "excluded",
+     "ok": false,
+     "error": null,
+     "exclusionReasons": [
+      "dummy"
+     ]
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:03Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:17>/chart-link/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:24>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "url": "https://charts.example.invalid/calculator_result/interpreted_rtdata/arc/development/_no_org/<date>/CPR-ACTION-<wallclock>-<uuid:21>.json?lifetime=300&generation=2",
+    "expiresAt": "2027-01-15T08:05:03Z"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:03Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:25>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": true,
+      "isPassed": true
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": false,
+      "isPassed": null
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:04Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/",
+  "status": 201,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:26>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:27>",
+    "state": "created",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940042,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:04Z",
+    "role": "final_assessment",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:04Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:27>/calculation/",
+  "status": 202,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:28>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:27>",
+    "calculationStatus": "pending",
+    "calculation": null,
+    "evaluation": null,
+    "progressApplication": null,
+    "submit_arc": {
+     "status": "disabled",
+     "ok": false,
+     "error": "arc_contract_pending",
+     "exclusionReasons": []
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:04Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:27>/calculation/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:29>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:27>",
+    "calculationStatus": "succeeded",
+    "calculation": {
+     "<calculation>": {
+      "keys": [
+       "action_count",
+       "aed_score",
+       "certification",
+       "chart_dataset_url",
+       "cpr_score",
+       "guide_prompts",
+       "metrics",
+       "training_stats"
+      ],
+      "overall": 100,
+      "chart_dataset_url": "https://charts.example.invalid/calculator_result/interpreted_rtdata/arc/development/_no_org/<date>/CPR-ACTION-<wallclock>-<uuid:30>.json?lifetime=300&generation=3"
+     }
+    },
+    "evaluation": {
+     "goal": {
+      "kind": "compressions",
+      "required": 60,
+      "observed": 60,
+      "met": true,
+      "status": "evaluated"
+     },
+     "score": {
+      "decision": "pass"
+     },
+     "program_completed": true,
+     "reason_codes": []
+    },
+    "progressApplication": {
+     "applied": true,
+     "applied_epoch": "<uuid:22>",
+     "reason": "APPLIED"
+    },
+    "submit_arc": {
+     "status": "excluded",
+     "ok": false,
+     "error": null,
+     "exclusionReasons": [
+      "dummy"
+     ]
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:05Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/910004/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:31>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "courseItems": [
+     {
+      "id": 950041,
+      "courseItemLinkId": 940041,
+      "step": 1,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+      "iconType": "training",
+      "itemType": "training",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": true,
+      "isPassed": true
+     },
+     {
+      "id": 950042,
+      "courseItemLinkId": 940042,
+      "step": 2,
+      "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+      "iconType": "assessment",
+      "itemType": "assessment",
+      "contentType": null,
+      "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
+      "isCompleted": true,
+      "isPassed": true
+     }
+    ],
+    "enrollment": {
+     "id": 920004,
+     "status": "ENROLLED",
+     "courseTitle": "[Dummy Dev] Chest Compression Only (adult)",
+     "courseId": 910004,
+     "loginAt": null,
+     "finishedAt": null,
+     "elapsedSeconds": null,
+     "centerName": null,
+     "enrollStatusCode": null
+    },
+    "progressId": 930004,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:05Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/courses/progress/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:32>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "results": [
+     {
+      "courseId": 910001,
+      "courseName": "[Dummy Dev] CPR Training (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950011,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950012,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920001,
+      "progressId": 930001,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910002,
+      "courseName": "[Dummy Dev] CPR Training (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950021,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950022,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920002,
+      "progressId": 930002,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910003,
+      "courseName": "[Dummy Dev] CPR Training (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950031,
+        "itemType": "training",
+        "title": "[Dummy Dev] CPR Training (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950032,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] CPR Training (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920003,
+      "progressId": 930003,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910004,
+      "courseName": "[Dummy Dev] Chest Compression Only (adult)",
+      "status": "FINISHED",
+      "summary": [
+       {
+        "id": 950041,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950042,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920004,
+      "progressId": 930004,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910005,
+      "courseName": "[Dummy Dev] Chest Compression Only (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950051,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950052,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920005,
+      "progressId": 930005,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910006,
+      "courseName": "[Dummy Dev] Chest Compression Only (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950061,
+        "itemType": "training",
+        "title": "[Dummy Dev] Chest Compression Only (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950062,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Chest Compression Only (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920006,
+      "progressId": 930006,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910007,
+      "courseName": "[Dummy Dev] Ventilation Only (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950071,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950072,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920007,
+      "progressId": 930007,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910008,
+      "courseName": "[Dummy Dev] Ventilation Only (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950081,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950082,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920008,
+      "progressId": 930008,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910009,
+      "courseName": "[Dummy Dev] Ventilation Only (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950091,
+        "itemType": "training",
+        "title": "[Dummy Dev] Ventilation Only (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950092,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] Ventilation Only (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920009,
+      "progressId": 930009,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910010,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950101,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950102,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920010,
+      "progressId": 930010,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910011,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950111,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950112,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920011,
+      "progressId": 930011,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910012,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950121,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950122,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920012,
+      "progressId": 930012,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910013,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950131,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950132,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (adult) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920013,
+      "progressId": 930013,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910014,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (child)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950141,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (child) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950142,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (child) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920014,
+      "progressId": 930014,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     },
+     {
+      "courseId": 910015,
+      "courseName": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant)",
+      "status": "NOT_STARTED",
+      "summary": [
+       {
+        "id": 950151,
+        "itemType": "training",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant) - Practice",
+        "displayOrder": 1
+       },
+       {
+        "id": 950152,
+        "itemType": "assessment",
+        "title": "[Dummy Dev] 2-Rescuer CPR with AED-T (infant) - Final assessment",
+        "displayOrder": 2
+       }
+      ],
+      "certificationType": null,
+      "enrollmentId": 920015,
+      "progressId": 930015,
+      "learningAvailability": {
+       "state": "ready",
+       "reason": null
+      }
+     }
+    ],
+    "count": 15,
+    "next": null,
+    "previous": null
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:05Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/session/refresh/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:33>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "sessionId": "<uuid:2>",
+    "expiresAt": "2027-01-16T08:00:00Z",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:05Z"
+  }
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/v2/session/",
+  "status": 204,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:34>"
+  },
+  "body": null
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/session/",
+  "status": 403,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:35>"
+  },
+  "body": {
+   "success": false,
+   "error": {
+    "code": "SESSION_REVOKED",
+    "message": "The session has been revoked.",
+    "details": null
+   },
+   "timestamp": "2027-01-15T08:00:05Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/sessions/",
+  "status": 201,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:36>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "sessionId": "<uuid:37>",
+    "expiresAt": "2027-01-16T08:00:06Z",
+    "learningAvailability": {
+     "state": "ready",
+     "reason": null
+    },
+    "accessToken": "s1.<uuid:37>.<secret>",
+    "tokenType": "Bearer",
+    "userName": "Test User"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:06Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:17>/",
+  "status": 404,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:38>"
+  },
+  "body": {
+   "success": false,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "Not found.",
+    "details": null
+   },
+   "timestamp": "2027-01-15T08:00:06Z"
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/api/v2/attempts/<uuid:17>/reauthorize/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:39>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "state": "evaluated",
+    "courseId": 910004,
+    "enrollmentId": 920004,
+    "courseItemLinkId": 940041,
+    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "createdAt": "2027-01-15T08:00:02Z",
+    "role": "training",
+    "condition": {
+     "mode": "training",
+     "target": "adult",
+     "training_type": "compression_only",
+     "guideline": "ARC2025",
+     "cpr_cycle_type": "302",
+     "is_2rescuers": false
+    },
+    "resumeCredential": "r1.v1.<secret>"
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:06Z"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/api/v2/attempts/<uuid:17>/calculation/",
+  "status": 200,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:40>"
+  },
+  "body": {
+   "success": true,
+   "data": {
+    "attemptId": "<uuid:17>",
+    "calculationStatus": "succeeded",
+    "calculation": {
+     "<calculation>": {
+      "keys": [
+       "action_count",
+       "aed_score",
+       "certification",
+       "chart_dataset_url",
+       "cpr_score",
+       "guide_prompts",
+       "metrics",
+       "training_stats"
+      ],
+      "overall": 100,
+      "chart_dataset_url": "https://charts.example.invalid/calculator_result/interpreted_rtdata/arc/development/_no_org/<date>/CPR-ACTION-<wallclock>-<uuid:21>.json?lifetime=300&generation=1"
+     }
+    },
+    "evaluation": {
+     "goal": {
+      "kind": "compressions",
+      "required": 60,
+      "observed": 60,
+      "met": true,
+      "status": "evaluated"
+     },
+     "score": {
+      "decision": "pass"
+     },
+     "program_completed": true,
+     "reason_codes": []
+    },
+    "progressApplication": {
+     "applied": true,
+     "applied_epoch": "<uuid:22>",
+     "reason": "APPLIED"
+    },
+    "submit_arc": {
+     "status": "excluded",
+     "ok": false,
+     "error": null,
+     "exclusionReasons": [
+      "dummy"
+     ]
+    }
+   },
+   "message": "OK",
+   "timestamp": "2027-01-15T08:00:06Z"
+  }
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/v2/session/",
+  "status": 204,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:41>"
+  },
+  "body": null
+ }
+]

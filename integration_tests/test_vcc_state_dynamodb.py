@@ -1,78 +1,35 @@
-"""Course repository and login against DynamoDB Local. No user DB reuse."""
+"""Course repository and login against DynamoDB Local. No user DB reuse.
+
+Legacy attempts are the captured /mock/v1 rows (tests/legacy_rows_support.py);
+sessions for the fixture learner are seeded in the current row shape (a USER
+row without slots, design Q10), never through the removed slot-list API.
+"""
 
 from pathlib import Path
 import json
-from types import SimpleNamespace
 import uuid
 
-from mock_journey.assembly import ExecutionCatalog, build_course_application
-from mock_journey.catalog import PROGRAMS, TARGETS, slot_key
+from tests.vcc_application_support import (  # noqa: F401 (re-export)
+    BUNDLE, CONTEXT, MAPPING, application, definitions, execution, login,
+)
 from mock_journey.course_contracts import ContentReport, StartCommand
 from mock_journey.course_errors import CourseError
 from mock_journey.course_fixture import FixtureCourseProvider
-from mock_journey.course_policy import CoursePolicy, learner_key, placement_key, scope_key
+from mock_journey.course_policy import CoursePolicy, scope_key
 from mock_journey.course_provider import UnavailableCourseProvider
 from mock_journey.course_settings import fixture_course_settings
-from mock_journey.course_state import DynamoCourseRepository, InMemoryBlobStore
+from mock_journey.course_state import DynamoCourseRepository
+from tests.course_store_fakes import InMemoryBlobStore
 from mock_journey.handler import handle
-from mock_journey.models import AuthContext
-from mock_journey.projection import ProjectionSchema
-from mock_journey.settings import ApiSettings, StateSettings, StorageSettings
 from mock_journey.state import DynamoCourseStore, DynamoStateRepository
 from mock_journey.typed import parse_json
-from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
-from tests.vcc_support import dummy_learner, event, load_fixture, mapping_document
+from tests.journey_support import JourneyStore
+from tests.legacy_attempt_seeds import seed_session_without_slots
+from tests.legacy_rows_support import seed_legacy_rows
+from tests.vcc_support import event
 
 
 DATA = Path(__file__).resolve().parents[1]
-BUNDLE = load_fixture("course_bundle.json")
-MAPPING = mapping_document()
-CONTEXT = SimpleNamespace(aws_request_id="vcc-ddb")
-
-
-def definitions():
-    return {slot_key(program[0], target): {
-        "condition": {"target": target}, "calculation_profile": {
-            "Custom": {"PassThreshold": 80.0, "CertificateAdult": False}},
-        "profile_version": "test-profile", "adapter_version": "test-adapter",
-        "projection_version": "test-projection",
-    } for program in PROGRAMS for target in TARGETS}
-
-
-def execution():
-    return ExecutionCatalog(definitions(), {
-        "test-projection": ProjectionSchema("test-projection", {"CompressionDepth": {"value": "scalar"}}),
-    })
-
-
-def application(client, table, *, provider=None, clock=None):
-    now = clock if clock is not None else (lambda: 1_800_000_000)
-    objects = MemoryS3()
-    bindings = MemoryLegacyBindings(objects)
-    state = StateSettings(table, 4)
-    storage = StorageSettings("development", bindings.bucket, bindings.directory, 1000000, 2000000)
-    settings = ApiSettings(state, storage, "vcc-ddb", 2000000)
-    keys = {"v1": b"K" * 32}
-    source = provider
-    if source is None:
-        source = FixtureCourseProvider(
-            document=BUNDLE, settings=fixture_course_settings(), mapping_document=MAPPING,
-        )
-    return build_course_application(
-        settings, dynamodb_client=client, s3_client=objects, legacy_bindings=bindings,
-        resume_keys=keys, current_key_version="v1", execution=execution(), provider=source,
-        course_settings=fixture_course_settings(), clock=now, mapping_document=MAPPING,
-        dummy_learner=dummy_learner(),
-    )
-
-
-def login(app):
-    response = handle(event("POST", "/api/v2/sessions/", body={
-        "loginId": "test@test.com", "password": "2222",
-    }), CONTEXT, app)
-    body = json.loads(response["body"])
-    assert response["statusCode"] == 201, body
-    return body["data"]["accessToken"], body["data"]
 
 
 def test_dummy_login_ready_empty_and_old_routes_404(dynamodb_client, dynamodb_table):
@@ -124,32 +81,31 @@ def test_unavailable_provider_keeps_session_waiting(dynamodb_client, dynamodb_ta
 
 def test_legacy_attempt_get_without_provider(dynamodb_client, dynamodb_table):
     app = application(dynamodb_client, dynamodb_table, provider=UnavailableCourseProvider())
-    token, _ = login(app)
-    auth = app.auth.authenticate(token)
-    template = app.auth.prepare_resume({
-        "attempt_id": str(uuid.uuid4()), "principal": auth.principal,
-        "creator_session_id": auth.session_id, "bound_session_id": auth.session_id,
-        "program_id": "mock-cpr", "target": "adult", "profile_name": "tester",
-        "definition_json": json.dumps({
-            "condition": {
-                "mode": "training", "target": "adult", "training_type": "cpr",
-                "guideline": "ARC2025", "cpr_cycle_type": "302", "is_2rescuers": False,
-            },
-            "calculation_profile": {}, "profile_version": "tester",
-            "adapter_version": "test-adapter", "projection_version": "test-projection",
-            "goal": {"kind": "cycles", "required": 3}, "catalog_version": "mock-catalog-v1",
-        }),
-    })
-    attempt = app.state.create_attempt(auth, str(uuid.uuid4()), "digest-a", template)
-    response = handle(event("GET", f"/api/v2/attempts/{attempt['attempt_id']}/", token=token), CONTEXT, app)
-    assert response["statusCode"] == 200
-    data = json.loads(response["body"])["data"]
-    assert data["courseId"] is None
-    assert data["enrollmentId"] is None
-    assert data["courseItemLinkId"] is None
-    assert data["definitionHash"] is None
-    assert data["role"] is None
-    assert data["condition"]["target"] == "adult"
+    store = JourneyStore(dynamodb_client, dynamodb_table)
+    seeded = seed_legacy_rows(store)
+    token = seeded.issue_session_token()
+    before = store.rows()
+    for label, captured in seeded.attempts.items():
+        response = handle(event("GET", f"/api/v2/attempts/{captured['attempt_id']}/", token=token), CONTEXT, app)
+        assert response["statusCode"] == 200, (label, response["body"])
+        data = json.loads(response["body"])["data"]
+        assert data["attemptId"] == captured["attempt_id"]
+        assert data["state"] == captured["row"]["state"]
+        assert data["courseId"] is None
+        assert data["enrollmentId"] is None
+        assert data["courseItemLinkId"] is None
+        assert data["definitionHash"] is None
+        assert data["role"] is None
+        assert data["condition"] == json.loads(captured["row"]["definition_json"])["condition"]
+        assert data["condition"]["target"] == "adult"
+    assert store.rows() == before  # A read never rewrites legacy rows (R2/R4).
+
+
+def fixture_learner_session(dynamodb_client, dynamodb_table, token_hash):
+    return seed_session_without_slots(
+        dynamodb_client, dynamodb_table, clock=lambda: 1_800_000_000,
+        principal=BUNDLE["learners"]["real"]["principal"], token_hash=token_hash, expires_at=1_808_640_000,
+    )
 
 
 def test_video_intervals_complete_and_historical_null_on_old_epoch(dynamodb_client, dynamodb_table):
@@ -160,13 +116,7 @@ def test_video_intervals_complete_and_historical_null_on_old_epoch(dynamodb_clie
     repo = DynamoCourseRepository(store, settings, policy, InMemoryBlobStore(),
                                   clock=lambda: 1_800_000_000, uuid_factory=lambda: str(uuid.uuid4()))
     provider = FixtureCourseProvider(document=BUNDLE, settings=settings, mapping_document=MAPPING)
-    session = {
-        "session_id": str(uuid.uuid4()), "principal": BUNDLE["learners"]["real"]["principal"],
-        "token_hash": "a" * 64, "issued_at": 1_800_000_000, "expires_at": 1_808_640_000,
-        "status": "active", "revision": 0,
-    }
-    state.create_session(session, [slot_key(program[0], target) for program in PROGRAMS for target in TARGETS])
-    auth = AuthContext(session["session_id"], session["principal"], 0, session["expires_at"])
+    auth = fixture_learner_session(dynamodb_client, dynamodb_table, "a" * 64)
     learner = provider.resolve_learner(auth)
     ticket = repo.begin_inventory(auth, learner)
     assignments = provider.list_assignments(learner)
@@ -205,13 +155,7 @@ def test_head_and_final_init_together(dynamodb_client, dynamodb_table):
     repo = DynamoCourseRepository(store, settings, policy, InMemoryBlobStore(),
                                   clock=clock, uuid_factory=lambda: str(uuid.uuid4()))
     provider = FixtureCourseProvider(document=BUNDLE, settings=settings, mapping_document=MAPPING)
-    session = {
-        "session_id": str(uuid.uuid4()), "principal": BUNDLE["learners"]["real"]["principal"],
-        "token_hash": "b" * 64, "issued_at": 1_800_000_000, "expires_at": 1_808_640_000,
-        "status": "active", "revision": 0,
-    }
-    state.create_session(session, [slot_key(program[0], target) for program in PROGRAMS for target in TARGETS])
-    auth = AuthContext(session["session_id"], session["principal"], 0, session["expires_at"])
+    auth = fixture_learner_session(dynamodb_client, dynamodb_table, "b" * 64)
     learner = provider.resolve_learner(auth)
     ticket = repo.begin_inventory(auth, learner)
     assignments = provider.list_assignments(learner)
@@ -220,7 +164,7 @@ def test_head_and_final_init_together(dynamodb_client, dynamodb_table):
     gate = repo.ensure_epoch(auth, binding)
     assert gate.state in {"waiting", "ready"}
     pk = f"COURSE#{scope_key(binding.scope)}"
-    epoch = state.get_progress(auth)["epoch"]
+    epoch = JourneyStore(dynamodb_client, dynamodb_table).row(f"USER#{auth.principal}", "STATE")["epoch"]
     head = store.get_item({"PK": pk, "SK": f"EPOCH#{epoch}#HEAD"})
     final = store.get_item({"PK": pk, "SK": f"EPOCH#{epoch}#FINAL"})
     assert head is not None and final is not None

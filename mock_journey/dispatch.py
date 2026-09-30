@@ -35,7 +35,7 @@ class QueueSender:
 
 class OutboxRelay:
     def __init__(self, jobs, sender, *, lease_seconds, retry_seconds, page_size, max_pages,
-                 clock=time.time, progress=None):
+                 clock=time.time, progress=None, processing_reserve_ms=None, relay_budget=None):
         if any(type(value) is not int or value <= 0 for value in (lease_seconds, retry_seconds, page_size, max_pages)):
             raise ValueError("Verified relay operating limits are required.")
         self.jobs, self.sender, self.clock = jobs, sender, clock
@@ -44,6 +44,11 @@ class OutboxRelay:
         # Explicit legacy/local construction remains available. AWS assembly
         # supplies the required, initialized persistent progress repository.
         self.progress = progress
+        # AWS assembly supplies the invocation time admission (already
+        # validated by AwsSettings). None, the local default, admits every
+        # step; readers keep their getattr(..., None) fallback for doubles.
+        self.processing_reserve_ms = processing_reserve_ms
+        self.relay_budget = relay_budget
 
     def dispatch(self, job_id):
         from mock_journey.jobs import JobLeaseLost
@@ -154,14 +159,21 @@ class OutboxRelay:
                 while True:
                     kind = snapshot["next_kind"]
                     # A completed kind is not repeatedly restarted in this
-                    # invocation. The persisted alternate kind resumes later.
-                    if kind in completed or steps[kind] >= cap:
-                        break
+                    # invocation, and a capped kind stops here. The remaining
+                    # kind keeps stepping within its own cap and the time
+                    # budget, while the persisted turn stays with the stopped
+                    # kind so that it resumes first in a later invocation.
+                    out_of_turn = kind in completed or steps[kind] >= cap
+                    if out_of_turn:
+                        kind = "JOB" if kind == "OUTBOX" else "OUTBOX"
+                        if kind in completed or steps[kind] >= cap:
+                            break
                     if not has_time(budget.step_ms if budget else 0):
                         break
                     check_call()
                     if snapshot["scans"][kind]["cutoff"] is None:
-                        snapshot = self.progress.begin_pass(snapshot, kind, lease_seconds=self.lease_seconds)
+                        snapshot = self.progress.begin_pass(snapshot, kind, lease_seconds=self.lease_seconds,
+                                                            out_of_turn=out_of_turn)
                     elif budget and ((snapshot["lease_until"] - self.progress.now()) * 1000
                                      <= budget.step_ms + budget.reserve_ms + 1000):
                         snapshot = self.progress.renew(snapshot, lease_seconds=self.lease_seconds)
@@ -194,7 +206,8 @@ class OutboxRelay:
                             # later pass without rewriting the Job's due time.
                             counts["failures"] += 1
                     check_call()
-                    snapshot = self.progress.advance(snapshot, kind, cursor, lease_seconds=self.lease_seconds)
+                    snapshot = self.progress.advance(snapshot, kind, cursor, lease_seconds=self.lease_seconds,
+                                                     out_of_turn=out_of_turn)
                     if cursor is None:
                         completed.add(kind)
                     if len(completed) == 2:

@@ -7,14 +7,16 @@ write storage, or refetch a provider. W5 merges optional course_binding.
 from mock_journey.course_contracts import (
     CONDITION_KEYS, EXECUTION_KEYS, POLICY_VERSION, AttemptTemplate, AuthContext,
     CourseBinding, CourseView, StartCommand, definition_digest, parse_owned,
-    scope_identity, validate_condition, validate_execution_definition,
+    validate_condition, validate_execution_definition,
 )
 from mock_journey.course_errors import CourseError
-from mock_journey.typed import digest, json_bytes
+from mock_journey.course_policy import placement_key as _placement_key, scope_key as _scope_key
+from mock_journey.course_primitives import fail
+from mock_journey.typed import json_bytes
 
 
 def _fail(code="INVALID_REQUEST"):
-    raise CourseError(code)
+    fail(code)
 
 
 def _role(kind, *, last):
@@ -68,10 +70,10 @@ class CourseCalculationBridge:
             _fail("NOT_FOUND")
         execution = _execution(item)
         role = _role(item.kind, last=item == view.bundle.placements[-1])
-        scope_key = digest(scope_identity(view.bundle.scope))
+        scope_key = _scope_key(view.bundle.scope)
         if scope_key != view.scope_key:
             _fail("DEFINITION_CHANGED")
-        placement_key = digest([scope_key, item.source_id])
+        placement_key = _placement_key(scope_key, item.source_id)
         template = {key: execution[key] for key in EXECUTION_KEYS}
         template["condition"] = {key: execution["condition"][key] for key in CONDITION_KEYS}
         template["mapping_version"] = view.bundle.mapping_version

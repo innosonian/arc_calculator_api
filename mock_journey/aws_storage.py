@@ -2,7 +2,7 @@
 
 import json
 
-from util import uploader
+from util import legacy_layout, uploader
 
 
 class AwsLegacyBindings:
@@ -19,24 +19,27 @@ class AwsLegacyBindings:
     def _base(self, directory, stage, key_stem, org):
         if directory != self.directory or stage != self.stage:
             raise ValueError("Invalid AWS storage binding.")
-        return f"{directory}/{stage}/{org}/{self.date_prefix(key_stem)}/{key_stem}"
+        return legacy_layout.object_base(directory, stage, org, self.date_prefix(key_stem), key_stem)
 
     def upload_raw_input(self, cpr_bytes, aed_bytes, meta, *, stage, key_stem, org, directory):
         base = self._base(directory, stage, key_stem, org)
-        self.client.put_object(Bucket=self.bucket, Key=base + ".bin", Body=cpr_bytes or b"")
-        self.client.put_object(Bucket=self.bucket, Key=base + ".meta.json", Body=json.dumps(meta, default=str))
+        self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.RAW_SUFFIX, Body=cpr_bytes or b"")
+        # The original (uploader) serialization; JourneyStorage re-reads it
+        # against typed.json_bytes, which is byte-identical for projected meta.
+        self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.META_SUFFIX,
+                               Body=json.dumps(meta, default=str))
         if aed_bytes:
-            self.client.put_object(Bucket=self.bucket, Key=base + ".aed.bin", Body=aed_bytes)
+            self.client.put_object(Bucket=self.bucket, Key=base + legacy_layout.AED_SUFFIX, Body=aed_bytes)
         return base
 
     def upload_json_file(self, data, *, directory, stage, key_stem, org):
-        key = self._base(directory, stage, key_stem, org) + ".json"
+        key = self._base(directory, stage, key_stem, org) + legacy_layout.CHART_SUFFIX
         self.client.put_object(Bucket=self.bucket, Key=key, Body=json.dumps(data))
         return key
 
     def create_signed_url(self, key, *, expires_in=300):
-        if (type(key) is not str or not key.startswith(f"{self.directory}/{self.stage}/")
-                or not key.endswith(".json") or expires_in != 300):
+        if (type(key) is not str or not key.startswith(legacy_layout.stage_prefix(self.directory, self.stage))
+                or not key.endswith(legacy_layout.CHART_SUFFIX) or expires_in != 300):
             raise ValueError("Invalid AWS chart binding.")
         return self.client.generate_presigned_url("get_object", Params={"Bucket": self.bucket, "Key": key},
                                                   ExpiresIn=expires_in)

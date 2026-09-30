@@ -5,14 +5,15 @@ from dataclasses import replace
 
 import pytest
 
+from mock_journey.catalog import definition_keys
 from mock_journey.course_errors import CourseError
 from mock_journey.course_contracts import AssignmentBinding, sealed_bundle
 from mock_journey.course_response import course_detail_data
 from mock_journey.errors import JourneyError
-from mock_journey.state import _encode
+from mock_journey.state import _decode, _encode
 from mock_journey.worker import JourneyWorker
 from tests.vcc_runtime_support import runtime, start_attempt, submit
-from tests.test_vcc_policy import completed_progress
+from tests.vcc_policy_support import completed_progress
 from mock_journey.typed import json_bytes, parse_json
 
 
@@ -37,22 +38,46 @@ def saved(env, attempt):
     return env.app.state.get_attempt(env.auth, attempt["attempt_id"])
 
 
-def test_missing_completion_plan_never_claims_or_writes_legacy_slot(dynamodb_client, dynamodb_table):
-    env = runtime(dynamodb_client, dynamodb_table)
+def user_row(env):
+    """The raw USER row, whatever fields it carries (new rows have no slots, design Q10)."""
+    return env.client.get_item(TableName=env.table, Key=_encode({"PK": "USER#" + env.auth.principal, "SK": "STATE"}),
+                               ConsistentRead=True)["Item"]
+
+
+def legacy_slots():
+    """A stored legacy (pre-D103 v1) slots map: one slot per definition key, some already used."""
+    slots = {key: {"completed": False, "completed_by_attempt": None, "completed_at": None, "open_attempts": 0}
+             for key in definition_keys()}
+    slots["mock-compression-only:adult"].update(completed=True, completed_by_attempt="legacy-attempt",
+                                                completed_at=1_799_999_000)
+    slots["mock-cpr:adult"]["open_attempts"] = 1
+    return slots
+
+
+@pytest.mark.parametrize("seeded_slots", [None, legacy_slots()], ids=["new_user_row", "legacy_slots_row"])
+def test_missing_completion_plan_never_claims_or_writes_user_progress(dynamodb_client, dynamodb_table, seeded_slots):
+    env = runtime(dynamodb_client, dynamodb_table, legacy_slots=seeded_slots)
     attempt = start_attempt(env, 1003)
     job_id = submit(env, attempt)
+    before = user_row(env)
     worker = JourneyWorker(env.worker.jobs, env.worker.storage, env.worker.adapters,
                            lease_seconds=60, retry_seconds=5, clock=env.clock)
     assert worker.process(job_id) is False
     assert env.worker.jobs.get_job(job_id)["state"] == "queued"
     assert saved(env, attempt)["state"] == "queued"
-    assert env.app.state.get_progress(env.auth)["slots"]["mock-compression-only:adult"]["completed"] is False
+    assert user_row(env) == before
     assert env.worker.process(job_id) is True
     view = env.app.course_service.get_course(env.auth, course_id=101, enrollment_id=501)
     item = next(p for p in course_detail_data(view)["courseItems"] if p["courseItemLinkId"] == 1003)
     assert item["isCompleted"] is True
     assert saved(env, attempt)["submit_arc"]["status"] == "disabled"
-    assert env.app.state.get_progress(env.auth)["slots"]["mock-compression-only:adult"]["completed"] is False
+    # Course completion lives in COURSE rows; a course job never rewrites USER
+    # (no revision bump, no legacy slot, no field added or removed). A legacy
+    # row keeps every slot exactly as stored (R1); a new row never gains slots.
+    assert user_row(env) == before
+    assert ("slots" in before) is (seeded_slots is not None)
+    if seeded_slots is not None:  # Start and submit did not touch the stored slots either.
+        assert _decode(before)["slots"] == seeded_slots
 
 
 def test_app_rebuild_reads_same_private_bundle_and_completed_progress(dynamodb_client, dynamodb_table):

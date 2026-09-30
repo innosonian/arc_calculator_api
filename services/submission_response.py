@@ -1,6 +1,5 @@
 """Pure app response composition while the ARC submission contract is pending."""
 
-import json
 import math
 
 
@@ -42,32 +41,3 @@ def _copy_json(value):
             raise ValueError("Invalid calculation result.")
         return {key: _copy_json(item) for key, item in value.items()}
     raise ValueError("Invalid calculation result.")
-
-
-def _unique_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Invalid calculation snapshot.")
-        result[key] = value
-    return result
-
-
-def _reject_constant(_value):
-    raise ValueError("Invalid calculation snapshot.")
-
-
-def compose_calculation_snapshot(snapshot: bytes) -> bytes:
-    """Overlay only the HTTP response; never rewrite the committed snapshot."""
-    if type(snapshot) is not bytes:
-        raise ValueError("Invalid calculation snapshot.")
-    try:
-        calculation = json.loads(
-            snapshot.decode("utf-8"), object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
-        )
-        result = compose_calculation_response(calculation)
-        # allow_nan also rejects a valid JSON exponent that overflowed a float.
-        return json.dumps(result, allow_nan=False).encode("utf-8")
-    except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
-        raise ValueError("Invalid calculation snapshot.") from None

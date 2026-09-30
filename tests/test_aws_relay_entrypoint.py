@@ -10,7 +10,7 @@ from mock_journey.aws_runtime import build_runtime
 from mock_journey.dispatch import OutboxRelay, handle_stream, run
 from mock_journey.errors import JourneyError
 from services.operational_logs import log_context, record_event
-from tests.test_aws_runtime import context, environment
+from tests.aws_runtime_support import context, environment
 from tests.relay_progress_support import RelaySdk
 
 

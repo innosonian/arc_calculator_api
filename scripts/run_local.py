@@ -7,8 +7,9 @@
 
 Lambda handler, multipart 파싱, 제출 invoke 전부 우회하고 main.run_calculator만 호출.
 """
-# 원본: hstm_v2 scripts/run_local.py (arc 이식 — 동작 동일. guideline 선택지는
-# 이 저장소가 지원하는 ARC2020/ARC2025 2종으로 축소, 기본값 ARC2025는 원본 그대로.
+# 원본: hstm_v2 scripts/run_local.py (arc 이식 — 동작 동일. 이 CLI의 guideline 선택지만
+# ARC2020/ARC2025 2종으로 좁혔다. 계산기 자체는 config/guideline_registry.SUPPORTED_GUIDELINES
+# 5종을 계속 지원한다. 기본값 ARC2025는 원본 그대로.
 # --stage 기본 "prod"도 원본 그대로 — H-6 현행 유지 승인).
 
 import argparse
@@ -19,19 +20,21 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.guideline_registry import TARGET_ORDER, TRAINING_TYPE_ORDER
 from main import run_calculator
 from services.http.schemas import ConditionType
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpr", required=True, help="CPR 바이너리 파일 경로")
     parser.add_argument("--mode", default="training", choices=["training", "assessment", "dry_run"])
-    parser.add_argument("--target", default="adult", choices=["adult", "child", "infant"])
+    # choices 는 예전 리터럴 리스트와 같은 값·순서(config/guideline_registry.py 의 *_ORDER).
+    parser.add_argument("--target", default="adult", choices=list(TARGET_ORDER))
     parser.add_argument(
         "--training_type",
         default="cpr",
-        choices=["cpr", "compression_only", "ventilation_only"],
+        choices=list(TRAINING_TYPE_ORDER),
     )
     parser.add_argument(
         "--guideline",
@@ -46,7 +49,11 @@ def main() -> int:
     )
     parser.add_argument("--stage", default="prod")
     parser.add_argument("--out", help="결과 저장 경로 (미지정 시 stdout)")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     with open(args.cpr, "rb") as f:
         cpr_bytes = f.read()

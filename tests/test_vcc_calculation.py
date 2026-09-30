@@ -16,13 +16,13 @@ from mock_journey.course_errors import CourseError
 from mock_journey.course_submission import CourseCompletionPlan, final_phase_for_evaluation
 from mock_journey.models import AuthContext
 from mock_journey.typed import digest, parse_json
-from tests.test_vcc_contract import (
+from tests.vcc_contract_support import (
     BUNDLE_DOC, MAPPING_DOC, VECTORS, assignment_501, baseline_bundle,
 )
+from tests.vcc_support import EPOCH
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EPOCH = "80000000-0000-4000-8000-000000000001"
 SESSION = "20000000-0000-4000-8000-000000000001"
 REQUEST = "10000000-0000-4000-8000-000000000001"
 ATTEMPT = "50000000-0000-4000-8000-000000000001"
