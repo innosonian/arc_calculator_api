@@ -23,9 +23,6 @@ def test_valid_bundle_does_not_claim_aws_verification():
     ("relay", ("state", "table_name"), "other-table", "STATE_TABLE_MISMATCH"),
     ("worker", ("storage", "bucket"), "other-private-bucket", "STORAGE_MISMATCH"),
     ("worker", ("storage", "input_bytes"), 999999, "STORAGE_MISMATCH"),
-    # D127: a retained list other than the code registry no longer parses on its
-    # own, so it is a role configuration error before any cross-role comparison.
-    ("worker", ("execution", "retained_adapter_versions"), [], "ROLE_CONFIGURATION_INVALID"),
     ("worker", ("course", "settings", "max_course_items"), 32, "DUMMY_COURSE_CONFIGURATION_MISMATCH"),
 ])
 def test_individually_valid_roles_must_use_same_state_and_contract(role, path, value, code):

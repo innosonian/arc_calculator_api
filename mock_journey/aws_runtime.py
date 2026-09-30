@@ -7,6 +7,7 @@ import threading
 
 from mock_journey.aws_settings import AwsSettings, strict_json, invalid
 from mock_journey.errors import JourneyError
+from services.operational_logs import write_diagnostic
 
 
 _runtimes = {}
@@ -39,6 +40,9 @@ class AwsRoleRuntime:
     def __init__(self, settings, target, clients, operations, guard=None):
         self.settings, self.target, self.clients = settings, target, tuple(clients)
         self.operations, self.guard = operations, guard
+        # D141: one operational record per execution environment when the
+        # document still carries an (ignored) `execution` block; no value of it.
+        self.notice_pending = bool(getattr(settings, "execution_block_ignored", False))
 
     def bind_target(self):
         """Attach this runtime to its already assembled target, before any invocation.
@@ -60,6 +64,9 @@ class AwsRoleRuntime:
             raise JourneyError("TEMPORARILY_UNAVAILABLE") from None
         lease = self.guard.invocation(context) if self.guard is not None else nullcontext()
         with lease, self.operations.invocation(context):
+            if self.notice_pending:
+                self.notice_pending = False
+                write_diagnostic("info", "execution_block_ignored", {})
             yield self.target
 
 

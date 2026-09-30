@@ -10,7 +10,8 @@ import pytest
 from mock_journey.aws_runtime import build_runtime
 from mock_journey.aws_settings import AwsSettings
 from mock_journey.contracts import (
-    CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS,
+    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.execution_definitions import PROJECTION_VERSION
@@ -52,8 +53,8 @@ def test_real_role_assembly_creates_only_role_clients_and_no_initial_requests(ro
         assert not registry.resolve(RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
 
 
-@pytest.mark.parametrize("change", ["missing", "unknown", "boolean", "nan", "role", "duplicate", "key", "version",
-                                      "retained", "partition", "stage", "bucket", "sdk", "logs"])
+@pytest.mark.parametrize("change", ["missing", "unknown", "boolean", "nan", "role", "duplicate", "key",
+                                      "partition", "stage", "bucket", "sdk", "logs"])
 def test_invalid_configuration_is_sanitized_before_client_creation(change):
     config = configuration()
     env = environment(config=config)
@@ -67,10 +68,6 @@ def test_invalid_configuration_is_sanitized_before_client_creation(change):
         config["sdk"]["connect_timeout"] = float("nan")
     elif change == "role":
         config["role"] = "worker"
-    elif change == "version":
-        config["execution"]["current_adapter_version"] = "unreviewed"
-    elif change == "retained":
-        config["execution"]["retained_adapter_versions"] = ["unreviewed"]
     elif change == "partition":
         config["partition"] = "aws-cn"
     elif change == "stage":
@@ -221,6 +218,34 @@ def test_failed_client_creation_closes_earlier_client_and_does_not_echo_error():
         build_runtime("api", environment(), client_factory=factory)
     assert closed == ["dynamodb"] and "PRIVATE-MARKER" not in str(error.value)
     assert build_runtime("api", environment(), client_factory=FakeSdk()).target.calculation
+
+
+@pytest.mark.parametrize("role", ["api", "worker"])
+def test_an_ignored_execution_block_leaves_one_operational_record_without_its_values(role):
+    # D141: the document may still carry the block; the first invocation records
+    # `execution_block_ignored` once (diagnostic, info) and never any of its values.
+    config = configuration(role)
+    config["execution"] = {"current_adapter_version": "arc-internal-detection-v4",
+                           "retained_adapter_versions": ["PRIVATE-MARKER"], "projection_version": "PRIVATE-MARKER"}
+    factory = FakeSdk()
+    runtime = build_runtime(role, environment(role, config), client_factory=factory)
+    assert runtime.settings.execution_block_ignored is True
+    assert runtime.settings.execution == (CURRENT_ADAPTER_VERSION, PROJECTION_VERSION, RETAINED_ADAPTER_VERSIONS)
+    assert factory.logs == [], "nothing is written before the first invocation"
+    for _ in range(3):
+        with runtime.invocation(context()):
+            pass
+    assert len(factory.logs) == 1
+    stored = json.loads(factory.logs[0]["Item"]["record"]["S"])
+    assert (stored["category"], stored["event"], stored["role"]) == ("diagnostic", "execution_block_ignored", role)
+    assert stored["fields"]["level"] == "info" and "PRIVATE-MARKER" not in json.dumps(factory.logs)
+    assert "arc-internal-detection-v4" not in json.dumps(factory.logs)
+    # Without the block there is no record at all.
+    factory = FakeSdk()
+    runtime = build_runtime(role, environment(role), client_factory=factory)
+    with runtime.invocation(context()):
+        pass
+    assert runtime.settings.execution_block_ignored is False and factory.logs == []
 
 
 def test_context_resource_mismatch_is_rejected_before_invocation():

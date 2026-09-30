@@ -19,7 +19,7 @@ from mock_journey.assembly import ExecutionCatalog, build_course_application, bu
 from mock_journey.aws_runtime import AwsRoleRuntime, build_runtime
 from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
 )
 from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.course_provider import UnavailableCourseProvider
@@ -272,17 +272,23 @@ def test_aws_worker_adapters_and_required_bindings_include_retained(monkeypatch)
     assert set(runtime.target.adapters._registered) == set(captured["required_bindings"])
 
 
-def test_aws_worker_without_retained_versions_is_a_configuration_error(monkeypatch):
-    # D127: the retained list must equal the code registry exactly; an empty list never
-    # reaches worker composition, so no adapter or binding is captured.
+@pytest.mark.parametrize("execution", [
+    {"current_adapter_version": "arc-internal-detection-v4", "projection_version": "arc-local-projection-v1",
+     "retained_adapter_versions": ["arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3"]},
+    {"retained_adapter_versions": []}, None, "v4",
+], ids=["v4_document", "empty_retained", "null", "string"])
+def test_aws_worker_registers_the_code_registry_whatever_the_document_says(monkeypatch, execution):
+    # D141 (correcting D127): the retained list of the document is ignored; the Worker
+    # composes the current adapter and the registry's retained adapters, in registry order.
     config = aws_configuration("worker")
-    config["execution"]["retained_adapter_versions"] = []
-    captured = {}
-    monkeypatch.setattr(assembly, "build_worker", lambda settings, **kwargs: captured.update(kwargs))
-    with pytest.raises(JourneyError) as error:
-        build_runtime("worker", environment("worker", config), client_factory=FakeSdk())
-    assert error.value.code == "TEMPORARILY_UNAVAILABLE"
-    assert captured == {}
+    config["execution"] = execution
+    runtime, captured = _captured_worker(monkeypatch, config)
+    assert [adapter.version for adapter in captured["adapters"]] == [CURRENT_ADAPTER_VERSION, *RETAINED_ADAPTER_VERSIONS]
+    assert set(runtime.target.adapters._registered) == set(captured["required_bindings"])
+    assert runtime.settings.execution_block_ignored is True
+    assert [adapter.version for adapter in captured["adapters"]] == [
+        "arc-internal-detection-v5", "arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
+        "arc-internal-detection-v4"]
 
 
 def test_required_binding_for_an_unregistered_adapter_fails_worker_composition():

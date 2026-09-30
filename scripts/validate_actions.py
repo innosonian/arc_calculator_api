@@ -33,9 +33,9 @@ so a reviewed CI change touches every copy at once):
   of the yml; docs/DEPLOY_GUIDE.md "자동 배포" section.
 * The check-config command of that workflow: the yml, DEPLOY_RUNS["check_config"]
   and, because the PR base is compared with it, CHECK_CONFIG_PREDECESSOR_RUNS
-  (the one earlier body a base revision may still carry; D140 added
-  `--registry`). A further change of that command moves the current body into
-  the predecessor tuple in the same reviewed change.
+  (the earlier bodies a base revision may still carry: D140 added
+  `--registry`, D141 removed it again). A further change of that command moves
+  the current body into the predecessor tuple in the same reviewed change.
 """
 
 import argparse
@@ -186,12 +186,6 @@ DEPLOY_STEP_CONDITIONS = {"build": BUILD_CONDITION, "upload": BUILD_CONDITION, "
 DEPLOY_SCRIPT = "scripts/deploy_dev_lambdas.py"
 DEPLOY_PYTHON = '"$RUNNER_TEMP/actions-venv/bin/python"'
 DEPLOY_FUNCTION_ORDER = ("worker", "relay", "api")
-# D140: the build writes the code's execution registry next to the ZIP (with
-# the CI venv, which has the application requirements); the artifact keeps it,
-# and check-config and deploy read that same file, so a rollback syncs the
-# configuration to the registry of the ZIP it re-deploys.
-DEPLOY_REGISTRY = '"$RUNNER_TEMP/artifact/execution-registry.json"'
-DEPLOY_REGISTRY_ARGUMENT = "--registry " + DEPLOY_REGISTRY
 # (run body, env, shell) per run step of the deployment job.
 DEPLOY_RUNS = {
     "dependencies": (DEPENDENCIES_RUN, None, "bash"),
@@ -204,21 +198,17 @@ DEPLOY_RUNS = {
         '  --platform manylinux2014_x86_64 --implementation cp --python-version 3.12\n'
         '"$RUNNER_TEMP/build-python/bin/python" scripts/build_mock_artifact.py \\\n'
         '  --source-root "$GITHUB_WORKSPACE" --packages-dir "$RUNNER_TEMP/packages" --outdir "$RUNNER_TEMP/artifact"\n'
-        '"$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"\n'
-        + DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py registry \\\n'
-        '  --output ' + DEPLOY_REGISTRY, None, None),
+        '"$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"', None, None),
     "check_config": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py check-config \\\n'
-        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER" \\\n'
-        '  ' + DEPLOY_REGISTRY_ARGUMENT,
+        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',
         None, None),
     "deploy": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py deploy \\\n'
         '  --region "$AWS_REGION" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \\\n'
         '  --function worker="$ARC_DEV_FUNCTIONS_WORKER" --function relay="$ARC_DEV_FUNCTIONS_RELAY" '
         '--function api="$ARC_DEV_FUNCTIONS_API" \\\n'
-        '  --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json" \\\n'
-        '  ' + DEPLOY_REGISTRY_ARGUMENT,
+        '  --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json"',
         None, None),
     "smoke": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py smoke \\\n'
@@ -231,18 +221,19 @@ DEPLOY_RUNS = {
 }
 # The check-config bodies an older PR base may carry. The base comparison
 # accepts exactly one kind of change of that step: from one of these to the
-# current fixed body above (D137 -> D140: `--registry` added). Any other base
-# body, env, condition or key is rejected as before.
+# current fixed body above (D140 -> D141: `--registry` removed again; the D137
+# body equals the current one). Any other base body, env, condition or key is
+# rejected as before, and the current body may never go back to a predecessor.
 CHECK_CONFIG_PREDECESSOR_RUNS = (
     DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py check-config \\\n'
-    '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',
+    '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER" \\\n'
+    '  --registry "$RUNNER_TEMP/artifact/execution-registry.json"',
 )
 DEPLOY_OIDC_WITH = {"role-to-assume": "${{ env.AWS_ROLE_ARN }}", "role-session-name": "arc-deploy-development",
                     "aws-region": "${{ env.AWS_REGION }}"}
 DEPLOY_UPLOAD_WITH = {
     "name": "mock-lambda-${{ github.sha }}",
-    "path": "${{ runner.temp }}/artifact/mock-lambda.zip\n${{ runner.temp }}/artifact/artifact-manifest.json\n"
-            "${{ runner.temp }}/artifact/execution-registry.json\n",
+    "path": "${{ runner.temp }}/artifact/mock-lambda.zip\n${{ runner.temp }}/artifact/artifact-manifest.json\n",
     "if-no-files-found": "error",
     "retention-days": 30,
 }
@@ -395,15 +386,11 @@ def validate_deployment(document):
     require(tuple(re.findall(r"--function ([a-z]+)=", selected["deploy"]["run"])) == DEPLOY_FUNCTION_ORDER,
             "DEPLOYMENT_GATE_INVALID")
     require(all(re.search(re.escape(DEPLOY_SCRIPT) + " " + re.escape(sub) + r"\b", selected[step_id]["run"])
-                for step_id, sub in (("build", "registry"), ("check_config", "check-config"), ("deploy", "deploy"),
-                                     ("smoke", "smoke"))),
+                for step_id, sub in (("check_config", "check-config"), ("deploy", "deploy"), ("smoke", "smoke"))),
             "DEPLOYMENT_GATE_INVALID")
-    # D140: the registry is written once by the build, kept in the artifact,
-    # and both AWS steps read that one file (never a registry of their own).
-    require(selected["build"]["run"].count("--output " + DEPLOY_REGISTRY) == 1
-            and all(selected[step_id]["run"].count(DEPLOY_REGISTRY_ARGUMENT) == 1
-                    and selected[step_id]["run"].count("--registry") == 1 for step_id in ("check_config", "deploy"))
-            and "${{ runner.temp }}/artifact/execution-registry.json" in upload["with"]["path"].split("\n"),
+    # D141: the deployment never writes a Lambda configuration; no step may
+    # carry a registry file or a configuration argument.
+    require(not any(token in json.dumps(job) for token in ("--registry", "execution-registry", "registry ")),
             "DEPLOYMENT_GATE_INVALID")
 
 

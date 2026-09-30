@@ -328,7 +328,7 @@ def test_environment_alias_cannot_silently_change_aws_action_inputs(documents, s
 
 @pytest.mark.parametrize("change,code", [
     ("echo_only", "DEPLOYMENT_AUTH_INVALID"), ("worker_only", "DEPLOYMENT_AUTH_INVALID"),
-    ("no_registry", "DEPLOYMENT_AUTH_INVALID"), ("other_registry", "DEPLOYMENT_AUTH_INVALID"),
+    ("registry", "DEPLOYMENT_AUTH_INVALID"),
     ("if", "DEPLOYMENT_GATE_INVALID"), ("continue_on_error", "DEPLOYMENT_GATE_INVALID"),
     ("env", "DEPLOYMENT_AUTH_INVALID"), ("after_deploy", "DEPLOYMENT_GATE_INVALID"), ("removed", "DEPLOYMENT_GATE_INVALID"),
 ])
@@ -340,12 +340,9 @@ def test_check_config_must_run_unconditionally_with_its_command_before_the_deplo
         check["run"] = "echo '" + check["run"] + "'"
     elif change == "worker_only":
         check["run"] = check["run"].replace(' --function api="$ARC_DEV_FUNCTIONS_API"', "")
-    elif change == "no_registry":
-        check["run"] = check["run"].replace(' \\\n  --registry "$RUNNER_TEMP/artifact/execution-registry.json"', "")
-        assert "--registry" not in check["run"]
-    elif change == "other_registry":
-        check["run"] = check["run"].replace("artifact/execution-registry.json", "other/execution-registry.json")
-        assert "other/execution-registry.json" in check["run"]
+    elif change == "registry":
+        # The D140 body: a configuration registry argument is no longer accepted (D141).
+        check["run"] = validation.CHECK_CONFIG_PREDECESSOR_RUNS[0] + "\n"
     elif change == "if":
         check["if"] = "false"
     elif change == "continue_on_error":
@@ -363,31 +360,27 @@ def test_check_config_must_run_unconditionally_with_its_command_before_the_deplo
                     validation.validate_workflows, base, deployment, ci)
 
 
-@pytest.mark.parametrize("change", ["no_registry", "other_registry", "checkout_registry"])
-def test_deploy_reads_the_registry_the_build_stored_with_the_zip(documents, change):
-    # D140: the execution block is synced to the registry of the artifact being deployed, nothing else.
-    base, deployment, ci = documents
-    step = deploy_step(deployment, "deploy")
-    argument = ' \\\n  --registry "$RUNNER_TEMP/artifact/execution-registry.json"'
-    assert step["run"].count(argument) == 1
-    replacement = {"no_registry": "", "other_registry": argument.replace("artifact/", "other/"),
-                   "checkout_registry": argument.replace('"$RUNNER_TEMP/artifact/execution-registry.json"',
-                                                         "scripts/execution-registry.json")}[change]
-    step["run"] = step["run"].replace(argument, replacement)
-    assert_rejected("DEPLOYMENT_GATE_INVALID", validation.validate_workflows, base, deployment, ci)
+REGISTRY_ARGUMENT = ' \\\n  --registry "$RUNNER_TEMP/artifact/execution-registry.json"'
+REGISTRY_LINE = ('\n"$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py registry \\\n'
+                 '  --output "$RUNNER_TEMP/artifact/execution-registry.json"')
 
 
-@pytest.mark.parametrize("step_id", ["build", "check_config", "deploy"])
-def test_a_constant_change_that_separates_the_registry_paths_is_rejected(documents, monkeypatch, step_id):
-    # Even when the yml and the pinned body are changed together, the build, check-config and
-    # deploy steps must still name the one registry file that the artifact keeps.
+@pytest.mark.parametrize("step_id,change", [("deploy", "argument"), ("check_config", "argument"), ("build", "line"),
+                                            ("upload", "path")])
+def test_the_deployment_carries_no_configuration_registry(documents, monkeypatch, step_id, change):
+    # D141: the D140 registry file and `--registry` arguments are gone; even when the
+    # yml and the pinned body are changed together they are rejected.
     base, deployment, ci = documents
     step = deploy_step(deployment, step_id)
-    step["run"] = step["run"].replace("artifact/execution-registry.json", "other/execution-registry.json")
-    body, env, shell = validation.DEPLOY_RUNS[step_id]
-    monkeypatch.setitem(validation.DEPLOY_RUNS, step_id,
-                        (body.replace("artifact/execution-registry.json", "other/execution-registry.json"), env, shell))
-    assert step["run"].strip() == validation.DEPLOY_RUNS[step_id][0]
+    if change == "path":
+        step["with"]["path"] += "${{ runner.temp }}/artifact/execution-registry.json\n"
+        monkeypatch.setitem(validation.DEPLOY_UPLOAD_WITH, "path", step["with"]["path"])
+    else:
+        step["run"] = step["run"].rstrip("\n") + (REGISTRY_ARGUMENT if change == "argument" else REGISTRY_LINE) + "\n"
+        body, env, shell = validation.DEPLOY_RUNS[step_id]
+        monkeypatch.setitem(validation.DEPLOY_RUNS, step_id, (step["run"].strip(), env, shell))
+        if step_id == "check_config":
+            monkeypatch.setattr(validation, "CHECK_CONFIG_PREDECESSOR_RUNS", ())
     assert_rejected("DEPLOYMENT_GATE_INVALID", validation.validate_workflows, None, deployment, ci)
 
 
@@ -440,9 +433,8 @@ def test_check_config_deploy_smoke_order_is_fixed(documents, change):
 
 @pytest.mark.parametrize("step_id,change", [
     ("build", "rollback_condition"), ("build", "no_condition"), ("build", "echo_only"), ("build", "arm64"),
-    ("build", "no_registry"), ("build", "registry_with_the_build_python"),
     ("upload", "rollback_condition"), ("upload", "no_condition"), ("upload", "retention"), ("upload", "name"),
-    ("upload", "missing_manifest"), ("upload", "missing_registry"), ("upload", "warn_on_missing"),
+    ("upload", "missing_manifest"), ("upload", "warn_on_missing"),
     ("download", "build_condition"), ("download", "no_condition"), ("download", "fixed_run_id"),
     ("download", "other_repository"), ("download", "no_merge"), ("download", "name_pattern"),
 ])
@@ -463,20 +455,8 @@ def test_artifact_steps_keep_their_conditions_and_inputs(documents, step_id, cha
         step["with"]["retention-days"] = 90
     elif change == "name":
         step["with"]["name"] = "mock-lambda"
-    elif change == "no_registry":
-        step["run"] = step["run"][:step["run"].index('"$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py registry')]
-        assert "zipfile -t" in step["run"] and "registry" not in step["run"]
-    elif change == "registry_with_the_build_python":
-        # The build venv holds only pip: the application requirements are in the CI venv.
-        step["run"] = step["run"].replace('"$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py registry',
-                                          '"$RUNNER_TEMP/build-python/bin/python" scripts/deploy_dev_lambdas.py registry')
-        assert "actions-venv" not in step["run"]
     elif change == "missing_manifest":
-        step["with"]["path"] = ("${{ runner.temp }}/artifact/mock-lambda.zip\n"
-                                "${{ runner.temp }}/artifact/execution-registry.json\n")
-    elif change == "missing_registry":
-        step["with"]["path"] = ("${{ runner.temp }}/artifact/mock-lambda.zip\n"
-                                "${{ runner.temp }}/artifact/artifact-manifest.json\n")
+        step["with"]["path"] = "${{ runner.temp }}/artifact/mock-lambda.zip\n"
     elif change == "warn_on_missing":
         step["with"]["if-no-files-found"] = "warn"
     elif change == "fixed_run_id":
@@ -584,35 +564,35 @@ def test_base_comparison_rejects_a_pr_that_rewires_env_oidc_or_check_config(docu
     assert_rejected("DEPLOYMENT_AUTH_INVALID", validation.validate_workflows, base, deployment, ci)
 
 
-def d137_base(base):
-    """The base as it is at the revision before D140: check-config without `--registry`."""
+def d140_base(base):
+    """The base as it is at the revision before D141: check-config with `--registry`."""
     step = deploy_step(base, "check_config")
     assert step["run"].strip() == validation.DEPLOY_RUNS["check_config"][0]
     step["run"] = validation.CHECK_CONFIG_PREDECESSOR_RUNS[0] + "\n"
     return base
 
 
-def test_the_d137_check_config_body_is_the_only_reviewed_predecessor():
+def test_the_d140_check_config_body_is_the_only_reviewed_predecessor():
     current = validation.DEPLOY_RUNS["check_config"][0]
-    assert validation.CHECK_CONFIG_PREDECESSOR_RUNS == (
+    assert current == (
         '"$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py check-config \\\n'
-        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',)
-    assert current == validation.CHECK_CONFIG_PREDECESSOR_RUNS[0] + (
-        ' \\\n  --registry "$RUNNER_TEMP/artifact/execution-registry.json"')
+        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"')
+    assert validation.CHECK_CONFIG_PREDECESSOR_RUNS == (
+        current + ' \\\n  --registry "$RUNNER_TEMP/artifact/execution-registry.json"',)
     assert current not in validation.CHECK_CONFIG_PREDECESSOR_RUNS
 
 
-def test_base_comparison_accepts_the_reviewed_check_config_change_of_d140(documents):
-    # The PR that adds `--registry`: the base still has the D137 body, the head has the fixed D140 body.
+def test_base_comparison_accepts_the_reviewed_check_config_change_of_d141(documents):
+    # The PR that removes `--registry`: the base still has the D140 body, the head has the fixed D141 body.
     base, deployment, ci = documents
-    assert validation.validate_workflows(d137_base(base), deployment, ci)["base_deployment"] == "compared"
+    assert validation.validate_workflows(d140_base(base), deployment, ci)["base_deployment"] == "compared"
 
 
 @pytest.mark.parametrize("change", ["head_other_body", "head_env", "head_shell", "head_keeps_predecessor",
                                     "base_other_body", "base_env", "base_if", "base_two_steps", "reverse"])
 def test_base_comparison_accepts_no_other_check_config_change(documents, change):
     base, deployment, ci = documents
-    d137_base(base)
+    d140_base(base)
     old, new = deploy_step(base, "check_config"), deploy_step(deployment, "check_config")
     if change == "head_other_body":
         new["run"] = new["run"].replace(' --function api="$ARC_DEV_FUNCTIONS_API"', "")
@@ -632,7 +612,7 @@ def test_base_comparison_accepts_no_other_check_config_change(documents, change)
     elif change == "base_two_steps":
         deploy_job(base)["steps"].append(deepcopy(old))
     else:
-        # The predecessor is not a body the current file may go back to.
+        # The predecessor (D140, with `--registry`) is not a body the current file may go back to.
         old["run"], new["run"] = new["run"], old["run"]
     assert_rejected("DEPLOYMENT_AUTH_INVALID", validation.validate_workflows, base, deployment, ci)
 
