@@ -62,7 +62,11 @@ class RelayTiming(NamedTuple):
 
 
 class ExecutionVersions(NamedTuple):
-    """API/Worker adapter binding: (current, projection, retained) in this order."""
+    """API/Worker adapter binding: (current, projection, retained) in this order.
+
+    D141: filled from the code registry (mock_journey/contracts.py) only; the
+    configuration document no longer carries these versions.
+    """
     current_adapter_version: str
     projection_version: str
     retained_adapter_versions: tuple
@@ -161,10 +165,12 @@ class AwsSettings:
     role_settings: object
     sdk: SdkSettings
     logs: LogSettings
-    execution: tuple | None  # ExecutionVersions (API/Worker) or None (Relay)
+    execution: tuple | None  # ExecutionVersions from the code registry (API/Worker) or None (Relay)
     timing: tuple | None  # WorkerTiming, RelayTiming or None (API)
     # Required for API/Worker (the Dummy Dev course section); always None for Relay.
     course: "CourseSettings | None" = None
+    # D141: the document carried an `execution` key (any value), which is ignored.
+    execution_block_ignored: bool = False
 
     @property
     def relay_budget(self):
@@ -181,7 +187,13 @@ class AwsSettings:
                 raise invalid()
             # API and Worker serve only the course_v2 contract, so the explicit
             # Dummy course section is mandatory there. Relay never takes it.
-            extra = "storage execution course " if role != "relay" else ""
+            # D141: an `execution` key may still be present in API/Worker
+            # documents from before D141; it is neither validated nor read.
+            ignored = False
+            if role != "relay" and type(value) is dict and "execution" in value:
+                value = {key: item for key, item in value.items() if key != "execution"}
+                ignored = True
+            extra = "storage course " if role != "relay" else ""
             _object(value, "schema role account_id partition environment region state sdk logs " + extra + role)
             if type(value["schema"]) is not int or value["schema"] != 1 or value["role"] != role:
                 raise invalid()
@@ -208,23 +220,11 @@ class AwsSettings:
                     raise invalid()
                 from mock_journey.contracts import CURRENT_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS
                 from mock_journey.execution_definitions import PROJECTION_VERSION
-                supplied = value["execution"]
-                _object(supplied, "current_adapter_version projection_version retained_adapter_versions")
-                retained = supplied["retained_adapter_versions"]
-                # D127: the operator's retained list must equal the code registry
-                # exactly (same versions, same order). An empty or partial list
-                # would leave stored candidates of a retained version unverifiable
-                # and its in-flight attempts uncalculable (D138: v4 is retained);
-                # the order is compared because the registry tuple is the order the
-                # Worker registers adapters in and the bundle check compares the
-                # roles' ExecutionVersions tuples position by position.
-                if (supplied["current_adapter_version"] != CURRENT_ADAPTER_VERSION
-                        or supplied["projection_version"] != PROJECTION_VERSION
-                        or type(retained) is not list or any(type(v) is not str for v in retained)
-                        or tuple(retained) != RETAINED_ADAPTER_VERSIONS):
-                    raise invalid()
-                execution = ExecutionVersions(supplied["current_adapter_version"], supplied["projection_version"],
-                                              tuple(retained))
+                # D141 (correcting D127): the current adapter, the projection and
+                # the retained adapters come from the code registry alone. The
+                # registry tuple is the order the Worker registers adapters in.
+                execution = ExecutionVersions(CURRENT_ADAPTER_VERSION, PROJECTION_VERSION,
+                                              tuple(RETAINED_ADAPTER_VERSIONS))
                 from mock_journey.course_settings import CourseSettings
                 from mock_journey.dev_course import CATALOG_VERSION, MODE, validate_dummy_catalog
                 from mock_journey.execution_definitions import execution_catalog
@@ -273,7 +273,8 @@ class AwsSettings:
                 role_settings = RelaySettings(state, **{k: v for k, v in options.items() if k != "processing_reserve_ms"})
                 timing = RelayTiming(options["processing_reserve_ms"])
                 RelayBudget.derive(sdk, state, role_settings, logs, options["processing_reserve_ms"])
-            return cls(role, account, partition, environment, region, state, role_settings, sdk, logs, execution, timing, course)
+            return cls(role, account, partition, environment, region, state, role_settings, sdk, logs, execution, timing, course,
+                       execution_block_ignored=ignored)
         except Exception:
             raise invalid() from None
 

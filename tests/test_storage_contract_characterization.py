@@ -406,68 +406,64 @@ def test_internal_calculator_version_rules():
                                allow_pending_cycle_goal=True)
 
 
-@pytest.mark.parametrize("change,accepted", [
-    ({}, True),
-    ({"retained_adapter_versions": []}, False),  # D127: an empty list is a configuration error.
-    ({"retained_adapter_versions": [RETAINED, RETAINED]}, False),
-    ({"retained_adapter_versions": [RETAINED]}, False),  # D136: partial (the pending-v3 adapter is retained too).
-    ({"retained_adapter_versions": [PENDING]}, False),
-    ({"retained_adapter_versions": [RETAINED, PENDING]}, False),  # D138: the pre-v5 list is now partial (v4 missing).
-    ({"retained_adapter_versions": [PENDING, RETAINED, CYCLE_V4]}, False),  # Same set, other order.
-    ({"retained_adapter_versions": [RETAINED, CYCLE_V4, PENDING]}, False),  # Same set, other order.
-    ({"retained_adapter_versions": [CURRENT]}, False),
-    ({"retained_adapter_versions": [RETAINED, PENDING, CYCLE_V4, CURRENT]}, False),
-    ({"retained_adapter_versions": ["arc-other-v1"]}, False),
-    ({"retained_adapter_versions": REGISTRY_RETAINED}, True),  # JSON has no tuple: dumps() makes it a list.
-    ({"retained_adapter_versions": [1]}, False),
-    ({"retained_adapter_versions": RETAINED}, False),
-    ({"retained_adapter_versions": None}, False),
-    ({"current_adapter_version": RETAINED}, False),
-    ({"current_adapter_version": PENDING}, False),  # D136: the former current adapter is no longer current.
-    ({"current_adapter_version": CYCLE_V4}, False),  # D138: v4 is retained, no longer current.
-    ({"projection_version": "arc-local-projection-v2"}, False),
-])
+@pytest.mark.parametrize("execution", [
+    "absent",
+    {"current_adapter_version": CURRENT, "projection_version": PROJECTION, "retained_adapter_versions": list(REGISTRY_RETAINED)},
+    {"current_adapter_version": CYCLE_V4, "projection_version": PROJECTION,
+     "retained_adapter_versions": [RETAINED, PENDING]},  # The pre-D138 (v4) document still in Dev.
+    {"retained_adapter_versions": []},
+    {"retained_adapter_versions": [CURRENT, "arc-other-v1", 1]},
+    {"current_adapter_version": "arc-other-v9", "projection_version": "arc-local-projection-v2", "extra": True},
+    {}, "arc-internal-detection-v4", None, [], 5, True,
+], ids=["absent", "registry", "v4_document", "empty_retained", "odd_retained", "other_versions", "empty_object",
+        "string", "null", "array", "number", "boolean"])
 @pytest.mark.parametrize("role", ["api", "worker"])
-def test_aws_execution_versions_matrix(role, change, accepted):
+def test_aws_execution_block_is_ignored_and_the_registry_is_the_only_source(role, execution):
+    # D141 (correcting D127): whatever the document says under `execution`, or
+    # whether it says anything at all, the versions are the code registry's.
     from mock_journey.aws_settings import AwsSettings
     from tests.aws_runtime_support import configuration
     config = configuration(role)
-    config["execution"].update(change)
-    raw = json.dumps(config)
-    if not accepted:
-        with pytest.raises(ValueError, match="Invalid explicit AWS journey configuration."):
-            AwsSettings.parse(raw, role)
-        return
-    settings = AwsSettings.parse(raw, role)
-    retained = tuple(config["execution"]["retained_adapter_versions"])
-    assert settings.execution == (CURRENT, PROJECTION, retained)
+    assert "execution" not in config
+    if execution != "absent":
+        config["execution"] = execution
+    settings = AwsSettings.parse(json.dumps(config), role)
+    assert settings.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)
     current, projection, kept = settings.execution
-    assert (current, projection, kept) == (CURRENT, PROJECTION, retained) and type(kept) is tuple
+    assert (current, projection, kept) == (CURRENT, PROJECTION, REGISTRY_RETAINED) and type(kept) is tuple
+    assert settings.execution_block_ignored is (execution != "absent")
 
 
-@pytest.mark.parametrize("supplied,accepted", [
-    (["arc-old-a", "arc-old-b"], True),
-    (["arc-old-b", "arc-old-a"], False),  # Same set, other order: the registry order is the contract.
-    (["arc-old-a"], False),  # Partial.
-    ([], False),  # Empty.
-    (["arc-old-a", "arc-old-b", "arc-old-a"], False),  # Duplicate.
-    (["arc-old-a", "arc-old-b", RETAINED], False),  # Superset.
-], ids=["exact", "reordered", "partial", "empty", "duplicate", "superset"])
 @pytest.mark.parametrize("role", ["api", "worker"])
-def test_aws_retained_versions_must_equal_the_registry_exactly(monkeypatch, role, supplied, accepted):
-    # D127 with a two-entry registry, so that partial/reordered lists differ from an empty one.
+def test_aws_execution_versions_follow_a_changed_registry(monkeypatch, role):
+    # The settings object is a view of the registry, not of the document.
     from mock_journey import contracts
     from mock_journey.aws_settings import AwsSettings
     from tests.aws_runtime_support import configuration
     monkeypatch.setattr(contracts, "RETAINED_ADAPTER_VERSIONS", ("arc-old-a", "arc-old-b"))
+    monkeypatch.setattr(contracts, "CURRENT_ADAPTER_VERSION", "arc-new-v9")
     config = configuration(role)
-    config["execution"]["retained_adapter_versions"] = supplied
-    raw = json.dumps(config)
-    if not accepted:
-        with pytest.raises(ValueError, match=r"\AInvalid explicit AWS journey configuration\.\Z"):
-            AwsSettings.parse(raw, role)
-        return
-    assert AwsSettings.parse(raw, role).execution.retained_adapter_versions == ("arc-old-a", "arc-old-b")
+    config["execution"] = {"current_adapter_version": CURRENT, "projection_version": PROJECTION,
+                           "retained_adapter_versions": list(REGISTRY_RETAINED)}
+    settings = AwsSettings.parse(json.dumps(config), role)
+    assert settings.execution == ("arc-new-v9", PROJECTION, ("arc-old-a", "arc-old-b"))
+
+
+@pytest.mark.parametrize("change", ["relay_execution", "empty_role", "unknown_key"])
+def test_other_document_rules_still_reject(change):
+    # D141 relaxes only the `execution` key of API/Worker documents.
+    from mock_journey.aws_settings import AwsSettings
+    from tests.aws_runtime_support import configuration
+    role = "relay" if change == "relay_execution" else "worker"
+    config = configuration(role)
+    if change == "relay_execution":
+        config["execution"] = {"current_adapter_version": CURRENT}
+    elif change == "empty_role":
+        config["role"] = ""
+    else:
+        config["executions"] = {}
+    with pytest.raises(ValueError, match=r"\AInvalid explicit AWS journey configuration\.\Z"):
+        AwsSettings.parse(json.dumps(config), role)
 
 
 # -- positional timing/execution tuples -------------------------------------------------
@@ -484,7 +480,8 @@ def test_aws_timing_tuples_by_role():
     assert relay.relay_budget.reserve_ms == 500 + 40 + 20
     api = AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert api.timing is None and relay.execution is None
-    assert api.execution == worker.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)
+    assert api.execution == worker.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)  # D141: the code registry
+    assert api.execution_block_ignored is False and relay.execution_block_ignored is False
     assert hash(api.execution) == hash((CURRENT, PROJECTION, REGISTRY_RETAINED))
     assert api == AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert json.dumps(worker.timing) == "[0.05, 0.1, 500]"

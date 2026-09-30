@@ -22,6 +22,7 @@ _LEVELS = frozenset({"debug", "info", "warning", "error", "fatal"})
 _EVENTS = frozenset({
     "request_start", "parse_multipart_start", "parse_form_start", "parse_complete",
     "request_failed", "request_complete", "sentry_init_failed",
+    "execution_block_ignored",
     "raw_input_save_failed", "chart_upload_failed", "calc_failed",
     "calc_start", "calc_complete", "serialize_complete",
     "calc_response_complete", "chart_complete",

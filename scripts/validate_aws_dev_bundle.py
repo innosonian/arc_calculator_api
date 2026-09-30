@@ -40,8 +40,8 @@ def validate_bundle(documents, *, api_timeout, worker_timeout, relay_timeout,
             raise BundleError("STATE_TABLE_MISMATCH")
     if api.role_settings.storage != worker.role_settings.storage:
         raise BundleError("STORAGE_MISMATCH")
-    # D135: API/Worker execution versions are all fixed by AwsSettings.parse
-    # (D127), so a cross-role execution mismatch cannot occur here.
+    # D141: the execution versions are the code registry's (an `execution` key
+    # in a document is ignored), so there is no cross-role execution check.
     # AwsSettings.parse already rejects an API/Worker document without the
     # course section (ROLE_CONFIGURATION_INVALID); both must hold the same one.
     if api.course != worker.course:

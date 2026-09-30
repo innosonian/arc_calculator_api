@@ -11,10 +11,8 @@ import json
 from types import SimpleNamespace
 import uuid
 
-from mock_journey.contracts import CURRENT_ADAPTER_VERSION, RETAINED_ADAPTER_VERSIONS
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.dev_course import CATALOG_VERSION, MODE
-from mock_journey.execution_definitions import PROJECTION_VERSION
 from tests.mock_storage_support import MemoryS3
 
 
@@ -31,11 +29,9 @@ def configuration(role="api"):
               "logs": {"capacity": 20, "max_bytes": 16384, "flush_budget_ms": 40,
                        "response_reserve_ms": 20, "sdk": deepcopy(sdk)}}
     if role != "relay":
+        # D141: no `execution` block; the versions are the code registry's.
         result.update(storage={"stage": "dev", "bucket": "synthetic-private-bucket", "directory": "calculator_result/arc",
                                "input_bytes": 1000000, "artifact_bytes": 8000000},
-                      execution={"current_adapter_version": CURRENT_ADAPTER_VERSION,
-                                 "projection_version": PROJECTION_VERSION,
-                                 "retained_adapter_versions": list(RETAINED_ADAPTER_VERSIONS)},
                       course=course_section())
     result[role] = ({"payload_limit": 1400000} if role == "api" else
                     {"lease_seconds": 1, "retry_seconds": 1, "renewal_interval_seconds": 0.05,

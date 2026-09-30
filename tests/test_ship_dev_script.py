@@ -463,14 +463,14 @@ def test_a_failed_deployment_prints_the_step_results_and_only_the_fixed_code_lin
     workspace.set("job_conclusion", "failure")
     (workspace.state / "failed_log").write_text(
         "deploy-dev\tDeploy\t2026-09-30T00:00:00Z some earlier output\n"
-        'deploy-dev\tDeploy\t2026-09-30T00:00:01Z {"code": "CONFIG_SYNC_DENIED", "missing_action": '
-        '"lambda:UpdateFunctionConfiguration", "role": "worker"}\n'
-        "deploy-dev\tDeploy\t2026-09-30T00:00:02Z ##[error]Process completed with exit code 6.\n", encoding="utf-8")
+        'deploy-dev\tCheck\t2026-09-30T00:00:01Z {"code": "CONFIG_DRIFT", "expected": "valid", '
+        '"field": "AwsSettings.parse", "role": "worker"}\n'
+        "deploy-dev\tCheck\t2026-09-30T00:00:02Z ##[error]Process completed with exit code 2.\n", encoding="utf-8")
     code, output = workspace.run("fixture message")
     assert code == 4
     assert "job deploy-dev: failure" in output
-    assert ('실패 단계의 마지막 코드 줄: {"code": "CONFIG_SYNC_DENIED", "missing_action": '
-            '"lambda:UpdateFunctionConfiguration", "role": "worker"}') in output
+    assert ('실패 단계의 마지막 코드 줄: {"code": "CONFIG_DRIFT", "expected": "valid", '
+            '"field": "AwsSettings.parse", "role": "worker"}') in output
     assert "some earlier output" not in output and "scripts/ship_dev.sh --redeploy" in output
     assert workspace.milestones()[-1] == "watch", "develop is not checked out after a failed deployment"
 

@@ -131,7 +131,7 @@ HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEA
 | 과정 완료 | 선행 모든 항목 완료 + 마지막 assessment의 `program_completed=true` |
 | 영상·문서 | 승인된 전체 재생/표시·읽음 확인 정책을 보고 근거로 판정. 상세는 DECISIONS·API 계약 |
 
-현재 adapter는 `arc-internal-detection-v5`(D136 사이클 완료 규칙 + D138 파일 끝 호흡 + D139 최소량 미달 점수 표시·합격 조건 유지), profile은 `tester-goal-cycles-v2`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v4`다. 보존 목록(`contracts.RETAINED_ADAPTER_VERSIONS`)은 `arc-local-calculator-pending-v2` → `arc-internal-detection-pending-v3` → `arc-internal-detection-v4` 순서다. 직전 `arc-internal-detection-v4`(profile `tester-goal-cycles-v1`, 후보 `arc-internal-calculation-v3`)와 `arc-internal-detection-pending-v3`(profile `tester-goal-pending-v2`, 후보 `arc-internal-calculation-v2`)는 그 정의로 시작한 진행 중 시도를 원래 의미로 계속 계산한다(pending-v3의 CPR 목표는 `pending_policy`). 형식이 같아도 adapter의 검출 의미는 다르다.
+현재 adapter는 `arc-internal-detection-v5`(D136 사이클 완료 규칙 + D138 파일 끝 호흡 + D139 최소량 미달 점수 표시·합격 조건 유지), profile은 `tester-goal-cycles-v2`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v4`다. 보존 목록(`contracts.RETAINED_ADAPTER_VERSIONS`)은 `arc-local-calculator-pending-v2` → `arc-internal-detection-pending-v3` → `arc-internal-detection-v4` 순서다. 이 레지스트리가 AWS와 로컬 모두에서 버전의 유일한 정본이다(D141). 직전 `arc-internal-detection-v4`(profile `tester-goal-cycles-v1`, 후보 `arc-internal-calculation-v3`)와 `arc-internal-detection-pending-v3`(profile `tester-goal-pending-v2`, 후보 `arc-internal-calculation-v2`)는 그 정의로 시작한 진행 중 시도를 원래 의미로 계속 계산한다(pending-v3의 CPR 목표는 `pending_policy`). 형식이 같아도 adapter의 검출 의미는 다르다.
 
 버전별 의미는 `mock_journey/contracts.py`의 `ADAPTER_FEATURES` 표 한 곳에 있다.
 
@@ -221,7 +221,7 @@ START의 canonical bytes는 보고 commit 전 400KiB 기술 상한으로 보수�
 
 AWS API/Worker/Relay runtime은 명시 설정으로 기존 조립에 연결한다. 역할별 IAM·자원·trigger·partial batch·due schedule·DLQ·로그 전달·Linux 패키지·용량은 실환경 인수가 필요하다. Relay의 환경별 진행 행은 create-only 초기화와 revision/owner/fence/lease를 사용하며 런타임이 손상/부재 행을 자동 생성하지 않는다. 한 호출 안에서는 OUTBOX/JOB을 한 step씩 교대하되, 한 종류가 이번 pass를 끝냈거나 자기 한도(`page_size × max_pages`)에 닿으면 남은 종류를 한도와 step 시간 예산이 허락하는 만큼 계속 처리한다. 이렇게 순서 밖에서 처리한 step은 진행 행의 다음 종류를 바꾸지 않아 멈춘 종류가 다음 호출에서 먼저 처리된다(D109).
 
-Dev 세 Lambda의 코드는 `develop` 머지 시 `.github/workflows/deploy_dev.yml`이 배포한다(D137): 같은 revision의 오프라인 회귀 → ZIP 빌드·보관 → environment 승인 → OIDC → `scripts/deploy_dev_lambdas.py`의 설정 대조(`CONFIG_DRIFT`)·Worker→Relay→API 갱신·`CodeSha256` 대조·Dummy 스모크. workflow가 쓰는 설정은 API·Worker `ARC_JOURNEY_CONFIG`의 `execution` 블록뿐이다(D140): 빌드가 산출물에 넣은 그 코드의 버전 레지스트리(`execution-registry.json`)와 다르면 함수별 코드 교체 직전에 그 블록만 맞추고, 나머지 키와 다른 환경 변수는 읽은 그대로 되돌려 쓴다. 그 밖의 설정은 손으로 갱신한다.
+Dev 세 Lambda의 코드는 `develop` 머지 시 `.github/workflows/deploy_dev.yml`이 배포한다(D137): 같은 revision의 오프라인 회귀 → ZIP 빌드·보관 → environment 승인 → OIDC → `scripts/deploy_dev_lambdas.py`의 설정 검사(`CONFIG_DRIFT`: 변수 존재·JSON object·`role`·체크아웃한 코드의 `AwsSettings.parse`)·Worker→Relay→API 갱신·`CodeSha256` 대조·Dummy 스모크. workflow는 Lambda 설정을 쓰지 않는다(D141). 현재·보존 어댑터와 projection 버전의 정본은 코드 레지스트리(`mock_journey/contracts.py`)뿐이며 `AwsSettings`의 `execution`은 거기서 채워진다. API·Worker 설정 JSON의 `execution` 블록은 읽지 않는다(있으면 첫 호출에서 운용 기록 `execution_block_ignored` 1건, 값 없음). 그 밖의 설정은 손으로 갱신한다.
 
 `course_v2_dummy`는 Dev stage에서만 허용하며 API·Worker가 같은 카탈로그 버전·9개 과정 한도·저장·실행 정의를 사용해야 한다. 실제 과정 snapshot의 직렬화 크기를 저장 한도와 대조해 시작조차 불가능한 설정을 거절한다. `scripts/validate_aws_dev_bundle.py`는 역할 간 DB/환경/저장/version 혼선, Worker와 Queue의 시간 관계, Relay가 한 항목도 처리하지 못할 실행 예산을 오프라인에서 검사한다. 실제 자원·IAM 확인을 대신하지 않는다.
 

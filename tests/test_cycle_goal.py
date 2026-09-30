@@ -411,7 +411,9 @@ def test_worker_evaluate_and_check_evaluation_follow_the_adapter_version(cycle_a
         DynamoJobRepository.check_evaluation(assessment, {"definition_json": json.dumps(old)})
 
 
-def test_aws_settings_accept_only_the_current_and_exact_retained_registry():
+def test_aws_settings_take_the_versions_from_the_code_registry_only():
+    # D141 (correcting D127): the settings document carries no version; whatever an
+    # older document still says under `execution` is ignored.
     from mock_journey.aws_settings import AwsSettings
     from tests.aws_runtime_support import configuration
     assert CURRENT_ADAPTER_VERSION == EOF_VENT_ADAPTER_VERSION == "arc-internal-detection-v5"
@@ -419,23 +421,18 @@ def test_aws_settings_accept_only_the_current_and_exact_retained_registry():
                                          CYCLE_GOAL_ADAPTER_VERSION)
     assert RETAINED_ADAPTER_VERSIONS == ("arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
                                          "arc-internal-detection-v4")
+    expected = (EOF_VENT_ADAPTER_VERSION, "arc-local-projection-v1", RETAINED_ADAPTER_VERSIONS)
     for role in ("api", "worker"):
         config = configuration(role)
-        assert config["execution"]["current_adapter_version"] == EOF_VENT_ADAPTER_VERSION
-        assert AwsSettings.parse(json.dumps(config), role).execution == (
-            EOF_VENT_ADAPTER_VERSION, "arc-local-projection-v1", RETAINED_ADAPTER_VERSIONS)
-        for change in ({"current_adapter_version": PENDING_GOAL_ADAPTER_VERSION},
-                       # D138: a setting still written for the v4 deployment is refused in both parts.
-                       {"current_adapter_version": CYCLE_GOAL_ADAPTER_VERSION},
-                       {"retained_adapter_versions": [RETAINED_PENDING_GOAL_ADAPTER_VERSION,
-                                                      PENDING_GOAL_ADAPTER_VERSION]},
-                       {"retained_adapter_versions": [RETAINED_PENDING_GOAL_ADAPTER_VERSION]},
-                       {"retained_adapter_versions": [PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
-                                                      CYCLE_GOAL_ADAPTER_VERSION]},
-                       {"retained_adapter_versions": []}):
-            invalid = json.dumps({**config, "execution": {**config["execution"], **change}})
-            with pytest.raises(ValueError, match="Invalid explicit AWS journey configuration."):
-                AwsSettings.parse(invalid, role)
+        assert "execution" not in config
+        assert AwsSettings.parse(json.dumps(config), role).execution == expected
+        for stale in ({"current_adapter_version": PENDING_GOAL_ADAPTER_VERSION},
+                      # A setting still written for the v4 deployment (D138) is simply ignored.
+                      {"current_adapter_version": CYCLE_GOAL_ADAPTER_VERSION, "projection_version": "arc-local-projection-v1",
+                       "retained_adapter_versions": [RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION]},
+                      {"retained_adapter_versions": []}):
+            settings = AwsSettings.parse(json.dumps({**config, "execution": stale}), role)
+            assert settings.execution == expected and settings.execution_block_ignored is True
 
 
 def test_local_health_completion_policy_reports_every_goal_kind_evaluated():
