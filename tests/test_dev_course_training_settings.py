@@ -1,4 +1,4 @@
-"""D132: Dummy Dev item details show the values the server really applies."""
+"""D132: Dummy Dev item details include app stop times and calculation settings."""
 
 import json
 
@@ -11,11 +11,11 @@ from mock_journey.dev_course import DummyDevCourseProvider
 from mock_journey.execution_definitions import execution_catalog
 
 EXPECTED_LIMITS = {
-    "mock-cpr": {"cycleLimit": 3},
-    "mock-compression-only": {"compressionLimit": 60},
-    "mock-ventilation-only": {"ventilationLimit": 8},
-    "mock-two-rescuer-cpr": {"cycleLimit": 8},
-    "mock-two-rescuer-aed": {"cycleLimit": 10},
+    "mock-cpr": {"duration": 300, "cycleLimit": 3},
+    "mock-compression-only": {"duration": 120, "compressionLimit": 60},
+    "mock-ventilation-only": {"duration": 120, "ventilationLimit": 8},
+    "mock-two-rescuer-cpr": {"duration": 720, "cycleLimit": 8},
+    "mock-two-rescuer-aed": {"duration": 900, "cycleLimit": 10},
 }
 EXPECTED_GUIDELINE = {
     "adult": (50, 60, 400, 600, 8, 12, 1.97, 2.36),
@@ -41,7 +41,7 @@ def test_training_settings_are_the_applied_limits_ratio_guideline_and_threshold(
         validate_training_detail(item["detail"])
         training = item["detail"]["training"]
         limits = {key: training[key] for key in ("duration", "compressionLimit", "ventilationLimit", "cycleLimit")}
-        assert limits == {"duration": None, "compressionLimit": None, "ventilationLimit": None, "cycleLimit": None,
+        assert limits == {"compressionLimit": None, "ventilationLimit": None, "cycleLimit": None,
                           **EXPECTED_LIMITS[program]}
         assert training["manikinType"] == target and training["aed"] is None
         if program == "mock-compression-only" or program == "mock-ventilation-only":

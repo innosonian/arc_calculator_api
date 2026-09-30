@@ -104,7 +104,7 @@ def pause_owned_worker(server):
     os.kill(worker, signal.SIGSTOP)
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        checked = subprocess.run(["ps", "-p", str(worker), "-o", "ppid=,stat="],
+        checked = subprocess.run(["ps", "-p", str(worker), "-o", "ppid=", "-o", "stat="],
                                  capture_output=True, text=True, timeout=3)
         parts = checked.stdout.strip().split()
         require(checked.returncode == 0 and len(parts) == 2 and parts[0] == str(parent),

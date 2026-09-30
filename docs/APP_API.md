@@ -421,7 +421,23 @@ TrainingProgram의 모든 필드가 필수이며 **`training`, `assessment`, `co
 | `ventilationRateMax`, `ventilationRateMin` | 각각 integer 또는 null |
 | `compressionDepthMaxInch`, `compressionDepthMinInch` | 각각 number 또는 null. 정수/소수 모두 가능 |
 
-표시 설정의 단위, 제한값의 0/null 의미, 여러 종료 조건의 우선순위는 실제 ARC 계약 확인 대상이다. 앱이 이 설정으로 업로드용 `condition`을 재구성하지 않는다. 현재 로컬·Dev의 DummyDev 15과정은 서버가 실제 적용하는 값을 넣어 준다(D132): `compressionLimit` 60(압박 Only), `ventilationLimit` 8(호흡 Only), `cycleLimit` 3/8/10(CPR/2인 CPR/2인 AED), `duration` null, `compressionVentilationRatio` CPR 계열 30:2(영아 15:2), `cprGuideline` ARC2025 연령별 범위, `twoRescuers` 2인 계열만 `{"cycleChangeCount": 2}`, `aed` null, `assessment.passThreshold` `{"cpr": 80, "aed": null}`. 마지막 평가 항목의 `trainingMode`는 `"assessment"`, 연습 항목은 `"practice"`다. 아래는 모든 필드를 포함하는 합성 훈련 항목의 `200` 예시다. 실제 ARC 설정값을 뜻하지 않는다.
+실제 ARC 공급 자료의 표시 설정 단위, 제한값의 0/null 의미, 여러 종료 조건의 우선순위는 공식 계약 확인 대상이다. 일반 공급 스키마는 위 표처럼 nullable을 유지한다. 앱이 이 설정으로 업로드용 `condition`을 재구성하지 않는다.
+
+로컬·Dev용 DummyDev 15과정의 `training.duration`은 **앱 자동 종료 시간의 초 단위 정수**다(D132 후속 정정). 성인·소아·영아 및 Practice·Assessment 모두 다음 값을 공통으로 사용한다.
+
+| Dummy 프로그램 | `training.duration` (초) |
+|---|---:|
+| CPR | 300 |
+| 압박 Only (CCO) | 120 |
+| 호흡 Only (VO) | 120 |
+| 2인 CPR | 720 |
+| 2인 CPR+AED | 900 |
+
+이 변경은 Dummy 응답의 시간값을 제공하는 범위다. BE 타이머나 앱의 자동 종료 동작을 추가하지 않았으며 계산·완료·합격 판정은 기존 조건을 따른다. `duration`만 바뀌므로 `definitionHash`는 유지된다. 새 서버 코드 적용 후 기존에 저장된 과정 상세는 `POST /api/v2/session/refresh/` 또는 새 로그인으로 갱신한 다음 다시 조회한다. GET만으로는 저장된 값이 갱신되지 않는다.
+
+DummyDev의 나머지 설정은 D132를 따른다: `compressionLimit` 60(압박 Only), `ventilationLimit` 8(호흡 Only), `cycleLimit` 3/8/10(CPR/2인 CPR/2인 AED), `compressionVentilationRatio` CPR 계열 30:2(영아 15:2), `cprGuideline` ARC2025 연령별 범위, `twoRescuers` 2인 계열만 `{"cycleChangeCount": 2}`, `aed` null, `assessment.passThreshold` `{"cpr": 80, "aed": null}`. 마지막 평가 항목의 `trainingMode`는 `"assessment"`, 연습 항목은 `"practice"`다.
+
+아래는 모든 필드를 포함하는 합성 fixture의 `200` 예시로 일반 공급 스키마의 null 허용을 보여 준다. DummyDev의 실제 설정값은 위 설명과 표를 따르며, 이 JSON은 실제 ARC 설정값을 뜻하지 않는다.
 
 ```json
 {

@@ -360,7 +360,9 @@ class LiveServer:
         children = []
         for value in listed.stdout.split():
             require(value.isdecimal(), "Unexpected owned process inventory.")
-            identity = subprocess.run(["ps", "-p", value, "-o", "ppid=,args="],
+            # One -o per column: procps (Linux) reads everything after "=" as the
+            # header text, so "ppid=,args=" would print only the ppid column there.
+            identity = subprocess.run(["ps", "-ww", "-p", value, "-o", "ppid=", "-o", "args="],
                                       capture_output=True, text=True, timeout=3, check=False)
             parts = identity.stdout.strip().split(None, 1)
             if identity.returncode == 0 and len(parts) == 2 and parts[0] == str(self.process.pid):
