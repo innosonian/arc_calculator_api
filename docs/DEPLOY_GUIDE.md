@@ -1681,11 +1681,30 @@ bash scripts/deploy_arc_api_gateway.sh development .env.dev var/deployment/bindi
 
 Gateway 도구의 throttle은 해당 POST만 변경하지만 binaryMediaTypes는 REST API 전체에, create-deployment는 Stage에 영향을 준다. 완료 메시지는 전체 Journey 인수 성공이 아니다. 로그 retention 숫자는 기존 로그를 삭제 대상으로 만들 수 있으며 null은 기존 정책 유지다. 실제 custom LogGroup을 조회해 적용하고 공유 함수 영향을 확인한다.
 
-과거 수동 배포 workflow `deploy_arc_lambdas.yml`(단일 Calculator·액세스 키 fallback 전제)은 D137로 삭제했다. 현재 Dev 코드 배포는 9절의 자동 배포 workflow가 수행하며, 위 두 스크립트와 `deployment_preflight.py`는 과거 자료(D113)로만 남는다.
+과거 수동 배포 workflow `deploy_arc_lambdas.yml`(단일 Calculator·액세스 키 fallback 전제)은 D137로 삭제했다. 현재 Dev 코드 배포는 9절의 자동 배포 workflow가 수행하고(터미널에서는 `scripts/ship_dev.sh`, D140), 위 두 스크립트와 `deployment_preflight.py`는 과거 자료(D113)로만 남는다.
 
-## 9. 자동 배포(develop → Dev, D137)
+## 9. 자동 배포(develop → Dev, D137·D140)
 
-`develop`에 머지(push)되면 `.github/workflows/deploy_dev.yml`이 Dev의 세 Lambda **코드**를 갱신한다. 설정(`ARC_JOURNEY_CONFIG`)·환경 변수·Gateway·Queue·Stream은 건드리지 않는다. 대상은 Dev(`us-east-2`의 `arc-calc-dev-api`·`arc-calc-dev-worker`·`arc-calc-dev-relay`)뿐이며 Beta/Prod는 자원 확정 뒤 별도 job으로 만든다. 이 workflow는 아직 GitHub runner·AWS에서 실행해 확인하지 않았다(정적 검사·오프라인 시험만, [VALIDATION](VALIDATION.md)).
+`develop`에 머지(push)되면 `.github/workflows/deploy_dev.yml`이 Dev의 세 Lambda **코드**를 갱신한다. 설정은 한 군데만 쓴다(D140): API·Worker의 `ARC_JOURNEY_CONFIG` 안 `execution` 블록(`current_adapter_version`·`retained_adapter_versions`·`projection_version`)을 배포하는 코드의 버전 레지스트리와 같게 맞춘다. 그 JSON의 나머지 키·다른 환경 변수·Relay 설정·Gateway·Queue·Stream은 건드리지 않는다. 대상은 Dev(`us-east-2`의 `arc-calc-dev-api`·`arc-calc-dev-worker`·`arc-calc-dev-relay`)뿐이며 Beta/Prod는 자원 확정 뒤 별도 job으로 만든다. D140의 설정 맞춤과 `scripts/ship_dev.sh`는 아직 GitHub runner·AWS에서 실행해 확인하지 않았다(정적 검사·오프라인 시험만, [VALIDATION](VALIDATION.md)).
+
+**터미널 절차(D140, `git`+`gh`만 사용).** 작업 브랜치에서 한 줄로 PR → 검사 → 머지 → 승인 → 배포 확인까지 수행한다. AWS 명령·브라우저는 쓰지 않으며, `gh auth login`으로 로그인된 GitHub 계정이 PR 머지 권한과 environment `development` 승인 권한을 가져야 한다.
+
+```sh
+scripts/ship_dev.sh "커밋 메시지"
+```
+
+| 순서 | 하는 일 | 실패하면 |
+|---|---|---|
+| 1 | 현재 브랜치가 `develop`·`master`·`main`이면 거절. 변경이 있으면 `git add -A` + `git commit -m "<메시지>"`(메시지가 없으면 거절, 변경이 없으면 건너뜀) → `git push -u origin <브랜치>` | force push는 하지 않는다. 원격이 앞서 있으면 `git pull --rebase origin <브랜치>` 뒤 다시 실행 |
+| 2 | `develop`을 향한 열린 PR이 없으면 `gh pr create --base develop --head <브랜치> --fill` | base는 항상 `develop`(옵션으로 바꿀 수 없음) |
+| 3 | PR 헤드가 방금 push한 커밋인지 확인하고 `gh pr checks <pr> --watch --fail-fast` | 실패한 검사 이름과 `gh run rerun <run-id> --failed`를 안내하고 종료(exit 3). `--rerun-failed-once`면 실패한 job만 1회 다시 실행 |
+| 4 | `gh pr merge <pr> --merge --delete-branch --match-head-commit <검사한 커밋>` | 필수 검사·리뷰·충돌을 해결한 뒤 같은 명령을 다시 실행 |
+| 5 | 머지 커밋의 `Deploy Dev` 실행을 찾고(최대 3분, 10초 간격) 승인 대기 상태가 되면 environment `development`를 승인(`gh api … /pending_deployments`) | `--no-approve`면 승인하지 않고 다른 승인자를 기다린다. 승인 권한이 없으면 승인자가 `gh run view <id> --web`에서 승인 |
+| 6 | `gh run watch <id> --exit-status` → 단계별 결과와, 실패했으면 실패 단계의 마지막 `{"code": …}` 줄 출력. 성공하면 `git checkout develop && git pull --ff-only origin develop` | exit 4. 원인을 고친 뒤 `scripts/ship_dev.sh --redeploy` |
+
+옵션: `--no-approve`(승인 생략), `--rerun-failed-once`(PR 검사 실패 시 1회 재실행), `--help`. 종료 코드: 0 완료, 1 git/gh 단계 실패, 2 거절(사용법·보호 브랜치·커밋 메시지 없음), 3 PR 검사 실패, 4 `Deploy Dev` 실패, 5 GitHub 대기 시간 초과. 스크립트는 토큰·비밀값을 읽거나 출력하지 않고(`gh`의 저장된 로그인만 사용) `.claude/worktrees/` 아래의 로컬 작업 사본은 커밋에 넣지 않는다. 그 밖의 추적되지 않은 파일은 `git add -A`에 포함되므로 실행 전에 `git status`로 확인한다(커밋 직전에 들어가는 변경 목록을 출력한다).
+
+`scripts/ship_dev.sh --redeploy`는 코드 변경 없이 다시 배포할 때 쓴다(예: 배포 역할 권한을 고친 뒤). `develop`의 **가장 최근** `Deploy Dev` 실행이 실패·취소 상태일 때만 `gh run rerun <id> --failed` → 승인 → 감시를 수행하고, 가장 최근 실행이 성공이면 거절한다(예전 실패 실행을 다시 돌려 새 배포 위에 옛 코드를 올리지 않기 위함). 가장 최근 실행이 아직 진행·승인 대기 중이면 다시 실행하지 않고 승인·감시만 이어서 한다.
 
 **흐름(job `deploy-dev`, 단계 순서 고정).**
 
@@ -1693,14 +1712,14 @@ Gateway 도구의 throttle은 해당 POST만 변경하지만 binaryMediaTypes는
 |---|---|---|
 | checkout·Python 3.12 | PR CI(`validate_actions.yml`)와 같은 고정 SHA 액션 | `persist-credentials: false` |
 | dependencies·regression | PR CI와 같은 venv 준비 뒤 `scripts/run_actions_regression.py`(소켓 없는 단위 시험 전체) | 이 단계까지 secret·variable 참조 없음. 실패하면 여기서 끝 |
-| build (`rollback_run_id`가 비었을 때) | 8절의 x86_64 pip 다운로드 → `scripts/build_mock_artifact.py` → `python -m zipfile -t` | `$RUNNER_TEMP/artifact/mock-lambda.zip`·`artifact-manifest.json` |
-| upload (같은 조건) | Actions 산출물 `mock-lambda-<commit sha>`로 30일 보관 | 되돌리기의 재료 |
-| download (`rollback_run_id`가 있을 때) | 지정한 이전 실행의 `mock-lambda-*` 산출물을 같은 폴더로 받음 | 실행 자체의 `github.token` 사용, 새 secret 없음 |
+| build (`rollback_run_id`가 비었을 때) | 8절의 x86_64 pip 다운로드 → `scripts/build_mock_artifact.py` → `python -m zipfile -t` → `scripts/deploy_dev_lambdas.py registry`(이 코드의 실행 버전 레지스트리를 파일로 기록, D140) | `$RUNNER_TEMP/artifact/mock-lambda.zip`·`artifact-manifest.json`·`execution-registry.json` |
+| upload (같은 조건) | Actions 산출물 `mock-lambda-<commit sha>`로 30일 보관(ZIP·manifest·레지스트리) | 되돌리기의 재료 |
+| download (`rollback_run_id`가 있을 때) | 지정한 이전 실행의 `mock-lambda-*` 산출물을 같은 폴더로 받음 | 실행 자체의 `github.token` 사용, 새 secret 없음. D140 이전 실행은 레지스트리 파일이 없어 다음 단계에서 `REGISTRY_MISSING` |
 | credentials | GitHub Environment `development` 승인 뒤 OIDC로만 역할 `gha-arc-calc-dev-deploy` 위임 | 액세스 키 경로 없음 |
-| check_config | `scripts/deploy_dev_lambdas.py check-config`: API·Worker의 `ARC_JOURNEY_CONFIG`가 `role`·`execution`(`CURRENT_ADAPTER_VERSION`·`RETAINED_ADAPTER_VERSIONS` 순서 포함·`PROJECTION_VERSION`)에서 코드 레지스트리와 같고 `AwsSettings.parse`를 통과하는지 확인 | 다르면 `CONFIG_DRIFT`(exit 2)로 중단. 역할·필드·코드 기대값만 출력하고 설정 JSON·계정·자원 이름은 출력하지 않음 |
-| deploy | `scripts/deploy_dev_lambdas.py deploy`: Worker → Relay → API 순으로 `UpdateFunctionCode`(버전 발행 없음) → 갱신 완료 대기 → 함수의 `CodeSha256`가 ZIP의 sha256(base64)과 같은지 대조 | 한 함수라도 실패하면 즉시 중단(exit 3, 해시 불일치 exit 4). 이미 갱신된 함수는 요약에 남음 |
+| check_config | `scripts/deploy_dev_lambdas.py check-config --registry <산출물의 execution-registry.json>`: 아무것도 쓰지 않는다. API·Worker의 `ARC_JOURNEY_CONFIG`가 있고, JSON object이고, `role`이 맞고, `execution`이 object인지 확인한다. `execution` 값만 레지스트리와 다르면 실패가 아니라 `execution_will_be_synced`와 다른 필드 이름을 출력하고 통과한다(D140). 산출물 레지스트리가 체크아웃한 코드의 레지스트리와 같을 때는 execution을 맞춘 문서가 `AwsSettings.parse`를 통과하는지도 오프라인으로 확인한다(되돌리기처럼 다른 revision의 산출물이면 이 검사는 건너뛰고 `settings_parse_skipped`를 출력) | 그 밖의 차이는 `CONFIG_DRIFT`(exit 2), 레지스트리 파일 없음·형식 다름은 `REGISTRY_MISSING`(exit 3)으로 코드 교체 전에 중단. 역할·필드·기대값만 출력하고 설정 JSON·계정·자원 이름은 출력하지 않음 |
+| deploy | `scripts/deploy_dev_lambdas.py deploy --registry <같은 파일>`: Worker → Relay → API 순. API·Worker는 **코드 교체 직전에** 설정을 다시 읽어 `execution`이 레지스트리와 다르면 그 블록만 바꾼 문서로 `UpdateFunctionConfiguration`(환경 변수 전체를 읽은 그대로 되돌려 쓰고 그 한 변수만 교체, 읽은 뒤 함수가 바뀌었으면 거절되도록 `RevisionId` 지정) → 갱신 완료 대기 → 다시 읽어 보낸 값과 같은지 확인한다. 이미 같으면 설정은 쓰지 않는다. 이어서 `UpdateFunctionCode`(버전 발행 없음) → 갱신 완료 대기 → 함수의 `CodeSha256`가 ZIP의 sha256(base64)과 같은지 대조 | 한 함수라도 실패하면 즉시 중단(exit 3, 해시 불일치 exit 4, 설정 쓰기 권한 없음 `CONFIG_SYNC_DENIED` exit 6). 첫 쓰기 전에 세 함수를 모두 읽어 execution 밖의 차이가 있으면 `CONFIG_DRIFT`로 아무것도 바꾸지 않고 중단. 이미 갱신된 함수와 역할별 설정 상태(`synced`·`unchanged`)는 요약에 남음 |
 | smoke | `scripts/deploy_dev_lambdas.py smoke`: 공개 Dummy 로그인(`201`, `tokenType`·`userName`·`accessToken` 존재) → 과정 목록(`200`, 1개 이상) | 로그아웃(`DELETE /api/v2/session/`)은 호출하지 않음(공유 Dummy 진도 초기화). 토큰·본문은 출력하지 않고 상태·고정 코드만 출력(exit 5) |
-| summary | `$GITHUB_STEP_SUMMARY`에 커밋·산출물 sha256·함수별 `CodeSha256`/`LastModified`·스모크 결과 | `always()`; 토큰·JSON 내용 없음 |
+| summary | `$GITHUB_STEP_SUMMARY`에 커밋·산출물 sha256·역할별 설정 상태(`synced`/`unchanged`)·함수별 `CodeSha256`/`LastModified`·스모크 결과 | `always()`; 토큰·JSON 내용 없음 |
 
 승인(environment `development`의 required reviewers)은 job 시작 전에 걸린다(GitHub는 environment가 붙은 job을 승인 뒤에 시작한다). 따라서 회귀·빌드도 승인 뒤에 실행되며, workflow 안에서도 회귀 단계까지는 secret·variable을 참조하지 않으므로 승인 없이 secret이 읽히는 경로는 없다. `concurrency: deploy-development`(진행 중 실행 취소 없음)로 같은 Dev에 두 배포가 겹치지 않는다. `scripts/validate_actions.py check`가 PR마다 이 workflow의 트리거·권한·환경·env·단계 순서·고정 명령·단일 OIDC 단계·액세스 키 부재·`secrets`/`vars` 참조 위치를 정적으로 검사하며, 기존 액션 SHA 고정·`action.yml` 지문 검사는 새 액션(upload/download-artifact)에도 같은 방식으로 적용된다.
 
@@ -1726,35 +1745,67 @@ Gateway 도구의 throttle은 해당 POST만 변경하지만 binaryMediaTypes는
 }
 ```
 
-3. **역할 권한 정책(최소).** 세 함수 ARN에 `GetFunction`·`GetFunctionConfiguration`·`UpdateFunctionCode`만 허용한다. 설정 변경(`UpdateFunctionConfiguration`)·버전 발행·다른 함수·S3/DynamoDB/SQS 권한은 주지 않는다.
+3. **역할 권한 정책(최소).** 세 함수 ARN에 `GetFunction`·`GetFunctionConfiguration`·`UpdateFunctionCode`를, API·Worker 두 함수 ARN에만 `UpdateFunctionConfiguration`을 허용한다(D140). 버전 발행·다른 함수·S3/DynamoDB/SQS·`iam:PassRole` 권한은 주지 않는다.
 
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"],
-    "Resource": [
-      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-api",
-      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-worker",
-      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-relay"
-    ]
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"],
+      "Resource": [
+        "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-api",
+        "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-worker",
+        "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-relay"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:UpdateFunctionConfiguration"],
+      "Resource": [
+        "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-api",
+        "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-worker"
+      ]
+    }
+  ]
 }
 ```
+
+   `UpdateFunctionConfiguration`이 필요한 이유: 계산 버전이 올라갈 때마다 콘솔에서 `ARC_JOURNEY_CONFIG`를 손으로 바꾸던 단계가 `CONFIG_DRIFT`의 원인이었고, 이제 workflow가 `execution` 블록을 직접 맞추기 때문이다(D140). 이 IAM 동작은 함수 설정 전반(환경 변수·timeout·메모리 등)을 바꿀 수 있는 권한이며 IAM 조건으로 "환경 변수 한 개만"으로 좁힐 수 없다. 범위는 코드가 지킨다: 배포 스크립트는 `Environment`만 보내고, 읽은 환경 변수를 그대로 되돌려 쓰며 `ARC_JOURNEY_CONFIG`의 `execution` 블록만 바꾼다. 역할에 `iam:PassRole`이 없으므로 이 권한으로 함수의 실행 역할을 바꿀 수는 없다. Relay에는 `execution` 블록이 없어 이 권한을 주지 않는다. 권한이 없으면 배포는 `CONFIG_SYNC_DENIED`(exit 6)로 그 함수의 코드 교체 전에 멈춘다.
 
 4. **GitHub Environment `development`.** Settings → Environments에서 만들고 Required reviewers에 승인자를 지정한다. 같은 environment에 secret `DEV_AWS_ROLE_ARN`(위 역할의 ARN)과 variable `DEV_API_BASE_URL`(예: `https://<api-id>.execute-api.us-east-2.amazonaws.com/dev`, 끝에 `/` 없음)을 넣는다. 다른 secret·액세스 키는 만들지 않는다.
 5. **`develop` 브랜치 보호.** PR 필수, 필수 검사(required status checks)로 PR CI의 `validate`·`integration`·`boundary`를 등록한다. 직접 push를 막아 "머지 = 검사 통과한 revision"이 되게 한다.
 
-**실행 절차.** PR을 `develop`에 머지한다 → Actions의 `Deploy Dev` 실행에서 승인자가 Review deployments로 승인한다 → 실행 요약(Summary)에서 커밋·산출물 sha256·세 함수의 `CodeSha256`/`LastModified`·스모크 상태를 확인한다. 세 함수의 `CodeSha256`는 서로 같아야 한다(같은 ZIP). 실패 시 단계 이름과 고정 코드(`CONFIG_DRIFT`·`AWS_CALL_FAILED`·`CODE_SHA_MISMATCH`·`SMOKE_FAILED` 등)만 로그에 남는다.
+**실행 절차.** 터미널에서는 위 `scripts/ship_dev.sh` 한 줄이 아래를 모두 수행한다. 손으로 할 때: PR을 `develop`에 머지한다 → Actions의 `Deploy Dev` 실행에서 승인자가 Review deployments로 승인한다 → 실행 요약(Summary)에서 커밋·산출물 sha256·역할별 설정 상태·세 함수의 `CodeSha256`/`LastModified`·스모크 상태를 확인한다. 세 함수의 `CodeSha256`는 서로 같아야 한다(같은 ZIP). 실패 시 단계 이름과 고정 코드만 로그에 남는다.
 
-**되돌리기.** Actions → `Deploy Dev` → Run workflow에서 `rollback_run_id`에 되돌릴 **이전 성공 실행의 run id**(URL의 `/actions/runs/<id>`)를 넣고 `develop` 브랜치로 실행한다. 빌드 대신 그 실행이 보관한 ZIP을 받아 같은 순서로 다시 배포하며, 같은 승인·설정 검사·스모크가 적용된다. 산출물 보관은 30일이므로 그보다 오래된 실행은 되돌릴 수 없다(그때는 해당 커밋을 `develop`에 다시 머지한다). 되돌리기는 코드만 바꾸므로, 그 사이 설정 JSON을 바꿨다면 옛 코드가 요구하는 설정으로 먼저 되돌려야 `CONFIG_DRIFT`가 나지 않는다.
+**고정 코드의 의미와 조치(설정 관련).**
 
-**설정 JSON 변경 절차.** 코드가 어댑터/projection 버전을 바꾸는 PR(예: D136 같은 변경)이 머지되면 첫 배포는 `CONFIG_DRIFT`로 멈춘다. 이는 설계된 동작이다: 4~5절대로 역할별 JSON을 다시 만들어 오프라인 검사(`mock_journey/aws_settings.py`·`scripts/validate_aws_dev_bundle.py`)를 통과시키고 Lambda 콘솔에서 `ARC_JOURNEY_CONFIG`를 손으로 갱신한 뒤, 실패한 실행을 **Re-run**(또는 같은 커밋으로 Run workflow)한다. workflow는 설정을 자동으로 쓰지 않는다(2A). 출력의 `field`는 어느 값이 다른지, `expected`는 코드가 기대하는 값이다.
+| 코드 (exit) | 의미 | 바뀐 것 | 조치 |
+|---|---|---|---|
+| `CONFIG_DRIFT` (2) | `execution` 값 밖의 차이: `ARC_JOURNEY_CONFIG` 없음(`expected: present`), JSON object 아님·중복 키(`json_object`), `role` 불일치, `execution`이 object 아님, 또는 execution을 맞춘 문서가 `AwsSettings.parse`를 통과하지 못함(`field: AwsSettings.parse`) | 없음(코드 교체 전에 중단) | 출력의 `role`·`field`를 보고 아래 비상 절차로 그 함수의 설정 JSON을 고친 뒤 `scripts/ship_dev.sh --redeploy` |
+| `REGISTRY_MISSING` (3) | 배포할 산출물에 `execution-registry.json`이 없거나 형식이 다름. D140 이전 실행을 `rollback_run_id`로 지정했을 때 발생 | 없음 | 그 실행으로는 자동으로 되돌릴 수 없다. 되돌릴 커밋을 revert PR로 `develop`에 머지해 새 산출물로 배포한다 |
+| `CONFIG_SYNC_DENIED` (6) | 배포 역할에 `lambda:UpdateFunctionConfiguration`이 없음. 출력은 `missing_action`과 `role`뿐(ARN·AWS 메시지 없음) | 그 함수는 설정·코드 모두 그대로. 순서상 앞선 함수는 이미 갱신됐을 수 있음(요약의 표에 남음) | AWS 관리자가 위 3번 정책의 두 번째 Statement를 역할에 추가 → `scripts/ship_dev.sh --redeploy` |
+| `CONFIG_SYNC_FAILED` (3) | 설정을 쓴 뒤 다시 읽은 환경 변수가 보낸 값과 다르거나(`read_back_differs`), 쓰기 전 자체 점검에서 execution 밖의 내용이 보존되지 않음(`document_not_preserved`, 이때는 쓰지 않음) | `read_back_differs`면 그 함수의 설정 상태가 불확실(요약에 `unconfirmed`) | Lambda 콘솔에서 그 함수의 `ARC_JOURNEY_CONFIG`를 확인한 뒤 `scripts/ship_dev.sh --redeploy` |
+| `AWS_CALL_FAILED` (3) | AWS 호출 실패. `call`이 `UpdateFunctionConfiguration`이면 설정 쓰기·대기 중 실패(다른 변경과 겹쳐 `RevisionId`가 맞지 않은 경우 포함) | `config_synced`·`updated`에 이미 바뀐 역할이 나옴 | 잠시 뒤 `scripts/ship_dev.sh --redeploy`. 반복되면 실행 로그의 단계와 AWS 상태 확인 |
 
-**D138(v5) 배포 순서와 짧은 503 구간.** 자동 배포는 코드 갱신 전에 설정을 검사하므로 `ARC_JOURNEY_CONFIG`를 **먼저** 새 값(current v5·retained 3개)으로 갱신해야 `CONFIG_DRIFT`를 통과한다. 그런데 설정을 바꾼 순간부터 새 코드가 배포될 때까지는 이전 코드(current v4·retained 2개를 기대)가 새 설정을 거절하므로, 그 사이의 API 요청은 고정 `503 TEMPORARILY_UNAVAILABLE`가 될 수 있고 Worker는 메시지를 실패로 돌려보내 SQS가 재전달한다(설정 불일치는 접수된 Job·원본·결과를 지우지 않는다. 이 구간의 실제 AWS 동작은 이번 작업에서 실행해 확인하지 않았고, 로컬 시험은 어긋난 설정이 `TEMPORARILY_UNAVAILABLE`로 거절되는 것까지 확인한다). 구간을 줄이려면 ① PR을 머지해 `Deploy Dev`가 `CONFIG_DRIFT`로 멈춘 것을 확인하고 ② API·Worker 설정을 갱신한 직후 ③ 실패한 실행을 바로 **Re-run**해 승인한다. 사용량이 없는 시간에 수행하고, 배포 뒤 스모크와 앱의 재로그인(또는 세션 갱신)으로 새 `definitionHash`를 받는지 확인한다. 되돌릴 때는 반대로 설정을 이전 값으로 되돌린 뒤 `rollback_run_id`로 이전 ZIP을 배포한다(이때도 같은 짧은 구간이 생긴다). v5 정의로 시작된 시도가 이미 있으면 이전 코드에는 그 adapter가 등록돼 있지 않아 작업을 계산하지 못하고 연기만 한다(코드상 미등록 adapter는 `TEMPORARILY_UNAVAILABLE`; 이번 작업에서 되돌리기 자체를 실행해 확인하지는 않았다). 되돌리기 전에 진행 중 v5 작업이 없는지 확인한다.
+`scripts/ship_dev.sh`는 실패한 실행에서 이 `{"code": …}` 줄만 골라 출력한다. 같은 실행을 다시 돌려도 안전하다: 이미 맞춰진 설정은 `unchanged`로 지나가고 코드는 같은 ZIP으로 다시 교체된다.
 
-**보안 주의.** 액세스 키(`AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY`)는 어디에도 쓰지 않으며 validator가 그 문자열의 존재 자체를 거절한다. 회귀 단계까지는 secret·variable을 읽지 않는다. 배포 스크립트는 토큰·서명 URL·환경 변수 값·설정 JSON·예외 본문을 출력하지 않고 고정 코드만 출력한다. `role-session-name`은 `arc-deploy-development`로 고정되어 CloudTrail에서 구별된다. 산출물(ZIP·manifest)에는 비밀이 없다(빌더가 `.env`·키·DB를 제외). timeout 15분은 회귀 실측(2026-09-28 CI 기준 154초)+빌드 추정 60초의 3배에 3분을 더한 값이며, 실제 runner 시간을 재면 `MAX_DEPLOY_MINUTES`와 함께 조정한다.
+**설정과 코드 교체 사이의 짧은 불일치 구간.** 버전이 바뀌는 배포에서 API·Worker 각각, 설정을 새 버전으로 쓴 직후부터 그 함수의 코드 교체가 끝날 때까지(갱신 완료 대기를 포함해 함수당 수 초) 옛 코드가 새 `execution`을 읽는다. D127에 따라 옛 코드는 그 설정을 거절하므로 이 구간의 API 요청은 고정 `503 TEMPORARILY_UNAVAILABLE`가 될 수 있고 Worker는 메시지를 실패로 돌려보내 SQS가 재전달한다(설정 불일치는 접수된 Job·원본·결과를 지우지 않는다). 설정 쓰기와 코드 교체 사이에서 실행이 실패하면(`config_synced`에 그 역할이 남음) 이 구간이 다시 실행할 때까지 이어지므로 바로 `scripts/ship_dev.sh --redeploy`를 실행한다. 버전이 바뀌지 않는 배포에서는 설정을 쓰지 않으므로 이 구간이 없다. 사용량이 없는 시간에 배포하고, 배포 뒤 스모크와 앱의 재로그인(또는 세션 갱신)으로 새 `definitionHash`를 받는지 확인한다. 이 구간의 실제 AWS 동작은 실행해 확인하지 않았고, 로컬 시험은 어긋난 설정이 `TEMPORARILY_UNAVAILABLE`로 거절되는 것까지 확인한다.
+
+**되돌리기.** `rollback_run_id`에 되돌릴 **이전 성공 실행의 run id**(URL의 `/actions/runs/<id>`, 또는 `gh run list --workflow deploy_dev.yml`)를 넣고 `develop` 브랜치로 수동 실행한다. 터미널에서는 다음과 같다.
+
+```sh
+gh workflow run deploy_dev.yml --ref develop -f rollback_run_id=<run-id>
+gh run list --workflow deploy_dev.yml --limit 1   # 새 실행이 목록 맨 위에 보이는지 확인한 뒤
+scripts/ship_dev.sh --redeploy                    # 진행·승인 대기 중인 가장 최근 실행을 승인하고 지켜본다
+```
+
+빌드 대신 그 실행이 보관한 ZIP과 레지스트리를 받아 같은 순서로 다시 배포하며, 같은 승인·설정 검사·스모크가 적용된다. 설정의 `execution` 블록도 **그 산출물의 레지스트리**로 되돌려지므로(D140) 설정을 손으로 되돌릴 필요가 없다. 이때 `check-config`는 체크아웃된 최신 코드의 `AwsSettings.parse`를 적용하지 않는다(옛 코드가 읽을 문서이므로). `execution` 밖의 설정 키를 그 사이에 바꿨다면 옛 코드가 요구하는 값으로 먼저 되돌린다. 산출물 보관은 30일이므로 그보다 오래된 실행과, 레지스트리 파일이 없는 D140 이전 실행은 되돌릴 수 없다(`REGISTRY_MISSING`; 해당 커밋을 revert PR로 `develop`에 다시 머지한다). 새 버전 정의로 시작된 시도가 이미 있으면 이전 코드에는 그 adapter가 등록돼 있지 않아 작업을 계산하지 못하고 연기만 한다(코드상 미등록 adapter는 `TEMPORARILY_UNAVAILABLE`; 되돌리기 자체를 실행해 확인하지는 않았다). 되돌리기 전에 진행 중인 새 버전 작업이 없는지 확인한다.
+
+**설정 JSON을 손으로 바꾸는 절차(비상용).** 평소에는 필요 없다: 코드가 어댑터/projection 버전을 바꾸는 PR이 머지되면 workflow가 `execution` 블록을 맞춘다. 손으로 바꾸는 경우는 ① `CONFIG_DRIFT`가 난 `execution` 밖의 문제(역할·저장·과정 설정 등)를 고칠 때 ② 배포 역할에 `UpdateFunctionConfiguration`을 줄 수 없을 때 ③ workflow를 쓸 수 없을 때다. 4~5절대로 역할별 JSON을 다시 만들어 오프라인 검사(`mock_journey/aws_settings.py`·`scripts/validate_aws_dev_bundle.py`)를 통과시키고 Lambda 콘솔에서 `ARC_JOURNEY_CONFIG`를 갱신한 뒤 `scripts/ship_dev.sh --redeploy`(또는 실패한 실행을 **Re-run**)한다. ②의 경우 `execution`을 새 코드의 값으로 미리 맞춰 두면 배포는 설정을 쓰지 않고(`unchanged`) 지나간다. 출력의 `field`는 어느 값이 다른지, `expected`는 기대하는 값이다.
+
+**보안 주의.** 액세스 키(`AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY`)는 어디에도 쓰지 않으며 validator가 그 문자열의 존재 자체를 거절한다. 회귀 단계까지는 secret·variable을 읽지 않는다. 배포 스크립트는 토큰·서명 URL·환경 변수 값·설정 JSON·예외 본문(ARN 포함)을 출력하지 않고 고정 코드만 출력하며, 설정을 쓸 때도 값은 로그·요약·report 파일 어디에도 남기지 않는다. `execution` 밖의 차이는 여전히 코드 교체 전에 실행을 멈춘다. `role-session-name`은 `arc-deploy-development`로 고정되어 CloudTrail에서 구별된다. 산출물(ZIP·manifest)에는 비밀이 없다(빌더가 `.env`·키·DB를 제외). timeout 15분은 회귀 실측(2026-09-28 CI 기준 154초)+빌드 추정 60초의 3배에 3분을 더한 값이며, 실제 runner 시간을 재면 `MAX_DEPLOY_MINUTES`와 함께 조정한다.
 
 ## 10. 로그·인수·복구
 

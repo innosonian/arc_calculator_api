@@ -3,11 +3,18 @@
 # is referenced before that step), builds the x86_64 ZIP, keeps it as an
 # Actions artifact for 30 days, then waits for the `development` environment
 # approval (reviewers are configured in GitHub by the user). Only then the
-# OIDC role is assumed; there is no access-key path. The Lambda configuration
-# (ARC_JOURNEY_CONFIG) is never written here: it is compared with the code
-# registry and a difference stops the run with CONFIG_DRIFT.
-# Manual run with `rollback_run_id` re-deploys the ZIP that an earlier run kept
-# instead of building one. scripts/validate_actions.py pins this file.
+# OIDC role is assumed; there is no access-key path.
+# D140: the build also stores the code's execution registry
+# (execution-registry.json) next to the ZIP. The deploy step makes the
+# `execution` block of the API and Worker ARC_JOURNEY_CONFIG equal that
+# registry right before it replaces each function's code; every other setting
+# and environment variable is written back as read and never printed. Any
+# other difference (role, not JSON, no execution object) still stops the run
+# with CONFIG_DRIFT before any code is replaced.
+# Manual run with `rollback_run_id` re-deploys the ZIP (and the registry) that
+# an earlier run kept instead of building one; a run from before D140 kept no
+# registry and stops with REGISTRY_MISSING. scripts/validate_actions.py pins
+# this file.
 #
 # timeout-minutes: measured duration x3 + 3 min (the PR CI rule). Local
 # measurement 2026-09-30: offline regression 112 s (this repository, Apple
@@ -99,8 +106,10 @@ jobs:
           "$RUNNER_TEMP/build-python/bin/python" scripts/build_mock_artifact.py \
             --source-root "$GITHUB_WORKSPACE" --packages-dir "$RUNNER_TEMP/packages" --outdir "$RUNNER_TEMP/artifact"
           "$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py registry \
+            --output "$RUNNER_TEMP/artifact/execution-registry.json"
 
-      - name: Keep the ZIP and its manifest as a run artifact
+      - name: Keep the ZIP, its manifest and its execution registry as a run artifact
         id: upload
         if: inputs.rollback_run_id == ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -109,6 +118,7 @@ jobs:
           path: |
             ${{ runner.temp }}/artifact/mock-lambda.zip
             ${{ runner.temp }}/artifact/artifact-manifest.json
+            ${{ runner.temp }}/artifact/execution-registry.json
           if-no-files-found: error
           retention-days: 30
 
@@ -131,19 +141,21 @@ jobs:
           role-session-name: arc-deploy-development
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Compare the Lambda ARC_JOURNEY_CONFIG with the code registry
+      - name: Check the Lambda ARC_JOURNEY_CONFIG against the artifact's execution registry
         id: check_config
         run: |
           "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py check-config \
-            --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"
+            --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER" \
+            --registry "$RUNNER_TEMP/artifact/execution-registry.json"
 
-      - name: Deploy the ZIP to Worker, Relay, then API
+      - name: Sync the execution block and deploy the ZIP to Worker, Relay, then API
         id: deploy
         run: |
           "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py deploy \
             --region "$AWS_REGION" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \
             --function worker="$ARC_DEV_FUNCTIONS_WORKER" --function relay="$ARC_DEV_FUNCTIONS_RELAY" --function api="$ARC_DEV_FUNCTIONS_API" \
-            --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json"
+            --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json" \
+            --registry "$RUNNER_TEMP/artifact/execution-registry.json"
 
       - name: Smoke the deployed API (Dummy login and course list; no logout)
         id: smoke
