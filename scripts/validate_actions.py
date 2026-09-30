@@ -31,6 +31,11 @@ so a reviewed CI change touches every copy at once):
   (DEPLOY_RUNS), the single OIDC step (DEPLOY_OIDC_WITH), the artifact steps
   and MAX_DEPLOY_MINUTES below; tests/test_validate_actions.py mutates a copy
   of the yml; docs/DEPLOY_GUIDE.md "자동 배포" section.
+* The check-config command of that workflow: the yml, DEPLOY_RUNS["check_config"]
+  and, because the PR base is compared with it, CHECK_CONFIG_PREDECESSOR_RUNS
+  (the one earlier body a base revision may still carry; D140 added
+  `--registry`). A further change of that command moves the current body into
+  the predecessor tuple in the same reviewed change.
 """
 
 import argparse
@@ -181,6 +186,12 @@ DEPLOY_STEP_CONDITIONS = {"build": BUILD_CONDITION, "upload": BUILD_CONDITION, "
 DEPLOY_SCRIPT = "scripts/deploy_dev_lambdas.py"
 DEPLOY_PYTHON = '"$RUNNER_TEMP/actions-venv/bin/python"'
 DEPLOY_FUNCTION_ORDER = ("worker", "relay", "api")
+# D140: the build writes the code's execution registry next to the ZIP (with
+# the CI venv, which has the application requirements); the artifact keeps it,
+# and check-config and deploy read that same file, so a rollback syncs the
+# configuration to the registry of the ZIP it re-deploys.
+DEPLOY_REGISTRY = '"$RUNNER_TEMP/artifact/execution-registry.json"'
+DEPLOY_REGISTRY_ARGUMENT = "--registry " + DEPLOY_REGISTRY
 # (run body, env, shell) per run step of the deployment job.
 DEPLOY_RUNS = {
     "dependencies": (DEPENDENCIES_RUN, None, "bash"),
@@ -193,17 +204,21 @@ DEPLOY_RUNS = {
         '  --platform manylinux2014_x86_64 --implementation cp --python-version 3.12\n'
         '"$RUNNER_TEMP/build-python/bin/python" scripts/build_mock_artifact.py \\\n'
         '  --source-root "$GITHUB_WORKSPACE" --packages-dir "$RUNNER_TEMP/packages" --outdir "$RUNNER_TEMP/artifact"\n'
-        '"$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"', None, None),
+        '"$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"\n'
+        + DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py registry \\\n'
+        '  --output ' + DEPLOY_REGISTRY, None, None),
     "check_config": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py check-config \\\n'
-        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',
+        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER" \\\n'
+        '  ' + DEPLOY_REGISTRY_ARGUMENT,
         None, None),
     "deploy": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py deploy \\\n'
         '  --region "$AWS_REGION" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \\\n'
         '  --function worker="$ARC_DEV_FUNCTIONS_WORKER" --function relay="$ARC_DEV_FUNCTIONS_RELAY" '
         '--function api="$ARC_DEV_FUNCTIONS_API" \\\n'
-        '  --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json"',
+        '  --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json" \\\n'
+        '  ' + DEPLOY_REGISTRY_ARGUMENT,
         None, None),
     "smoke": (
         DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py smoke \\\n'
@@ -214,11 +229,20 @@ DEPLOY_RUNS = {
         '  --deploy-report "$RUNNER_TEMP/deploy-report.json" --smoke-report "$RUNNER_TEMP/smoke-report.json" \\\n'
         '  --output "$GITHUB_STEP_SUMMARY"', None, None),
 }
+# The check-config bodies an older PR base may carry. The base comparison
+# accepts exactly one kind of change of that step: from one of these to the
+# current fixed body above (D137 -> D140: `--registry` added). Any other base
+# body, env, condition or key is rejected as before.
+CHECK_CONFIG_PREDECESSOR_RUNS = (
+    DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py check-config \\\n'
+    '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',
+)
 DEPLOY_OIDC_WITH = {"role-to-assume": "${{ env.AWS_ROLE_ARN }}", "role-session-name": "arc-deploy-development",
                     "aws-region": "${{ env.AWS_REGION }}"}
 DEPLOY_UPLOAD_WITH = {
     "name": "mock-lambda-${{ github.sha }}",
-    "path": "${{ runner.temp }}/artifact/mock-lambda.zip\n${{ runner.temp }}/artifact/artifact-manifest.json\n",
+    "path": "${{ runner.temp }}/artifact/mock-lambda.zip\n${{ runner.temp }}/artifact/artifact-manifest.json\n"
+            "${{ runner.temp }}/artifact/execution-registry.json\n",
     "if-no-files-found": "error",
     "retention-days": 30,
 }
@@ -371,7 +395,15 @@ def validate_deployment(document):
     require(tuple(re.findall(r"--function ([a-z]+)=", selected["deploy"]["run"])) == DEPLOY_FUNCTION_ORDER,
             "DEPLOYMENT_GATE_INVALID")
     require(all(re.search(re.escape(DEPLOY_SCRIPT) + " " + re.escape(sub) + r"\b", selected[step_id]["run"])
-                for step_id, sub in (("check_config", "check-config"), ("deploy", "deploy"), ("smoke", "smoke"))),
+                for step_id, sub in (("build", "registry"), ("check_config", "check-config"), ("deploy", "deploy"),
+                                     ("smoke", "smoke"))),
+            "DEPLOYMENT_GATE_INVALID")
+    # D140: the registry is written once by the build, kept in the artifact,
+    # and both AWS steps read that one file (never a registry of their own).
+    require(selected["build"]["run"].count("--output " + DEPLOY_REGISTRY) == 1
+            and all(selected[step_id]["run"].count(DEPLOY_REGISTRY_ARGUMENT) == 1
+                    and selected[step_id]["run"].count("--registry") == 1 for step_id in ("check_config", "deploy"))
+            and "${{ runner.temp }}/artifact/execution-registry.json" in upload["with"]["path"].split("\n"),
             "DEPLOYMENT_GATE_INVALID")
 
 
@@ -403,12 +435,19 @@ def validate_integration(job, checkout, python, job_id):
         require(step.get("env") == env, "CI_BOUNDARY_INVALID")
 
 
+def is_check_config_step(step, bodies):
+    """A check-config step (without `name`) that is nothing but its id and one of the given run bodies."""
+    return (set(step) == {"id", "run"} and step["id"] == "check_config" and type(step["run"]) is str
+            and step["run"].strip() in bodies)
+
+
 def validate_workflows(base, deployment, ci):
     # No equality requirement between ALL deployment refs and the smoke refs.
     # `base` is None on the PR that introduces the deployment workflow (the
     # file is absent at the base revision): every ref is then "introduced" and
     # the checkout/Python refs must be the CI smoke refs; there is nothing to
-    # compare the env, OIDC and check-config steps with.
+    # compare the env, OIDC and check-config steps with. In both cases
+    # validate_deployment pins the current check-config step to its fixed body.
     old_steps, current_steps = (action_steps(base) if base is not None else []), action_steps(deployment)
     if base is not None:
         require(base.get("env") == deployment.get("env"), "DEPLOYMENT_AUTH_INVALID")
@@ -416,14 +455,24 @@ def validate_workflows(base, deployment, ci):
             old_job = base.get("jobs", {}).get(name, {})
             require(isinstance(old_job, dict) and old_job.get("env") == job.get("env"), "DEPLOYMENT_AUTH_INVALID")
             # The AWS action also translates env variables such as ROLE_CHAINING
-            # into inputs, so the whole step (except its pinned ref) is compared;
-            # the check-config command and its bindings are preserved the same way.
-            for selector in (lambda s: s.get("uses", "").startswith(AWS + "@"), lambda s: s.get("id") == "check_config"):
+            # into inputs, so the whole step (except its pinned ref) is compared.
+            # The check-config step is compared the same way, with one reviewed
+            # exception (D140): a base that still carries a predecessor body may
+            # become exactly the current fixed body. Nothing else about that step
+            # (env, shell, condition, extra keys) may differ from the base.
+            for step_name, selector in (("oidc", lambda s: s.get("uses", "").startswith(AWS + "@")),
+                                        ("check_config", lambda s: s.get("id") == "check_config")):
                 old = [s for s in old_job.get("steps", []) if selector(s)]
                 new = [s for s in job.get("steps", []) if selector(s)]
                 require(len(old) == len(new) == 1, "DEPLOYMENT_AUTH_INVALID")
-                require({k: v for k, v in old[0].items() if k not in ("uses", "name")}
-                        == {k: v for k, v in new[0].items() if k not in ("uses", "name")}, "DEPLOYMENT_AUTH_INVALID")
+                before = {k: v for k, v in old[0].items() if k not in ("uses", "name")}
+                after = {k: v for k, v in new[0].items() if k not in ("uses", "name")}
+                if step_name == "check_config" and before != after:
+                    require(is_check_config_step(before, CHECK_CONFIG_PREDECESSOR_RUNS)
+                            and is_check_config_step(after, (DEPLOY_RUNS["check_config"][0],)),
+                            "DEPLOYMENT_AUTH_INVALID")
+                else:
+                    require(before == after, "DEPLOYMENT_AUTH_INVALID")
     require(ci.get("permissions") == {"contents": "read"}, "CI_BOUNDARY_INVALID")
     triggers = ci.get("on")
     require(isinstance(triggers, dict) and set(triggers) == {"pull_request"}, "CI_BOUNDARY_INVALID")
@@ -552,7 +601,7 @@ def base_deployment(root, base_sha):
 
 
 def syntax_check(root):
-    shell_files = ("scripts/deploy_arc_lambda.sh", "scripts/deploy_arc_api_gateway.sh")
+    shell_files = ("scripts/deploy_arc_lambda.sh", "scripts/deploy_arc_api_gateway.sh", "scripts/ship_dev.sh")
     python_files = ("scripts/deployment_preflight.py", "scripts/build_mock_artifact.py", "scripts/deploy_dev_lambdas.py",
                     "scripts/validate_actions.py", "scripts/install_actionlint.py", "scripts/run_actions_regression.py",
                     "scripts/test_suites.py", "scripts/validate_local_integration.py")
