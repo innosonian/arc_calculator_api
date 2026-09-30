@@ -33,6 +33,14 @@ _BORDERS = {"adult": AdultBorder, "child": ChildBorder, "infant": InfantBorder}
 _PASS_THRESHOLD = 80  # services.legacy_document._get_pass_threshold default
 _TWO_RESCUER_CYCLE_CHANGE = 2
 _TWO_RESCUER_PROGRAMS = ("mock-two-rescuer-cpr", "mock-two-rescuer-aed")
+# App automatic-stop limits in seconds, shared by all ages and both item modes.
+_DURATION_SECONDS = {
+    "mock-cpr": 300,
+    "mock-compression-only": 120,
+    "mock-ventilation-only": 120,
+    "mock-two-rescuer-cpr": 720,
+    "mock-two-rescuer-aed": 900,
+}
 
 
 def _inch(millimetres):
@@ -61,7 +69,7 @@ def training_settings(program, target, definition):
         compressions = 15 if cycle_type == "152" else 30
         ratio = {"title": f"{compressions}:2", "cvrVentilation": 2, "cvrCompression": compressions}
     return {
-        "manikinType": target, "duration": None,
+        "manikinType": target, "duration": _DURATION_SECONDS[program],
         "compressionLimit": required if kind == "compressions" else None,
         "ventilationLimit": required if kind == "ventilations" else None,
         "cycleLimit": required if kind == "cycles" else None,

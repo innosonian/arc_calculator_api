@@ -74,7 +74,7 @@ jobs:
         run: |
           python3 scripts/install_actionlint.py --output-dir "$RUNNER_TEMP/actionlint"
           "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= \
-            .github/workflows/deploy_arc_lambdas.yml .github/workflows/validate_actions.yml
+            .github/workflows/deploy_dev.yml .github/workflows/validate_actions.yml
 
       - name: Validate action contracts and newly introduced refs
         id: contracts

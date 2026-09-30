@@ -26,6 +26,11 @@ so a reviewed CI change touches every copy at once):
 * Job timeouts: the yml `timeout-minutes` and its header comment (measured
   duration x3 + 3 min), MAX_JOB_MINUTES below and docs/DEPLOY_GUIDE.md.
 * The offline unit suite selection: scripts/test_suites.py only.
+* The Dev deployment workflow (D137, .github/workflows/deploy_dev.yml): its
+  trigger, permissions, concurrency, job env, step ids/order, fixed run bodies
+  (DEPLOY_RUNS), the single OIDC step (DEPLOY_OIDC_WITH), the artifact steps
+  and MAX_DEPLOY_MINUTES below; tests/test_validate_actions.py mutates a copy
+  of the yml; docs/DEPLOY_GUIDE.md "자동 배포" section.
 """
 
 import argparse
@@ -43,21 +48,36 @@ import urllib.error
 import urllib.request
 
 
-DEPLOYMENT = ".github/workflows/deploy_arc_lambdas.yml"
+DEPLOYMENT = ".github/workflows/deploy_dev.yml"
 VALIDATION = ".github/workflows/validate_actions.yml"
 MANIFEST = "scripts/actions_contracts.json"
 CHECKOUT = "actions/checkout"
 PYTHON = "actions/setup-python"
 AWS = "aws-actions/configure-aws-credentials"
-OWNERS = (CHECKOUT, PYTHON, AWS)
+UPLOAD = "actions/upload-artifact"
+DOWNLOAD = "actions/download-artifact"
+OWNERS = (CHECKOUT, PYTHON, AWS, UPLOAD, DOWNLOAD)
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 MAX_METADATA = 128 * 1024
 STEP_IDS = ("checkout_smoke", "python_smoke", "verify_smoke", "dependencies", "actionlint", "contracts", "regression")
 # Keep the small validation job executable, not merely a list of action pins.
+DEPENDENCIES_RUN = (
+    'python3 -m venv "$RUNNER_TEMP/actions-venv"\n'
+    'ci_constraints_args=()\n'
+    'if [[ -f constraints-lambda.txt ]]; then\n'
+    '  ci_constraints_args=(-c constraints-lambda.txt)\n'
+    'fi\n'
+    '"$RUNNER_TEMP/actions-venv/bin/python" -m pip install --only-binary=:all: \\\n'
+    '  -r requirements.txt -r requirements-ci.txt "${ci_constraints_args[@]}"\n'
+    '"$RUNNER_TEMP/actions-venv/bin/python" --version\n'
+    '"$RUNNER_TEMP/actions-venv/bin/python" -m pip --version\n'
+    '"$RUNNER_TEMP/actions-venv/bin/python" -m pip freeze'
+)
 CRITICAL_RUNS = {
+    "dependencies": DEPENDENCIES_RUN,
     "actionlint": 'python3 scripts/install_actionlint.py --output-dir "$RUNNER_TEMP/actionlint"\n'
                   '"$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= \\\n'
-                  '  .github/workflows/deploy_arc_lambdas.yml .github/workflows/validate_actions.yml',
+                  '  .github/workflows/deploy_dev.yml .github/workflows/validate_actions.yml',
     "contracts": '"$RUNNER_TEMP/actions-venv/bin/python" scripts/validate_actions.py check \\\n'
                  '  --base-sha "$PR_BASE_SHA" --metadata-dir "$RUNNER_TEMP/action-metadata"',
     "regression": '"$RUNNER_TEMP/actions-venv/bin/python" scripts/run_actions_regression.py',
@@ -125,6 +145,94 @@ MAX_VALIDATE_MINUTES = MAX_JOB_MINUTES["validate"]
 # The loosest DynamoDB Local bound; validate_integration applies the per-job one.
 MAX_INTEGRATION_MINUTES = max(MAX_JOB_MINUTES[job_id] for job_id in DYNAMODB_JOBS)
 
+# --- Dev deployment workflow (D137) ---
+# A merge to develop deploys the three Dev Lambdas' code after the offline
+# regression of the same revision and the `development` environment approval.
+# Upper bound of its `timeout-minutes`: (154 s regression + ~60 s build) x 3 +
+# 3 min, rounded up to hold the deploy and smoke (see the yml header comment).
+MAX_DEPLOY_MINUTES = 15
+DEPLOY_JOB_ID = "deploy-dev"
+DEPLOY_ENVIRONMENT = "development"
+DEPLOY_TRIGGERS = {
+    "push": {"branches": ["develop"]},
+    "workflow_dispatch": {"inputs": {"rollback_run_id": {"type": "string", "required": False, "default": ""}}},
+}
+DEPLOY_PERMISSIONS = {"contents": "read", "id-token": "write", "actions": "read"}
+DEPLOY_CONCURRENCY = {"group": "deploy-development", "cancel-in-progress": False}
+DEPLOY_ENV = {
+    "AWS_REGION": "us-east-2",
+    "ARC_DEV_FUNCTIONS_API": "arc-calc-dev-api",
+    "ARC_DEV_FUNCTIONS_WORKER": "arc-calc-dev-worker",
+    "ARC_DEV_FUNCTIONS_RELAY": "arc-calc-dev-relay",
+    "AWS_ROLE_ARN": "${{ secrets.DEV_AWS_ROLE_ARN }}",
+    "DEV_API_BASE_URL": "${{ vars.DEV_API_BASE_URL }}",
+}
+# The only secret and the only variable the workflow may reference, and only
+# after the regression step (the job env is checked separately).
+DEPLOY_SECRETS = {"DEV_AWS_ROLE_ARN"}
+DEPLOY_VARIABLES = {"DEV_API_BASE_URL"}
+DEPLOY_STEP_IDS = ("checkout", "python", "dependencies", "regression", "build", "upload", "download",
+                   "credentials", "check_config", "deploy", "smoke", "summary")
+BUILD_CONDITION = "inputs.rollback_run_id == ''"
+ROLLBACK_CONDITION = "inputs.rollback_run_id != ''"
+# Allowed `if` per step (None: the key must be absent). No step may set continue-on-error.
+DEPLOY_STEP_CONDITIONS = {"build": BUILD_CONDITION, "upload": BUILD_CONDITION, "download": ROLLBACK_CONDITION,
+                          "summary": "always()"}
+DEPLOY_SCRIPT = "scripts/deploy_dev_lambdas.py"
+DEPLOY_PYTHON = '"$RUNNER_TEMP/actions-venv/bin/python"'
+DEPLOY_FUNCTION_ORDER = ("worker", "relay", "api")
+# (run body, env, shell) per run step of the deployment job.
+DEPLOY_RUNS = {
+    "dependencies": (DEPENDENCIES_RUN, None, "bash"),
+    "regression": (CRITICAL_RUNS["regression"], {"STAGE": "test", "AWS_EC2_METADATA_DISABLED": "true"}, None),
+    "build": (
+        'umask 077\n'
+        'python3 -m venv "$RUNNER_TEMP/build-python"\n'
+        '"$RUNNER_TEMP/build-python/bin/python" -m pip install -r requirements.txt -c constraints-lambda.txt \\\n'
+        '  --target "$RUNNER_TEMP/packages" --no-compile --only-binary=:all: \\\n'
+        '  --platform manylinux2014_x86_64 --implementation cp --python-version 3.12\n'
+        '"$RUNNER_TEMP/build-python/bin/python" scripts/build_mock_artifact.py \\\n'
+        '  --source-root "$GITHUB_WORKSPACE" --packages-dir "$RUNNER_TEMP/packages" --outdir "$RUNNER_TEMP/artifact"\n'
+        '"$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"', None, None),
+    "check_config": (
+        DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py check-config \\\n'
+        '  --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"',
+        None, None),
+    "deploy": (
+        DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py deploy \\\n'
+        '  --region "$AWS_REGION" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \\\n'
+        '  --function worker="$ARC_DEV_FUNCTIONS_WORKER" --function relay="$ARC_DEV_FUNCTIONS_RELAY" '
+        '--function api="$ARC_DEV_FUNCTIONS_API" \\\n'
+        '  --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json"',
+        None, None),
+    "smoke": (
+        DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py smoke \\\n'
+        '  --base-url "$DEV_API_BASE_URL" --report "$RUNNER_TEMP/smoke-report.json"', None, None),
+    "summary": (
+        DEPLOY_PYTHON + ' scripts/deploy_dev_lambdas.py summary \\\n'
+        '  --commit "$GITHUB_SHA" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \\\n'
+        '  --deploy-report "$RUNNER_TEMP/deploy-report.json" --smoke-report "$RUNNER_TEMP/smoke-report.json" \\\n'
+        '  --output "$GITHUB_STEP_SUMMARY"', None, None),
+}
+DEPLOY_OIDC_WITH = {"role-to-assume": "${{ env.AWS_ROLE_ARN }}", "role-session-name": "arc-deploy-development",
+                    "aws-region": "${{ env.AWS_REGION }}"}
+DEPLOY_UPLOAD_WITH = {
+    "name": "mock-lambda-${{ github.sha }}",
+    "path": "${{ runner.temp }}/artifact/mock-lambda.zip\n${{ runner.temp }}/artifact/artifact-manifest.json\n",
+    "if-no-files-found": "error",
+    "retention-days": 30,
+}
+DEPLOY_DOWNLOAD_WITH = {
+    "pattern": "mock-lambda-*",
+    "path": "${{ runner.temp }}/artifact",
+    "merge-multiple": True,
+    "run-id": "${{ inputs.rollback_run_id }}",
+    "github-token": "${{ github.token }}",
+}
+# Long-lived key inputs/secrets must not appear anywhere in the deployment workflow.
+ACCESS_KEY_PATTERN = re.compile(r"aws[-_]?access[-_]?key|aws[-_]?secret[-_]?access|aws[-_]?session[-_]?token", re.I)
+CONTEXT_REFERENCE = re.compile(r"\b(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[)", re.I)
+
 
 class ValidationError(ValueError):
     """Fixed diagnostic codes; no raw request, environment or file content."""
@@ -190,60 +298,81 @@ def action_steps(document):
     return result
 
 
+def context_references(value):
+    """(context, name) pairs of every `secrets.`/`vars.` reference in a YAML subtree; `[` forms count as name None."""
+    return [(m.group(1).lower(), m.group(2)) for m in CONTEXT_REFERENCE.finditer(json.dumps(value))]
+
+
 def validate_deployment(document):
-    """Require explicit deployment and validation before either existing auth path."""
-    triggers = document.get("on", {})
-    require(isinstance(triggers, dict) and set(triggers) == {"workflow_dispatch"}, "DEPLOYMENT_GATE_INVALID")
-    require(document.get("permissions") == {"contents": "read", "id-token": "write"}, "DEPLOYMENT_AUTH_INVALID")
-    require(set(document.get("jobs", {})) == {"deploy-dev", "deploy-prod"}, "DEPLOYMENT_AUTH_INVALID")
-    for suffix, environment, prefix in (("dev", "development", "DEV"), ("prod", "production", "PROD")):
-        job = document["jobs"]["deploy-" + suffix]
-        require(job.get("runs-on") == "ubuntu-latest" and "container" not in job, "DEPLOYMENT_AUTH_INVALID")
-        require(job.get("permissions", document["permissions"]) == document["permissions"]
-                and job.get("environment") == environment, "DEPLOYMENT_AUTH_INVALID")
-        branch = "develop" if suffix == "dev" else "main"
-        require(job.get("if", "").strip() ==
-                f"github.event_name == 'workflow_dispatch' && inputs.stage == '{environment}' && github.ref == 'refs/heads/{branch}'",
-                "DEPLOYMENT_GATE_INVALID")
-        require(job.get("concurrency") == {"group": "deploy-" + environment, "cancel-in-progress": False},
-                "DEPLOYMENT_GATE_INVALID")
-        require(job.get("env", {}).get("AWS_ROLE_ARN") == "${{ secrets." + prefix + "_AWS_ROLE_ARN }}",
-                "DEPLOYMENT_AUTH_INVALID")
-        steps = job.get("steps", [])
-        preflights = [(i, s) for i, s in enumerate(steps) if s.get("id") == "preflight"]
-        require(len(preflights) == 1, "DEPLOYMENT_AUTH_INVALID")
-        before, preflight = preflights[0]
-        regressions = [(i, s) for i, s in enumerate(steps) if s.get("id") == "deployment_regression"]
-        require(len(regressions) == 1 and regressions[0][0] < before, "DEPLOYMENT_GATE_INVALID")
-        regression_index, regression = regressions[0]
-        expected_regression = (
-            'python3 -m venv "$RUNNER_TEMP/deployment-validation"\n'
-            '\"$RUNNER_TEMP/deployment-validation/bin/python\" -m pip install --only-binary=:all: \\\n'
-            '  -r requirements.txt -r requirements-ci.txt -c constraints-lambda.txt\n'
-            '\"$RUNNER_TEMP/deployment-validation/bin/python\" scripts/run_actions_regression.py'
-        )
-        require(regression.get("run", "").strip() == expected_regression
-                and regression.get("env") == {"STAGE": "test", "AWS_EC2_METADATA_DISABLED": "true"}
-                and not any(k in regression for k in ("if", "continue-on-error")), "DEPLOYMENT_GATE_INVALID")
-        require(not any(re.search(r"\bsecrets\s*(?:\.|\[)", json.dumps(step), re.I)
-                        for step in steps[:regression_index + 1]), "DEPLOYMENT_GATE_INVALID")
-        command = preflight.get("run", "")
-        require("scripts/deployment_preflight.py" in command and "--environment " + environment in command
-                and '--github-output "$GITHUB_OUTPUT"' in command
-                and not any(k in preflight for k in ("if", "continue-on-error")), "DEPLOYMENT_AUTH_INVALID")
-        credentials = [(i, s) for i, s in enumerate(steps) if s.get("uses", "").startswith(AWS + "@")]
-        require(len(credentials) == 2 and all(i > before for i, _ in credentials), "DEPLOYMENT_AUTH_INVALID")
-        oidc, keys = [s for _, s in credentials]
-        region = "${{ steps.preflight.outputs.aws_region }}"
-        require(oidc.get("if") == "env.AWS_ROLE_ARN != ''" and keys.get("if") == "env.AWS_ROLE_ARN == ''",
-                "DEPLOYMENT_AUTH_INVALID")
-        require(oidc.get("with") == {"role-to-assume": "${{ env.AWS_ROLE_ARN }}",
-                                    "role-session-name": "arc-deploy-" + environment, "aws-region": region},
-                "DEPLOYMENT_AUTH_INVALID")
-        require(keys.get("with") == {"aws-access-key-id": "${{ secrets." + prefix + "_AWS_ACCESS_KEY_ID }}",
-                                    "aws-secret-access-key": "${{ secrets." + prefix + "_AWS_SECRET_ACCESS_KEY }}",
-                                    "aws-region": region}, "DEPLOYMENT_AUTH_INVALID")
-        require(not any("continue-on-error" in s for _, s in credentials), "DEPLOYMENT_AUTH_INVALID")
+    """D137: fixed trigger, minimal permissions, one approved job, regression before any secret, OIDC only."""
+    triggers = document.get("on")
+    require(isinstance(triggers, dict) and set(triggers) == set(DEPLOY_TRIGGERS), "DEPLOYMENT_GATE_INVALID")
+    require(triggers["push"] == DEPLOY_TRIGGERS["push"], "DEPLOYMENT_GATE_INVALID")
+    dispatch = triggers["workflow_dispatch"]
+    require(isinstance(dispatch, dict) and set(dispatch) == {"inputs"} and isinstance(dispatch["inputs"], dict)
+            and set(dispatch["inputs"]) == {"rollback_run_id"}, "DEPLOYMENT_GATE_INVALID")
+    rollback_input = dispatch["inputs"]["rollback_run_id"]
+    require(isinstance(rollback_input, dict) and set(rollback_input) - {"description"} == {"type", "required", "default"}
+            and {k: v for k, v in rollback_input.items() if k != "description"}
+            == DEPLOY_TRIGGERS["workflow_dispatch"]["inputs"]["rollback_run_id"], "DEPLOYMENT_GATE_INVALID")
+    require(document.get("permissions") == DEPLOY_PERMISSIONS, "DEPLOYMENT_AUTH_INVALID")
+    require(document.get("concurrency") == DEPLOY_CONCURRENCY, "DEPLOYMENT_GATE_INVALID")
+    require("env" not in document and "defaults" not in document, "DEPLOYMENT_AUTH_INVALID")
+    require(set(document.get("jobs", {})) == {DEPLOY_JOB_ID}, "DEPLOYMENT_AUTH_INVALID")
+    job = document["jobs"][DEPLOY_JOB_ID]
+    require(isinstance(job, dict) and set(job) - {"name"} == {"runs-on", "timeout-minutes", "environment", "env", "steps"},
+            "DEPLOYMENT_AUTH_INVALID")
+    require(job["runs-on"] == "ubuntu-latest" and job["environment"] == DEPLOY_ENVIRONMENT, "DEPLOYMENT_AUTH_INVALID")
+    require(type(job["timeout-minutes"]) is int and 1 <= job["timeout-minutes"] <= MAX_DEPLOY_MINUTES,
+            "DEPLOYMENT_GATE_INVALID")
+    require(job["env"] == DEPLOY_ENV, "DEPLOYMENT_AUTH_INVALID")
+    steps = job["steps"]
+    require(isinstance(steps, list) and all(isinstance(s, dict) for s in steps), "DEPLOYMENT_GATE_INVALID")
+    require(tuple(s.get("id") for s in steps) == DEPLOY_STEP_IDS, "DEPLOYMENT_GATE_INVALID")
+    selected = dict(zip(DEPLOY_STEP_IDS, steps))
+    for step_id, step in selected.items():
+        require(set(step) <= {"name", "id", "uses", "with", "run", "if", "env", "shell"}, "DEPLOYMENT_GATE_INVALID")
+        require(step.get("if") == DEPLOY_STEP_CONDITIONS.get(step_id), "DEPLOYMENT_GATE_INVALID")
+    # 1-2: checkout and Python exactly as the CI smoke job does.
+    checkout, python = selected["checkout"], selected["python"]
+    require(set(checkout) - {"name"} == {"id", "uses", "with"} and action_ref(checkout["uses"])[0] == CHECKOUT
+            and checkout["with"] == {"persist-credentials": False, "ref": "${{ github.sha }}"}, "DEPLOYMENT_GATE_INVALID")
+    require(set(python) - {"name"} == {"id", "uses", "with"} and action_ref(python["uses"])[0] == PYTHON
+            and python["with"] == {"python-version": "3.12"}, "DEPLOYMENT_GATE_INVALID")
+    # 3-4, 6-9: fixed run bodies; the regression step is the CI one, in the CI venv.
+    for step_id, (body, env, shell) in DEPLOY_RUNS.items():
+        step = selected[step_id]
+        keys = {"id", "run"} | ({"env"} if env is not None else set()) | ({"shell"} if shell else set())
+        if step_id in DEPLOY_STEP_CONDITIONS:
+            keys.add("if")
+        require(set(step) - {"name"} == keys and type(step["run"]) is str and step["run"].strip() == body
+                and step.get("env") == env and step.get("shell") == shell,
+                "DEPLOYMENT_AUTH_INVALID" if step_id == "check_config" else "DEPLOYMENT_GATE_INVALID")
+    regression_index = DEPLOY_STEP_IDS.index("regression")
+    require(not context_references(steps[:regression_index + 1]), "DEPLOYMENT_GATE_INVALID")
+    require(not any(k in s for s in steps for k in ("continue-on-error",)), "DEPLOYMENT_GATE_INVALID")
+    # 3-4: artifact steps; the download uses the run's own token, never a new secret.
+    upload, download = selected["upload"], selected["download"]
+    require(set(upload) - {"name"} == {"id", "uses", "with", "if"} and action_ref(upload["uses"])[0] == UPLOAD
+            and upload["with"] == DEPLOY_UPLOAD_WITH, "DEPLOYMENT_GATE_INVALID")
+    require(set(download) - {"name"} == {"id", "uses", "with", "if"} and action_ref(download["uses"])[0] == DOWNLOAD
+            and download["with"] == DEPLOY_DOWNLOAD_WITH, "DEPLOYMENT_GATE_INVALID")
+    # 5: exactly one credentials step, OIDC only, no env, no condition.
+    credentials = [s for s in steps if "uses" in s and action_ref(s["uses"])[0] == AWS]
+    require(credentials == [selected["credentials"]], "DEPLOYMENT_AUTH_INVALID")
+    require(set(selected["credentials"]) - {"name"} == {"id", "uses", "with"}
+            and selected["credentials"]["with"] == DEPLOY_OIDC_WITH, "DEPLOYMENT_AUTH_INVALID")
+    require(not ACCESS_KEY_PATTERN.search(json.dumps(document)), "DEPLOYMENT_AUTH_INVALID")
+    references = context_references(document)
+    require({name for context, name in references if context == "secrets"} == DEPLOY_SECRETS
+            and {name for context, name in references if context == "vars"} == DEPLOY_VARIABLES
+            and all(name for _, name in references), "DEPLOYMENT_AUTH_INVALID")
+    # 7: Worker -> Relay -> API, read back from the deploy command itself.
+    require(tuple(re.findall(r"--function ([a-z]+)=", selected["deploy"]["run"])) == DEPLOY_FUNCTION_ORDER,
+            "DEPLOYMENT_GATE_INVALID")
+    require(all(re.search(re.escape(DEPLOY_SCRIPT) + " " + re.escape(sub) + r"\b", selected[step_id]["run"])
+                for step_id, sub in (("check_config", "check-config"), ("deploy", "deploy"), ("smoke", "smoke"))),
+            "DEPLOYMENT_GATE_INVALID")
 
 
 def validate_integration(job, checkout, python, job_id):
@@ -276,25 +405,25 @@ def validate_integration(job, checkout, python, job_id):
 
 def validate_workflows(base, deployment, ci):
     # No equality requirement between ALL deployment refs and the smoke refs.
-    old_steps, current_steps = action_steps(base), action_steps(deployment)
-    require(base.get("env") == deployment.get("env"), "DEPLOYMENT_AUTH_INVALID")
-    # A textual mention of preflight is not evidence it runs (e.g. echo ...).
-    # Preserve its executable body and bindings against the PR base as well.
-    for name, job in deployment.get("jobs", {}).items():
-        old_job = base.get("jobs", {}).get(name, {})
-        require(old_job.get("env") == job.get("env"), "DEPLOYMENT_AUTH_INVALID")
-        old_preflight = [s for s in old_job.get("steps", []) if s.get("id") == "preflight"]
-        new_preflight = [s for s in job.get("steps", []) if s.get("id") == "preflight"]
-        require(len(old_preflight) == len(new_preflight) == 1, "DEPLOYMENT_AUTH_INVALID")
-        for key in ("run", "env", "id", "if", "continue-on-error", "shell", "working-directory"):
-            require(old_preflight[0].get(key) == new_preflight[0].get(key), "DEPLOYMENT_AUTH_INVALID")
-        # The AWS action also translates env variables such as ROLE_CHAINING
-        # into inputs. Comparing only `with` would miss an auth-path change.
-        old_auth = [s for s in old_job.get("steps", []) if s.get("uses", "").startswith(AWS + "@")]
-        new_auth = [s for s in job.get("steps", []) if s.get("uses", "").startswith(AWS + "@")]
-        require(len(old_auth) == len(new_auth) == 2, "DEPLOYMENT_AUTH_INVALID")
-        require(all(old.get("env") == new.get("env") for old, new in zip(old_auth, new_auth)),
-                "DEPLOYMENT_AUTH_INVALID")
+    # `base` is None on the PR that introduces the deployment workflow (the
+    # file is absent at the base revision): every ref is then "introduced" and
+    # the checkout/Python refs must be the CI smoke refs; there is nothing to
+    # compare the env, OIDC and check-config steps with.
+    old_steps, current_steps = (action_steps(base) if base is not None else []), action_steps(deployment)
+    if base is not None:
+        require(base.get("env") == deployment.get("env"), "DEPLOYMENT_AUTH_INVALID")
+        for name, job in deployment.get("jobs", {}).items():
+            old_job = base.get("jobs", {}).get(name, {})
+            require(isinstance(old_job, dict) and old_job.get("env") == job.get("env"), "DEPLOYMENT_AUTH_INVALID")
+            # The AWS action also translates env variables such as ROLE_CHAINING
+            # into inputs, so the whole step (except its pinned ref) is compared;
+            # the check-config command and its bindings are preserved the same way.
+            for selector in (lambda s: s.get("uses", "").startswith(AWS + "@"), lambda s: s.get("id") == "check_config"):
+                old = [s for s in old_job.get("steps", []) if selector(s)]
+                new = [s for s in job.get("steps", []) if selector(s)]
+                require(len(old) == len(new) == 1, "DEPLOYMENT_AUTH_INVALID")
+                require({k: v for k, v in old[0].items() if k not in ("uses", "name")}
+                        == {k: v for k, v in new[0].items() if k not in ("uses", "name")}, "DEPLOYMENT_AUTH_INVALID")
     require(ci.get("permissions") == {"contents": "read"}, "CI_BOUNDARY_INVALID")
     triggers = ci.get("on")
     require(isinstance(triggers, dict) and set(triggers) == {"pull_request"}, "CI_BOUNDARY_INVALID")
@@ -351,7 +480,8 @@ def validate_workflows(base, deployment, ci):
             require(after - before <= smoke, "SMOKE_REF_UNCOVERED")
     validate_deployment(deployment)
     return {"introduced": introduced, "smoke_refs": sorted(smoke),
-            "contract_refs": sorted({s["uses"] for s in current_steps} | smoke)}
+            "contract_refs": sorted({s["uses"] for s in current_steps} | smoke),
+            "base_deployment": "absent" if base is None else "compared"}
 
 
 def validate_distribution_manifest(root):
@@ -412,9 +542,18 @@ def git_text(root, *args):
     return result.stdout.strip()
 
 
+def base_deployment(root, base_sha):
+    """The deployment workflow at the PR base, or None when the base has no such file (introduction PR)."""
+    listing = git_text(root, "ls-tree", "--name-only", base_sha, "--", DEPLOYMENT)
+    if listing == "":
+        return None
+    require(listing == DEPLOYMENT, "SOURCE_REVISION_UNAVAILABLE")
+    return load_yaml(git_text(root, "show", base_sha + ":" + DEPLOYMENT))
+
+
 def syntax_check(root):
     shell_files = ("scripts/deploy_arc_lambda.sh", "scripts/deploy_arc_api_gateway.sh")
-    python_files = ("scripts/deployment_preflight.py", "scripts/build_mock_artifact.py",
+    python_files = ("scripts/deployment_preflight.py", "scripts/build_mock_artifact.py", "scripts/deploy_dev_lambdas.py",
                     "scripts/validate_actions.py", "scripts/install_actionlint.py", "scripts/run_actions_regression.py",
                     "scripts/test_suites.py", "scripts/validate_local_integration.py")
     for name in shell_files:
@@ -436,7 +575,7 @@ def syntax_check(root):
 def check(args):
     root = Path(args.root).resolve()
     require(SHA.fullmatch(args.base_sha), "SOURCE_REVISION_INVALID")
-    base = load_yaml(git_text(root, "show", args.base_sha + ":" + DEPLOYMENT))
+    base = base_deployment(root, args.base_sha)
     deployment, ci = (load_yaml((root / name).read_text()) for name in (DEPLOYMENT, VALIDATION))
     report = validate_workflows(base, deployment, ci)
     validate_distribution_manifest(root)
@@ -452,7 +591,7 @@ def check(args):
         metadata[ref] = read_metadata(ref, record, Path(args.metadata_dir), args.offline)
     for step in action_steps(deployment) + action_steps(ci):
         validate_inputs(step, metadata[step["uses"]])
-    # The AWS candidate is checked against the CURRENT four authentication uses,
+    # The AWS candidate is checked against the CURRENT authentication use,
     # even on a CI-only introduction PR where deployment still uses the old SHA.
     for ref in manifest["contract_candidates"]:
         require(action_ref(ref)[0] == AWS, "ACTION_REF_INVALID")

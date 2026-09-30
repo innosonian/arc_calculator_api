@@ -21,7 +21,7 @@ AWS API는 항상 `/api/v2`로 조립하며 `/mock/v1`과 `/cpr-analysis`는 삭
 8. **기록장·보관함·대기줄을 연결한다.** 5절의 DB 키/인덱스, 비공개 S3와 역할별 권한을 맞춘다. SQS 트리거는 Worker에 연결하고 `ReportBatchItemFailures`를 켠다. Relay는 새 작업 알림용 DynamoDB Stream과 재확인용 EventBridge 예약에 연결한다. 예약은 6절의 진행 행을 처음 준비한 후 켠다. Queue visibility는 Worker timeout의 6배+batch window 이상이어야 한다. 실제 연결 권한과 실행 결과도 확인한다.
 9. **앱이 들어오는 문을 연결한다.** API Gateway의 **REST API**에서 `/api/v2/{proxy+}`의 `ANY`를 API Lambda의 **Lambda proxy integration**으로 연결할 수 있다. 이미 같은 경로가 있으면 먼저 충돌을 확인한다. 앱의 `Authorization: Bearer ...`와 원래 경로·query를 그대로 넘긴다. `multipart/form-data`를 binary media type으로 설정하고 원본 파일 hash 보존을 시험한다. 변경한 뒤 승인한 Dev stage로 `Deploy API`한다. 공유 API의 다른 미배포 변경까지 포함되는지 먼저 확인한다. [AWS proxy 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-set-up-simple-proxy.html), [binary 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-payload-encodings.html)
 10. **작게 한 번 시험한다.** 앱팀에 Dev 주소와 [APP_API](APP_API.md)를 전달한다. 로그인→`[Dummy Dev]` 과정 15개 조회→성인 압박 Only 훈련→실제 누적 파일 업로드→결과/차트 조회→최종평가를 확인한다. 점수가 나온 것과 프로그램 통과를 구별한다. 처음에는 `202`(접수/처리 중), 완료 후 `200`(결과)이며 Dummy 제출은 `excluded`다. `/healthz`는 AWS 확인 주소가 아니다.
-11. **실패 시험과 비용을 확인한다.** 다른 세션의 결과 접근 거절, 같은 업로드 재전송, 로그아웃 후 공유 진도 초기화와 결과 보존, 차트 만료, 작업 재전달을 9절대로 시험한다. CloudWatch 오류·SQS 대기/DLQ·DB 운용 로그·AWS 비용을 확인한다. 경보 수신자와 시험 예산도 정한다. 통과한 주소만 앱팀의 시험 주소로 사용한다.
+11. **실패 시험과 비용을 확인한다.** 다른 세션의 결과 접근 거절, 같은 업로드 재전송, 로그아웃 후 공유 진도 초기화와 결과 보존, 차트 만료, 작업 재전달을 10절대로 시험한다. CloudWatch 오류·SQS 대기/DLQ·DB 운용 로그·AWS 비용을 확인한다. 경보 수신자와 시험 예산도 정한다. 통과한 주소만 앱팀의 시험 주소로 사용한다.
 
 | 적을 내용 | 찾는 위치·뜻 |
 |---|---|
@@ -1601,7 +1601,7 @@ AWS Dev 서버가 만들어졌고 위의 기본 흐름은 통과했다. 다음�
 
 ## 7. 기존 Calculator/Gateway 배포 도구 — 과거 자료
 
-**과거 자료(D113).** 이 절의 연결표·`deployment_preflight.py`의 calculator/gateway 검사, 8절의 `deploy_arc_lambda.sh`·`deploy_arc_api_gateway.sh`, [기존 배포 workflow](../.github/workflows/deploy_arc_lambdas.yml), `docs/iam/`의 IAM 예시 JSON은 단일 Calculator 함수와 삭제된 `/cpr-analysis` 경로(D103)를 전제한다. 현재 3역할 `/api/v2` Dev에는 쓰지 않으며 배포 정본은 0~6절의 수동 절차다. 코드는 삭제하지 않고 남긴다. 이 도구가 갱신하는 함수도 공개 진입점 `lambda_handler.run`이므로 현재 코드로 배포하면 `course`를 포함한 API 역할 설정이 필요하다. 아래 설명은 기록으로만 남긴다.
+**과거 자료(D113).** 이 절의 연결표·`deployment_preflight.py`의 calculator/gateway 검사, 8절의 `deploy_arc_lambda.sh`·`deploy_arc_api_gateway.sh`, 삭제된 수동 workflow `deploy_arc_lambdas.yml`(D137로 삭제, 자동 배포는 9절), `docs/iam/`의 IAM 예시 JSON은 단일 Calculator 함수와 삭제된 `/cpr-analysis` 경로(D103)를 전제한다. 현재 3역할 `/api/v2` Dev에는 쓰지 않으며 배포 정본은 0~6절의 수동 절차다. 코드는 삭제하지 않고 남긴다. 이 도구가 갱신하는 함수도 공개 진입점 `lambda_handler.run`이므로 현재 코드로 배포하면 `course`를 포함한 API 역할 설정이 필요하다. 아래 설명은 기록으로만 남긴다.
 
 보조 Lambda `hmac_authorizer`와 `config_manager_v2`는 쓰지 않으므로 저장소의 코드·시드·시험을 삭제했다(D114). 이미 배포된 AWS 자원이 있다면 정리 여부는 사용자가 판단한다.
 
@@ -1681,9 +1681,80 @@ bash scripts/deploy_arc_api_gateway.sh development .env.dev var/deployment/bindi
 
 Gateway 도구의 throttle은 해당 POST만 변경하지만 binaryMediaTypes는 REST API 전체에, create-deployment는 Stage에 영향을 준다. 완료 메시지는 전체 Journey 인수 성공이 아니다. 로그 retention 숫자는 기존 로그를 삭제 대상으로 만들 수 있으며 null은 기존 정책 유지다. 실제 custom LogGroup을 조회해 적용하고 공유 함수 영향을 확인한다.
 
-[기존 배포 workflow](../.github/workflows/deploy_arc_lambdas.yml)는 과거 자료(D113)이며 **수동 실행만** 한다. Dev는 `develop`, Prod는 `main`만 허용하며 같은 revision의 오프라인 회귀를 AWS 자격증명 설정 전에 실행한다. GitHub Environment는 `development`/`production`으로 연결한다. 코드에 이름을 넣는 것만으로 required reviewer 승인이 생기지는 않으므로 GitHub 설정에서 reviewer·허용 branch·Secrets를 확인한다. Environment 사용 시 OIDC trust의 subject도 실제 저장소 구성과 맞아야 한다. [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws). 과거 IAM JSON·장기 키 fallback을 그대로 활성화하지 않는다. 이 workflow는 기존 Calculator 코드·설정만 갱신하며 Gateway 경로 변경은 별도다. 이번 세 역할·`/api/v2` 전체 설치를 대신하지 않는다.
+과거 수동 배포 workflow `deploy_arc_lambdas.yml`(단일 Calculator·액세스 키 fallback 전제)은 D137로 삭제했다. 현재 Dev 코드 배포는 9절의 자동 배포 workflow가 수행하며, 위 두 스크립트와 `deployment_preflight.py`는 과거 자료(D113)로만 남는다.
 
-## 9. 로그·인수·복구
+## 9. 자동 배포(develop → Dev, D137)
+
+`develop`에 머지(push)되면 `.github/workflows/deploy_dev.yml`이 Dev의 세 Lambda **코드**를 갱신한다. 설정(`ARC_JOURNEY_CONFIG`)·환경 변수·Gateway·Queue·Stream은 건드리지 않는다. 대상은 Dev(`us-east-2`의 `arc-calc-dev-api`·`arc-calc-dev-worker`·`arc-calc-dev-relay`)뿐이며 Beta/Prod는 자원 확정 뒤 별도 job으로 만든다. 이 workflow는 아직 GitHub runner·AWS에서 실행해 확인하지 않았다(정적 검사·오프라인 시험만, [VALIDATION](VALIDATION.md)).
+
+**흐름(job `deploy-dev`, 단계 순서 고정).**
+
+| 단계 | 하는 일 | 비고 |
+|---|---|---|
+| checkout·Python 3.12 | PR CI(`validate_actions.yml`)와 같은 고정 SHA 액션 | `persist-credentials: false` |
+| dependencies·regression | PR CI와 같은 venv 준비 뒤 `scripts/run_actions_regression.py`(소켓 없는 단위 시험 전체) | 이 단계까지 secret·variable 참조 없음. 실패하면 여기서 끝 |
+| build (`rollback_run_id`가 비었을 때) | 8절의 x86_64 pip 다운로드 → `scripts/build_mock_artifact.py` → `python -m zipfile -t` | `$RUNNER_TEMP/artifact/mock-lambda.zip`·`artifact-manifest.json` |
+| upload (같은 조건) | Actions 산출물 `mock-lambda-<commit sha>`로 30일 보관 | 되돌리기의 재료 |
+| download (`rollback_run_id`가 있을 때) | 지정한 이전 실행의 `mock-lambda-*` 산출물을 같은 폴더로 받음 | 실행 자체의 `github.token` 사용, 새 secret 없음 |
+| credentials | GitHub Environment `development` 승인 뒤 OIDC로만 역할 `gha-arc-calc-dev-deploy` 위임 | 액세스 키 경로 없음 |
+| check_config | `scripts/deploy_dev_lambdas.py check-config`: API·Worker의 `ARC_JOURNEY_CONFIG`가 `role`·`execution`(`CURRENT_ADAPTER_VERSION`·`RETAINED_ADAPTER_VERSIONS` 순서 포함·`PROJECTION_VERSION`)에서 코드 레지스트리와 같고 `AwsSettings.parse`를 통과하는지 확인 | 다르면 `CONFIG_DRIFT`(exit 2)로 중단. 역할·필드·코드 기대값만 출력하고 설정 JSON·계정·자원 이름은 출력하지 않음 |
+| deploy | `scripts/deploy_dev_lambdas.py deploy`: Worker → Relay → API 순으로 `UpdateFunctionCode`(버전 발행 없음) → 갱신 완료 대기 → 함수의 `CodeSha256`가 ZIP의 sha256(base64)과 같은지 대조 | 한 함수라도 실패하면 즉시 중단(exit 3, 해시 불일치 exit 4). 이미 갱신된 함수는 요약에 남음 |
+| smoke | `scripts/deploy_dev_lambdas.py smoke`: 공개 Dummy 로그인(`201`, `tokenType`·`userName`·`accessToken` 존재) → 과정 목록(`200`, 1개 이상) | 로그아웃(`DELETE /api/v2/session/`)은 호출하지 않음(공유 Dummy 진도 초기화). 토큰·본문은 출력하지 않고 상태·고정 코드만 출력(exit 5) |
+| summary | `$GITHUB_STEP_SUMMARY`에 커밋·산출물 sha256·함수별 `CodeSha256`/`LastModified`·스모크 결과 | `always()`; 토큰·JSON 내용 없음 |
+
+승인(environment `development`의 required reviewers)은 job 시작 전에 걸린다(GitHub는 environment가 붙은 job을 승인 뒤에 시작한다). 따라서 회귀·빌드도 승인 뒤에 실행되며, workflow 안에서도 회귀 단계까지는 secret·variable을 참조하지 않으므로 승인 없이 secret이 읽히는 경로는 없다. `concurrency: deploy-development`(진행 중 실행 취소 없음)로 같은 Dev에 두 배포가 겹치지 않는다. `scripts/validate_actions.py check`가 PR마다 이 workflow의 트리거·권한·환경·env·단계 순서·고정 명령·단일 OIDC 단계·액세스 키 부재·`secrets`/`vars` 참조 위치를 정적으로 검사하며, 기존 액션 SHA 고정·`action.yml` 지문 검사는 새 액션(upload/download-artifact)에도 같은 방식으로 적용된다.
+
+**사용자/관리자 준비물(한 번).** 아래는 저장소 밖 설정이며 코드에 이름을 적는 것만으로 생기지 않는다.
+
+1. **AWS OIDC 공급자.** IAM → Identity providers에 `token.actions.githubusercontent.com`(audience `sts.amazonaws.com`)을 추가한다(계정에 하나면 됨). [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
+2. **역할 `gha-arc-calc-dev-deploy`의 신뢰 정책.** `sub`를 이 저장소의 `development` environment로 한정한다. 저장소 이름은 실제 GitHub 경로와 대조한다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Federated": "arn:aws:iam::150612770165:oidc-provider/token.actions.githubusercontent.com"},
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:innosonian/arc_calculator_api:environment:development"
+      }
+    }
+  }]
+}
+```
+
+3. **역할 권한 정책(최소).** 세 함수 ARN에 `GetFunction`·`GetFunctionConfiguration`·`UpdateFunctionCode`만 허용한다. 설정 변경(`UpdateFunctionConfiguration`)·버전 발행·다른 함수·S3/DynamoDB/SQS 권한은 주지 않는다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:UpdateFunctionCode"],
+    "Resource": [
+      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-api",
+      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-worker",
+      "arn:aws:lambda:us-east-2:150612770165:function:arc-calc-dev-relay"
+    ]
+  }]
+}
+```
+
+4. **GitHub Environment `development`.** Settings → Environments에서 만들고 Required reviewers에 승인자를 지정한다. 같은 environment에 secret `DEV_AWS_ROLE_ARN`(위 역할의 ARN)과 variable `DEV_API_BASE_URL`(예: `https://<api-id>.execute-api.us-east-2.amazonaws.com/dev`, 끝에 `/` 없음)을 넣는다. 다른 secret·액세스 키는 만들지 않는다.
+5. **`develop` 브랜치 보호.** PR 필수, 필수 검사(required status checks)로 PR CI의 `validate`·`integration`·`boundary`를 등록한다. 직접 push를 막아 "머지 = 검사 통과한 revision"이 되게 한다.
+
+**실행 절차.** PR을 `develop`에 머지한다 → Actions의 `Deploy Dev` 실행에서 승인자가 Review deployments로 승인한다 → 실행 요약(Summary)에서 커밋·산출물 sha256·세 함수의 `CodeSha256`/`LastModified`·스모크 상태를 확인한다. 세 함수의 `CodeSha256`는 서로 같아야 한다(같은 ZIP). 실패 시 단계 이름과 고정 코드(`CONFIG_DRIFT`·`AWS_CALL_FAILED`·`CODE_SHA_MISMATCH`·`SMOKE_FAILED` 등)만 로그에 남는다.
+
+**되돌리기.** Actions → `Deploy Dev` → Run workflow에서 `rollback_run_id`에 되돌릴 **이전 성공 실행의 run id**(URL의 `/actions/runs/<id>`)를 넣고 `develop` 브랜치로 실행한다. 빌드 대신 그 실행이 보관한 ZIP을 받아 같은 순서로 다시 배포하며, 같은 승인·설정 검사·스모크가 적용된다. 산출물 보관은 30일이므로 그보다 오래된 실행은 되돌릴 수 없다(그때는 해당 커밋을 `develop`에 다시 머지한다). 되돌리기는 코드만 바꾸므로, 그 사이 설정 JSON을 바꿨다면 옛 코드가 요구하는 설정으로 먼저 되돌려야 `CONFIG_DRIFT`가 나지 않는다.
+
+**설정 JSON 변경 절차.** 코드가 어댑터/projection 버전을 바꾸는 PR(예: D136 같은 변경)이 머지되면 첫 배포는 `CONFIG_DRIFT`로 멈춘다. 이는 설계된 동작이다: 4~5절대로 역할별 JSON을 다시 만들어 오프라인 검사(`mock_journey/aws_settings.py`·`scripts/validate_aws_dev_bundle.py`)를 통과시키고 Lambda 콘솔에서 `ARC_JOURNEY_CONFIG`를 손으로 갱신한 뒤, 실패한 실행을 **Re-run**(또는 같은 커밋으로 Run workflow)한다. workflow는 설정을 자동으로 쓰지 않는다(2A). 출력의 `field`는 어느 값이 다른지, `expected`는 코드가 기대하는 값이다.
+
+**보안 주의.** 액세스 키(`AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY`)는 어디에도 쓰지 않으며 validator가 그 문자열의 존재 자체를 거절한다. 회귀 단계까지는 secret·variable을 읽지 않는다. 배포 스크립트는 토큰·서명 URL·환경 변수 값·설정 JSON·예외 본문을 출력하지 않고 고정 코드만 출력한다. `role-session-name`은 `arc-deploy-development`로 고정되어 CloudTrail에서 구별된다. 산출물(ZIP·manifest)에는 비밀이 없다(빌더가 `.env`·키·DB를 제외). timeout 15분은 회귀 실측(2026-09-28 CI 기준 154초)+빌드 추정 60초의 3배에 3분을 더한 값이며, 실제 runner 시간을 재면 `MAX_DEPLOY_MINUTES`와 함께 조정한다.
+
+## 10. 로그·인수·복구
 
 로그 버퍼는 정제한 주요 처리 이력·상세 진단만 받는다. `accepted`는 메모리 접수, `stored`는 DB 저장 확인, `unconfirmed`는 응답 미확인, `dropped`는 누락이다. 로그 장애만으로 정상 훈련을 재실행하거나 성공 결과를 실패로 바꾸지 않는다. 업무와 같은 DB의 처리량을 공유한다.
 
