@@ -361,22 +361,6 @@ def test_environment_limit_counts_utf8_bytes_and_accepts_exact_boundary():
                                          storage_contract=preflight.read_storage_contract())
 
 
-def test_workflow_preflight_precedes_every_aws_credential_step():
-    # This static check is intentionally not a claim that GitHub ran the job.
-    workflow = (ROOT / ".github/workflows/deploy_arc_lambdas.yml").read_text()
-    jobs = re.split(r"^  deploy-(?:dev|prod):\n", workflow, flags=re.MULTILINE)[1:]
-    assert len(jobs) == 2
-    for job in jobs:
-        check = job.index("- name: Offline deployment preflight")
-        assert job.index("- name: Write env file") < check
-        credentials = [match.start() for match in re.finditer("- name: Configure AWS credentials", job)]
-        assert len(credentials) == 2 and all(check < position for position in credentials)
-        assert "aws-region: us-east-2" not in job
-        assert "${{ steps.preflight.outputs.aws_region }}" in job
-        assert "--bindings \"$ARC_DEPLOYMENT_BINDINGS\"" in job
-    assert "BETA_AWS" not in workflow and "BETA_ENV" not in workflow
-
-
 def test_actual_allowlist_never_reads_local_database_keys_or_pipeline_tests(roots, monkeypatch):
     source, packages, output = roots
     forbidden = ("var/local-server/shared-local-instance.db", "var/local-server/identity.json",

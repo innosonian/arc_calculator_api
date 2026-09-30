@@ -9,10 +9,12 @@ from scripts import validate_local_integration as local_runner
 
 ROOT = Path(__file__).resolve().parents[1]
 # The deployment gate ran exactly these files before the suite was widened.
-# Keep them in the default selection so the deploy job never regresses.
+# Keep them in the default selection so the Dev deploy job (D137, the same
+# offline suite before any secret is used) never regresses.
 DEPLOYMENT_GATE = (
     "tests/test_deployment_preflight.py",
     "tests/test_deployment_preflight_security.py",
+    "tests/test_deploy_dev_lambdas.py",
     "tests/test_mock_artifact.py",
     "tests/test_aws_runtime.py",
     "tests/test_aws_dev_course.py",

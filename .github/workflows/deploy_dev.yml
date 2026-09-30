@@ -1,0 +1,161 @@
+# D137: a merge (push) to `develop` deploys the code of the three Dev Lambdas.
+# The same revision first runs the offline regression (no secret or variable
+# is referenced before that step), builds the x86_64 ZIP, keeps it as an
+# Actions artifact for 30 days, then waits for the `development` environment
+# approval (reviewers are configured in GitHub by the user). Only then the
+# OIDC role is assumed; there is no access-key path. The Lambda configuration
+# (ARC_JOURNEY_CONFIG) is never written here: it is compared with the code
+# registry and a difference stops the run with CONFIG_DRIFT.
+# Manual run with `rollback_run_id` re-deploys the ZIP that an earlier run kept
+# instead of building one. scripts/validate_actions.py pins this file.
+#
+# timeout-minutes: measured duration x3 + 3 min (the PR CI rule). Local
+# measurement 2026-09-30: offline regression 112 s (this repository, Apple
+# Silicon; 154 s in the 2026-09-28 CI measurement, used here). The build
+# (x86_64 wheel download + ZIP) is not measured locally (no PyPI access in the
+# preparation session); estimated at 60 s. (154 + 60) x 3 = 642 s -> 11 min,
+# plus 3 min = 14 min, rounded up to 15 min so that the deploy (each function
+# waits at most 90 s) and the smoke fit. MAX_DEPLOY_MINUTES in
+# scripts/validate_actions.py bounds this value.
+name: Deploy Dev
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      rollback_run_id:
+        description: "Re-deploy the mock-lambda artifact of this earlier run id (empty: build from this revision)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    env:
+      AWS_REGION: us-east-2
+      ARC_DEV_FUNCTIONS_API: arc-calc-dev-api
+      ARC_DEV_FUNCTIONS_WORKER: arc-calc-dev-worker
+      ARC_DEV_FUNCTIONS_RELAY: arc-calc-dev-relay
+      AWS_ROLE_ARN: ${{ secrets.DEV_AWS_ROLE_ARN }}
+      DEV_API_BASE_URL: ${{ vars.DEV_API_BASE_URL }}
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install isolated validation dependencies
+        id: dependencies
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/actions-venv"
+          ci_constraints_args=()
+          if [[ -f constraints-lambda.txt ]]; then
+            ci_constraints_args=(-c constraints-lambda.txt)
+          fi
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip install --only-binary=:all: \
+            -r requirements.txt -r requirements-ci.txt "${ci_constraints_args[@]}"
+          "$RUNNER_TEMP/actions-venv/bin/python" --version
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip --version
+          "$RUNNER_TEMP/actions-venv/bin/python" -m pip freeze
+
+      - name: Run the offline regression of this revision before any secret is used
+        id: regression
+        env:
+          STAGE: test
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: '"$RUNNER_TEMP/actions-venv/bin/python" scripts/run_actions_regression.py'
+
+      - name: Build the x86_64 Lambda ZIP
+        id: build
+        if: inputs.rollback_run_id == ''
+        run: |
+          umask 077
+          python3 -m venv "$RUNNER_TEMP/build-python"
+          "$RUNNER_TEMP/build-python/bin/python" -m pip install -r requirements.txt -c constraints-lambda.txt \
+            --target "$RUNNER_TEMP/packages" --no-compile --only-binary=:all: \
+            --platform manylinux2014_x86_64 --implementation cp --python-version 3.12
+          "$RUNNER_TEMP/build-python/bin/python" scripts/build_mock_artifact.py \
+            --source-root "$GITHUB_WORKSPACE" --packages-dir "$RUNNER_TEMP/packages" --outdir "$RUNNER_TEMP/artifact"
+          "$RUNNER_TEMP/build-python/bin/python" -m zipfile -t "$RUNNER_TEMP/artifact/mock-lambda.zip"
+
+      - name: Keep the ZIP and its manifest as a run artifact
+        id: upload
+        if: inputs.rollback_run_id == ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mock-lambda-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/artifact/mock-lambda.zip
+            ${{ runner.temp }}/artifact/artifact-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Download the ZIP of the run to roll back to
+        id: download
+        if: inputs.rollback_run_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: mock-lambda-*
+          path: ${{ runner.temp }}/artifact
+          merge-multiple: true
+          run-id: ${{ inputs.rollback_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Configure AWS credentials (OIDC only)
+        id: credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: arc-deploy-development
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compare the Lambda ARC_JOURNEY_CONFIG with the code registry
+        id: check_config
+        run: |
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py check-config \
+            --region "$AWS_REGION" --function api="$ARC_DEV_FUNCTIONS_API" --function worker="$ARC_DEV_FUNCTIONS_WORKER"
+
+      - name: Deploy the ZIP to Worker, Relay, then API
+        id: deploy
+        run: |
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py deploy \
+            --region "$AWS_REGION" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \
+            --function worker="$ARC_DEV_FUNCTIONS_WORKER" --function relay="$ARC_DEV_FUNCTIONS_RELAY" --function api="$ARC_DEV_FUNCTIONS_API" \
+            --manifest "$RUNNER_TEMP/artifact/artifact-manifest.json" --report "$RUNNER_TEMP/deploy-report.json"
+
+      - name: Smoke the deployed API (Dummy login and course list; no logout)
+        id: smoke
+        run: |
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py smoke \
+            --base-url "$DEV_API_BASE_URL" --report "$RUNNER_TEMP/smoke-report.json"
+
+      - name: Write the run summary
+        id: summary
+        if: always()
+        run: |
+          "$RUNNER_TEMP/actions-venv/bin/python" scripts/deploy_dev_lambdas.py summary \
+            --commit "$GITHUB_SHA" --zip "$RUNNER_TEMP/artifact/mock-lambda.zip" \
+            --deploy-report "$RUNNER_TEMP/deploy-report.json" --smoke-report "$RUNNER_TEMP/smoke-report.json" \
+            --output "$GITHUB_STEP_SUMMARY"

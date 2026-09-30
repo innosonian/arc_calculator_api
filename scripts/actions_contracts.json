@@ -14,6 +14,11 @@
       "runtime": "node24",
       "sha256": "d59219cb79590abdb877deaa14e3b65a00c05318bf5a6f3b989b9162b5d08c35"
     },
+    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c": {
+      "release": "v8.0.1",
+      "runtime": "node24",
+      "sha256": "e98559b7a31ba31be4709f20d22102dc2737fa630f69a339eb89981151e505fe"
+    },
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97": {
       "release": "v7.0.0",
       "runtime": "node24",
@@ -23,6 +28,11 @@
       "release": "v5.6.0",
       "runtime": "node20",
       "sha256": "0acca40eee6f548ea8269ece66fd625fe9deb1f61f31f0b58562068fc083eb37"
+    },
+    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a": {
+      "release": "v7.0.1",
+      "runtime": "node24",
+      "sha256": "c5979822866a72362e609844b6ebe77d4b7e759af68cc1c2c425dcf51481fab4"
     },
     "aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a": {
       "release": "v4.3.1",

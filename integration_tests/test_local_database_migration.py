@@ -64,8 +64,15 @@ def schema_signature(client):
 def wait_until(client, predicate):
     deadline = time.monotonic() + 30
     while True:
-        table = client.describe_table(TableName=db.TABLE_NAME)["Table"]
-        if predicate(table):
+        try:
+            table = client.describe_table(TableName=db.TABLE_NAME)["Table"]
+        except ClientError as error:
+            # DynamoDB Local answers DescribeTable with a transient InternalFailure
+            # while a GSI it is creating settles; the fixture client has no retries.
+            if error.response["Error"]["Code"] != "InternalFailure":
+                raise
+            table = None
+        if table is not None and predicate(table):
             return table
         assert time.monotonic() < deadline
         time.sleep(0.05)

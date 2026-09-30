@@ -208,6 +208,8 @@ START의 canonical bytes는 보고 commit 전 400KiB 기술 상한으로 보수�
 
 AWS API/Worker/Relay runtime은 명시 설정으로 기존 조립에 연결한다. 역할별 IAM·자원·trigger·partial batch·due schedule·DLQ·로그 전달·Linux 패키지·용량은 실환경 인수가 필요하다. Relay의 환경별 진행 행은 create-only 초기화와 revision/owner/fence/lease를 사용하며 런타임이 손상/부재 행을 자동 생성하지 않는다. 한 호출 안에서는 OUTBOX/JOB을 한 step씩 교대하되, 한 종류가 이번 pass를 끝냈거나 자기 한도(`page_size × max_pages`)에 닿으면 남은 종류를 한도와 step 시간 예산이 허락하는 만큼 계속 처리한다. 이렇게 순서 밖에서 처리한 step은 진행 행의 다음 종류를 바꾸지 않아 멈춘 종류가 다음 호출에서 먼저 처리된다(D109).
 
+Dev 세 Lambda의 코드는 `develop` 머지 시 `.github/workflows/deploy_dev.yml`이 배포한다(D137): 같은 revision의 오프라인 회귀 → ZIP 빌드·보관 → environment 승인 → OIDC → `scripts/deploy_dev_lambdas.py`의 설정 대조(`CONFIG_DRIFT`)·Worker→Relay→API 갱신·`CodeSha256` 대조·Dummy 스모크. 설정 JSON은 손으로 갱신하며 workflow는 쓰지 않는다.
+
 `course_v2_dummy`는 Dev stage에서만 허용하며 API·Worker가 같은 카탈로그 버전·9개 과정 한도·저장·실행 정의를 사용해야 한다. 실제 과정 snapshot의 직렬화 크기를 저장 한도와 대조해 시작조차 불가능한 설정을 거절한다. `scripts/validate_aws_dev_bundle.py`는 역할 간 DB/환경/저장/version 혼선, Worker와 Queue의 시간 관계, Relay가 한 항목도 처리하지 못할 실행 예산을 오프라인에서 검사한다. 실제 자원·IAM 확인을 대신하지 않는다.
 
 | 확인 경계 | 해소 전 동작 |
