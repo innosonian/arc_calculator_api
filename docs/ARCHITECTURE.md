@@ -122,7 +122,7 @@ HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEA
 
 ## 5. 계산·완료·버전 보존
 
-기존 parser·projection·자료형·null·코칭·승인된 ARC 최소량 정책을 사용한다. 소비하지 않는 요청 필드를 저장 입력에 무조건 포함하거나 현재 결과로 골든 정답을 재생성하지 않는다. HSTM 호환 문서는 ARC 제출 payload가 아니다.
+기존 parser·projection·자료형·null·코칭과 승인된 ARC 최소량 정책을 사용한다. D139로 현재 adapter(v5)는 최소량 미달 그룹을 null로 만들지 않고 점수를 표시하되 최소량(D07)을 평가의 합격 조건으로 적용한다. 보존 adapter(v4·pending-v3)의 진행 중 시도는 원래의 null 처리로 끝난다. 소비하지 않는 요청 필드를 저장 입력에 무조건 포함하거나 현재 결과로 골든 정답을 재생성하지 않는다. HSTM 호환 문서는 ARC 제출 payload가 아니다.
 
 | 구분 | 현재 판정 |
 |---|---|
@@ -131,11 +131,24 @@ HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEA
 | 과정 완료 | 선행 모든 항목 완료 + 마지막 assessment의 `program_completed=true` |
 | 영상·문서 | 승인된 전체 재생/표시·읽음 확인 정책을 보고 근거로 판정. 상세는 DECISIONS·API 계약 |
 
-현재 adapter는 `arc-internal-detection-v4`(D136 사이클 완료 규칙), profile은 `tester-goal-cycles-v1`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v3`다. 직전 `arc-internal-detection-pending-v3`(profile `tester-goal-pending-v2`, 후보 `arc-internal-calculation-v2`)는 보존 목록에 있으며 그 정의로 시작한 진행 중 시도를 원래 의미(`pending_policy`)로 계속 계산한다. 형식이 같아도 adapter의 검출 의미는 다르다.
+현재 adapter는 `arc-internal-detection-v5`(D136 사이클 완료 규칙 + D138 파일 끝 호흡 + D139 최소량 미달 점수 표시·합격 조건 유지), profile은 `tester-goal-cycles-v2`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v4`다. 보존 목록(`contracts.RETAINED_ADAPTER_VERSIONS`)은 `arc-local-calculator-pending-v2` → `arc-internal-detection-pending-v3` → `arc-internal-detection-v4` 순서다. 직전 `arc-internal-detection-v4`(profile `tester-goal-cycles-v1`, 후보 `arc-internal-calculation-v3`)와 `arc-internal-detection-pending-v3`(profile `tester-goal-pending-v2`, 후보 `arc-internal-calculation-v2`)는 그 정의로 시작한 진행 중 시도를 원래 의미로 계속 계산한다(pending-v3의 CPR 목표는 `pending_policy`). 형식이 같아도 adapter의 검출 의미는 다르다.
+
+버전별 의미는 `mock_journey/contracts.py`의 `ADAPTER_FEATURES` 표 한 곳에 있다.
+
+| adapter | CPR 목표 상태 | profile | 후보 형식 | 파일 끝 호흡(D138) | ARC 최소량 미달 점수 | 최소량 합격 조건·사유 코드(D139) | 계산 |
+|---|---|---|---|---|---|---|---|
+| `arc-internal-detection-v5`(현재) | `evaluated` | `tester-goal-cycles-v2` | `arc-internal-calculation-v4` | 열린 후보를 하강 1패킷 또는 기준선 대비 상승으로 인정 | 표시(null 없음) | 적용: `decision=fail`·`MINIMUM_QUANTITY_NOT_MET` | 가능 |
+| `arc-internal-detection-v4`(보존) | `evaluated` | `tester-goal-cycles-v1` | `arc-internal-calculation-v3` | 두 패킷만(D42) | 그룹 null(D07/D08) | 없음(코드 없음) | 가능(진행 중 시도) |
+| `arc-internal-detection-pending-v3`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 두 패킷만(D42) | 그룹 null(D07/D08) | 없음(코드 없음) | 가능(진행 중 시도) |
+| `arc-local-calculator-pending-v2`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | — | — | 없음 | 불가(검증 전용) |
+
+두 계산 옵션은 `services/calculation_context.CalculationOptions(eof_single_confirmation, minimum_quantity_null)`로 전달된다: `InternalCalculator`가 자기 버전의 값을 `CalculationExecutionContext(options=…)`에 넣고, `main.run_calculator`가 검출 옵션을 `services.preparers.make_pre_action_list` → `ActionDataPrepare` → `PacketActionDetector`로, `services.calculate_cpr.make_calculate_result`가 최소량 옵션을 `services.calculators.calculate_cpr`로 넘긴다. `calculate_cpr`는 옵션이 켜져 있을 때만 `NullPolicy.create(...)`를 쓰고 아니면 `NullPolicy.inactive()`를 쓴다(정책 코드 자체는 해시 고정 그대로). execution context가 없는 직접 호출(로컬 도구·회귀 helper·참고 대조 스크립트)은 현재 규칙(True, False)을 쓴다. 레지스트리에 없는 버전 이름의 `InternalCalculator`도 현재 규칙을 쓴다.
+
+최소량 합격 조건(D139)은 계산 옵션이 아니라 평가 단계의 버전 기능(`ADAPTER_FEATURES.minimum_quantity_pass_gate`, v5만 True)이다. `mock_journey/worker.evaluate`가 계산 결과의 `action_count`와 정의의 `condition`으로 `contracts.minimum_quantity_policy`(= 점수 계산이 쓰던 `NullPolicy.create`, 임계값을 복제하지 않음)를 호출해 ARC2020/ARC2025 CPR에서 압박·호흡 중 하나라도 최소량 미만이면 `passed = 기존 tester 합격 AND 최소량 충족`을 false로 만들고 `reason_codes`의 목표 사유 뒤·`SCORE_NOT_PASS` 앞에 `MINIMUM_QUANTITY_NOT_MET`를 넣는다. 횟수를 읽을 수 없는 결과나 구성할 수 없는 조건은 합격이 아니라 `CALCULATOR_CONTRACT_MISMATCH`다. `mock_journey/jobs.check_evaluation`은 저장된 평가에 횟수가 없으므로 v5의 `fail`에 대해 목표 사유 뒤 `[SCORE_NOT_PASS]`·`[MINIMUM_QUANTITY_NOT_MET]`·`[MINIMUM_QUANTITY_NOT_MET, SCORE_NOT_PASS]` 세 꼴만 받고(최소량 코드는 정책이 적용될 수 있는 ARC CPR 조건에서만), `pass`에는 두 코드를 받지 않으며, v4 이하 정의에서는 이 코드를 거절한다.
 
 구버전 `arc-local-calculator-pending-v2`는 저장 후보 검증·결과 복구 전용(재계산 불가)이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
 
-현재 검출은 압박/호흡 독립, 첫 압박 패킷 기준선, 최고 호흡량 대비 두 연속 패킷의 감소 확인을 사용한다. 성인·소아 10mL, 영아 5mL 잠정값과 EOF·동시 동작 시간/cycle 정책은 DECISIONS D38~D46을 따른다. 미정 교육 완료 공식을 검출 규칙에서 추론하지 않는다.
+현재 검출은 압박/호흡 독립, 첫 압박 패킷 기준선, 최고 호흡량 대비 두 연속 패킷의 감소 확인을 사용한다. 성인·소아 10mL, 영아 5mL 잠정값과 EOF·동시 동작 시간/cycle 정책은 DECISIONS D38~D46과 D138을 따른다. 파일 끝 규칙(D138): 반복이 끝났을 때 호흡 후보가 아직 열려 있으면(이미 확정·잠금·기준 미달 종료가 아님) ① 최고값보다 감소 기준 이상 낮은 패킷이 1개 이상 관측됐거나 ② 하강 패킷이 없어도 최고 호흡량이 후보 시작 직전 패킷의 대표 호흡량(기준선, 첫 패킷이면 0)보다 감소 기준 이상 높을 때 1회로 확정한다(`packet_index`=마지막 패킷, 근거 구간=후보 시작~파일 끝, ②는 `first_confirmation_index=None`이고 최고값은 그때까지 관측된 최대). 앱이 목표 호흡을 감지한 즉시 종료하며 끊긴 지점이 최고점 이전인지 서버가 알 수 없으므로 끊긴 지점까지의 최고값을 최고점으로 인정한다. 기준선 대비 상승이 감소 기준 미만인 후보, 잠금 상태, 이미 확정된 호흡은 추가하지 않으며 파일 길이로 추정하지 않는다. 옵션 이름 `eof_single_confirmation`은 ①만 있던 때의 이름을 그대로 쓴다. 미정 교육 완료 공식을 검출 규칙에서 추론하지 않는다.
 
 점수·코칭·파서에 쓰는 기존 소스와 prompt book·시험 입력은 `tests/fixtures/detection_revision/provenance.json`에 파일별 SHA-256(일부는 파일·함수 AST hash)으로 고정하며 `tests/test_detection_oracle.py`가 현재 파일과 대조한다. 결과가 바뀌지 않는 수정만 파일별로 재등록할 수 있고, 그 전에 기존 계산 골든·참고 구현 대조·독립 검출 oracle·원래 구현과의 무작위 대조 시험을 모두 통과해야 한다(D102). 첫 적용은 `calculators/waveform.py`·`transformers/part_divider.py`의 계산량 개선이며 미사용 `config/guidelines.py`는 삭제하고 항목을 뺐다. 시험 실패를 없애려고 해시만 바꾸거나 계산식을 교정하지 않는다(D03).
 

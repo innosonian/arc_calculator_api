@@ -182,16 +182,19 @@ def internal_calculator(version, *, projection, stage):
     """The InternalCalculator of one registered adapter version (its fixed meaning).
 
     A pending adapter (v2 verify-only, v3 still calculating) keeps a cycles
-    goal pending_policy and has no resolver; the cycle-goal adapter (v4) is
-    bound to the D136 closed-cycle rule. An unregistered version is a
-    composition error, never a guess.
+    goal pending_policy and has no resolver; the cycle-rule adapters (the
+    retained v4 and the current v5) are bound to the D136 closed-cycle rule.
+    The version's other fixed features (candidate schema, the D138 end-of-file
+    ventilation rule, the D139 minimum-quantity option) come from
+    contracts.ADAPTER_FEATURES inside the calculator. An unregistered version
+    is a composition error, never a guess.
     """
-    from mock_journey.contracts import CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSIONS
+    from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSIONS, uses_cycle_rule
     from mock_journey.internal_calculator import InternalCalculator
     if version in PENDING_GOAL_ADAPTER_VERSIONS:
         return InternalCalculator(version=version, projection_version=projection, stage=stage,
                                   allow_pending_cycle_goal=True)
-    if version == CYCLE_GOAL_ADAPTER_VERSION:
+    if uses_cycle_rule(version):
         from mock_journey.cycle_goal import closed_cycle_count
         return InternalCalculator(version=version, projection_version=projection, stage=stage,
                                   cycle_goal_resolver=closed_cycle_count)

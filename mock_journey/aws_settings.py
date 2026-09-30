@@ -213,7 +213,8 @@ class AwsSettings:
                 retained = supplied["retained_adapter_versions"]
                 # D127: the operator's retained list must equal the code registry
                 # exactly (same versions, same order). An empty or partial list
-                # would leave stored candidates of a retained version unverifiable;
+                # would leave stored candidates of a retained version unverifiable
+                # and its in-flight attempts uncalculable (D138: v4 is retained);
                 # the order is compared because the registry tuple is the order the
                 # Worker registers adapters in and the bundle check compares the
                 # roles' ExecutionVersions tuples position by position.

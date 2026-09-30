@@ -510,7 +510,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -570,7 +570,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -597,7 +597,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -664,7 +664,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -691,7 +691,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -725,7 +725,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -758,7 +758,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -803,7 +803,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -869,7 +869,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -896,7 +896,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {
@@ -1162,7 +1162,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -1189,7 +1189,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940042,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:04Z",
     "role": "final_assessment",
     "condition": {
@@ -1346,7 +1346,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -1883,7 +1883,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "40d6f4c68d6dd1eb2659dd8337ca481fccc9a503c66a2438ff884421a7106a02",
+    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {

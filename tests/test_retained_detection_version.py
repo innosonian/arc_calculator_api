@@ -10,7 +10,7 @@ import pytest
 
 from mock_journey import typed
 from mock_journey.contracts import (
-    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
     RETAINED_PENDING_GOAL_ADAPTER_VERSION,
 )
 from mock_journey.errors import JourneyError
@@ -82,8 +82,10 @@ def test_old_input_never_executes_current_core_or_changes_binding(row, monkeypat
 
 def test_new_definitions_select_new_detection_version():
     execution = execution_catalog()
-    assert len({CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION}) == 3
-    assert CURRENT_ADAPTER_VERSION == CYCLE_GOAL_ADAPTER_VERSION
+    assert len({CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+                RETAINED_PENDING_GOAL_ADAPTER_VERSION}) == 4
+    # D138: new definitions select v5; v4 is no longer written into a new definition.
+    assert CURRENT_ADAPTER_VERSION == EOF_VENT_ADAPTER_VERSION == "arc-internal-detection-v5"
     assert all(pair[0] == CURRENT_ADAPTER_VERSION for pair in execution.required_bindings)
     # D136: the retained pending-v3 adapter still calculates its own attempts;
     # only the v2 adapter above is verify-only.

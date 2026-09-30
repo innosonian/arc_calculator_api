@@ -71,6 +71,7 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 | 임시 과정 15개(5개 프로그램 × 3개 연령) | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
 | Compression Only / Ventilation Only | 실제 횟수와 기존 tester Pass를 모두 충족하면 완료 |
 | CPR 계열 | D136 사이클 규칙(계산기가 `cpr`로 분류한 사이클 수 ≥ 3/8/10) AND 점수 합격이면 완료. 이전 어댑터로 시작한 진행 중 시도만 `pending_policy` |
+| 파일 끝 마지막 호흡·ARC 최소량 | 현재 어댑터 `arc-internal-detection-v5`: 파일 끝에 남은 마지막 호흡을 하강 1패킷 기록 또는 기준선 대비 감소 기준 이상 상승이면 1회로 센다(D138). ARC CPR 최소량(성인·소아 압박 90·호흡 6, 영아 45·6) 미달이어도 점수는 표시하지만 합격·완료는 아니다: `score.decision=fail`, `reason_codes`에 `MINIMUM_QUANTITY_NOT_MET`(D139). `arc-internal-detection-v4`·`pending-v3`로 시작한 진행 중 시도는 원래 규칙(두 패킷·최소량 null)으로 끝난다. `scripts/run_local.py` 등 직접 실행 도구는 현재 검출·점수 규칙을 쓰며 합격 판정(평가 단계)은 하지 않는다 |
 | ARC 제출 | 전송하지 않음. 처리 중 응답은 `status=disabled`, Dummy 계산 결과는 `status=excluded`, `exclusionReasons=["dummy"]`(D90). `ok=false` |
 | 대기 | D54에 따라 앱의 파일 업로드 시작부터 최대30초. 이후에도 같은 시도의 결과를 조회 가능. 이미 접수된 작업을 자동 취소하는 시간이 아님 |
 | 차트 | 실제 로컬 JSON 파일을 서명 URL로 제공. 발급부터300초; 만료 시 인증된 API로 새 링크 발급 |

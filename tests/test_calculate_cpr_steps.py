@@ -11,6 +11,7 @@ replace, so they are patched on the module after import.
 import pytest
 
 import services.calculate_cpr as module
+from services.calculation_context import CalculationOptions
 
 
 CONDITION = {"guideline": "ARC2020", "target": "adult"}
@@ -27,8 +28,10 @@ class Config:
 
 
 class Context:
-    def __init__(self, calls, fail=None):
+    def __init__(self, calls, fail=None, options=None):
         self.calls, self.fail = calls, fail
+        # D139: the step reads the owning adapter's minimum-quantity option here.
+        self.options = options if options is not None else CalculationOptions()
 
     def observe_calculation(self, result):
         self.calls.append(("observe", result))
@@ -70,7 +73,8 @@ def test_success_sequence_fields_and_elapsed_windows(harness):
                                           execution_context=context)
     assert result == {"charted": True}
     assert calls == [
-        ("calculate_cpr", (PREPARED, config), {}),
+        # D139: a context call names its adapter's minimum-quantity option (current: False).
+        ("calculate_cpr", (PREPARED, config), {"minimum_quantity_null": False}),
         ("observe", {"calculated": True}),
         ("serialize_result", ({"calculated": True},), {"condition": CONDITION, "usage": {"u": 1}}),
         ("add_chart_data", ({"serialized": True}, PREPARED, {"calculated": True}, "test"),
@@ -85,10 +89,19 @@ def test_success_sequence_fields_and_elapsed_windows(harness):
     ]
 
 
+def test_retained_context_passes_its_minimum_quantity_option(harness):
+    calls, _, _ = harness
+    retained = CalculationOptions(eof_single_confirmation=False, minimum_quantity_null=True)
+    module.make_calculate_result(Config(), PREPARED, "test", execution_context=Context(calls, options=retained))
+    assert calls[0] == ("calculate_cpr", (PREPARED, calls[0][1][1]), {"minimum_quantity_null": True})
+
+
 def test_without_context_chart_call_has_no_context_keyword(harness):
     calls, _, _ = harness
     module.make_calculate_result(Config(), PREPARED, "test")
     assert [name for name, *_ in calls] == ["calculate_cpr", "serialize_result", "add_chart_data"]
+    # The context-free call keeps the two-argument form (the current rule is calculate_cpr's default).
+    assert calls[0][2] == {}
     assert calls[1][2] == {"condition": CONDITION, "usage": None}
     assert calls[2][2] == {"key_stem": None, "org": None}
 

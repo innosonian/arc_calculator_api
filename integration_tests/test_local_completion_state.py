@@ -42,17 +42,23 @@ def unavailable(*args, **kwargs):
     raise JourneyError("TEMPORARILY_UNAVAILABLE")
 
 
-@pytest.mark.parametrize("program,data,observed,met,decision,complete", [
-    # D136: three closed cpr cycles meet the CPR goal; one cycle does not (and scores no pass).
-    ("mock-cpr", cpr_session([(30, 2)] * 3), 3, True, "pass", True),
-    ("mock-cpr", cpr_session([(30, 2)]), 1, False, "fail", False),
-    ("mock-cpr", cpr_session([(30, 2)] * 2 + [(30, 0)]), 2, False, "pass", False),
-    ("mock-compression-only", comp_session(60), 60, True, "pass", True),
-    ("mock-compression-only", comp_session(59), 59, False, "pass", False),
-    ("mock-compression-only", comp_session(60, WEAK_RAMP), 60, True, "fail", False),
+MINIMUM = "MINIMUM_QUANTITY_NOT_MET"
+
+
+@pytest.mark.parametrize("program,data,observed,met,decision,complete,reasons", [
+    # D136: three closed cpr cycles meet the CPR goal; fewer do not. D139: a session below the ARC
+    # minimum quantity (90 compressions and 6 ventilations for an adult) is scored, not nulled, but
+    # does not pass: decision "fail" with MINIMUM_QUANTITY_NOT_MET (the score itself is no reason).
+    ("mock-cpr", cpr_session([(30, 2)] * 3), 3, True, "pass", True, []),                       # 90 / 6
+    ("mock-cpr", cpr_session([(30, 2)]), 1, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),    # 30 / 2, overall 99
+    ("mock-cpr", cpr_session([(30, 2)] * 2 + [(30, 0)]), 2, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),  # 90 / 4
+    # Compression Only has no CPR minimum: 60 (and 59) compressions are judged by goal and score alone.
+    ("mock-compression-only", comp_session(60), 60, True, "pass", True, []),
+    ("mock-compression-only", comp_session(59), 59, False, "pass", False, ["GOAL_NOT_MET"]),
+    ("mock-compression-only", comp_session(60, WEAK_RAMP), 60, True, "fail", False, ["SCORE_NOT_PASS"]),
 ], ids=("cpr-three-cycles-complete", "cpr-one-cycle-incomplete", "cpr-open-last-group-incomplete",
         "only-pass-complete", "only-short-incomplete", "only-fail-incomplete"))
-def test_real_scores_and_completion_commit_once(store, program, data, observed, met, decision, complete):
+def test_real_scores_and_completion_commit_once(store, program, data, observed, met, decision, complete, reasons):
     h = journey(store)
     course = dummy_course(program, "adult")
     token, other = h.login().token, h.login().token
@@ -68,7 +74,7 @@ def test_real_scores_and_completion_commit_once(store, program, data, observed, 
     assert assessment["goal"]["met"] is met
     assert assessment["score"]["decision"] == decision
     assert assessment["program_completed"] is complete
-    assert assessment["reason_codes"] == ([] if met else ["GOAL_NOT_MET"]) + ([] if decision == "pass" else ["SCORE_NOT_PASS"])
+    assert assessment["reason_codes"] == reasons
     assert stored["progress_application"]["reason"] == ("APPLIED" if complete else "REQUIREMENTS_NOT_MET")
     shared = h.course(other, course)
     item = next(value for value in shared["courseItems"] if value["courseItemLinkId"] == course.practice_link_id)
@@ -81,8 +87,11 @@ def test_real_scores_and_completion_commit_once(store, program, data, observed, 
     assert response.data["submit_arc"] == DUMMY_SUBMISSION and "submit_arc" not in body
     assert response.data["evaluation"] == assessment and "evaluation" not in body
     assert body["chart_dataset_url"]
-    if program == "mock-cpr" and decision == "fail":
-        assert body["cpr_score"]["total_score"]["overall"] is None  # one cycle: no score, not a fake fail
+    if program == "mock-cpr" and observed == 1:
+        # D139: below the ARC minimum the score is shown (99), not null, although the decision is
+        # "fail". The null path of the retained v4 adapter is covered by
+        # integration_tests/test_eof_truncated_ventilation_dynamodb.py.
+        assert body["cpr_score"]["total_score"]["overall"] == 99
     for _ in range(2):
         assert h.work(job_id=job_id) is True
         assert calculation(h, token, attempt_id).body == response.body

@@ -5,6 +5,7 @@ import pytest
 
 import lambda_handler
 from tests._synth import WEAK_RAMP, comp_session, condition_json, cpr_session, multipart_event
+from tests.calculation_options_support import use_retained_minimum_quantity_null
 
 
 def _post(parts):
@@ -81,9 +82,10 @@ class TestPassingScoreFallback:
 
 
 class TestNullOverallCertification:
-    def test_null_overall_is_fail_even_with_zero_threshold(self):
-        # 성인 CPR 압박<90·호흡<6으로 overall null이면 Target은 N/A.
-        # Passing_Score 0을 줘도 계산 불가 결과에 인증 대상을 부여하지 않는다.
+    def test_null_overall_is_fail_even_with_zero_threshold(self, monkeypatch):
+        # 보존 옵션(D07/D08, v4·pending-v3의 진행 중 시도): 성인 CPR 압박<90·호흡<6으로
+        # overall null이면 Target은 N/A. Passing_Score 0을 줘도 계산 불가 결과에 인증 대상을 부여하지 않는다.
+        use_retained_minimum_quantity_null(monkeypatch)
         status, body = _post({
             "rawHexBPfile": cpr_session([(30, 2)]),
             "condition": condition_json(training_type="cpr"),
@@ -92,6 +94,21 @@ class TestNullOverallCertification:
         })
         assert status == 200
         assert body["cpr_score"]["total_score"]["overall"] is None  # JSON null
+        assert body["certification"] == {"Target": "N/A"}
+
+    def test_below_minimum_session_is_scored_and_certified_by_the_threshold(self):
+        # D139: 현재 규칙은 최소량 미달에도 점수를 계산하므로 같은 입력의 인증은 기준점 비교로 정해진다.
+        parts = {
+            "rawHexBPfile": cpr_session([(30, 2)]),
+            "condition": condition_json(training_type="cpr"),
+            "Custom": '{"CertificateAdult": true}',
+        }
+        status, body = _post({**parts, "Open_Skill": '{"Passing_Score": "0"}'})
+        assert status == 200
+        assert body["cpr_score"]["total_score"]["overall"] == 99
+        assert body["certification"] == {"Target": "adult"}
+        status, body = _post({**parts, "Open_Skill": '{"Passing_Score": "100"}'})
+        assert status == 200
         assert body["certification"] == {"Target": "N/A"}
 
 

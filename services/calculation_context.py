@@ -64,6 +64,31 @@ class AcceptedRaw:
 
 
 @dataclass(frozen=True, slots=True)
+class CalculationOptions:
+    """Calculation semantics that belong to an adapter version.
+
+    The defaults are the current rules; a retained adapter passes its original
+    values so an attempt started under its definition keeps its meaning.
+
+    eof_single_confirmation (D138): a ventilation cut at the end of the file
+        is recognized once one packet confirmed its descent. False is the D42
+        rule (two confirmation packets, the end of the file adds nothing).
+    minimum_quantity_null (D139): False calculates ARC2020/ARC2025 CPR scores
+        like every other guideline. True is the D07/D08 policy (a group below
+        the session minimum is null). Only the null is an option here; the
+        minimum as a pass condition belongs to the evaluation
+        (mock_journey.worker.evaluate), not to the calculation.
+    """
+
+    eof_single_confirmation: bool = True
+    minimum_quantity_null: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.eof_single_confirmation) is not bool or type(self.minimum_quantity_null) is not bool:
+            raise CalculationContextError("Invalid calculation options")
+
+
+@dataclass(frozen=True, slots=True)
 class CycleEvidence:
     """Existing cycle grouping facts; these do not assert a complete cycle."""
 
@@ -126,16 +151,27 @@ class CalculationExecutionContext:
 
     def __init__(self, *, accepted_raw: AcceptedRaw,
                  publish_chart: Callable[[dict], str | None],
-                 observe: Callable[[CalculationEvidence], None]) -> None:
+                 observe: Callable[[CalculationEvidence], None],
+                 options: CalculationOptions | None = None) -> None:
+        if options is None:
+            options = CalculationOptions()
         if (type(accepted_raw) is not AcceptedRaw
-                or not callable(publish_chart) or not callable(observe)):
+                or not callable(publish_chart) or not callable(observe)
+                or type(options) is not CalculationOptions):
             raise CalculationContextError("Invalid calculation execution context")
         accepted_raw.validate()
         self._accepted_raw = accepted_raw
+        # The options of the adapter version that owns this call (D138, D139);
+        # immutable and fixed for the life of the context.
+        self._options = options
         self._publisher = publish_chart
         self._observer = observe
         self._lock = Lock()
         self._state = "new"
+
+    @property
+    def options(self) -> CalculationOptions:
+        return self._options
 
     def _claim(self, expected: str, next_state: str) -> None:
         with self._lock:

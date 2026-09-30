@@ -13,9 +13,10 @@ import time
 import uuid
 
 from mock_journey.contracts import (
-    VerifiedCalculation, VerifiedChart,
+    MINIMUM_QUANTITY_REASON, VerifiedCalculation, VerifiedChart,
     # input_binding/call_binding are defined in contracts and re-exported here.
-    call_binding, expected_goal_status, expected_profile_version, input_binding, is_versioned_goal,
+    call_binding, expected_goal_status, expected_profile_version, gates_pass_on_minimum_quantity, input_binding,
+    is_versioned_goal, minimum_quantity_policy,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.course_errors import CourseError
@@ -52,6 +53,26 @@ class _RunContext:
         return job
 
 
+def _minimum_quantity_met(definition, verified):
+    """D139: whether the session meets the ARC minimum quantity (D07), for the adapters that gate the pass on it.
+
+    The counts are the core result's whole-session action_count and the rule
+    is the score policy's own predicate (contracts.minimum_quantity_policy):
+    ARC2020/ARC2025 CPR only, both groups at or above their minimum. Adapters
+    without the gate (their null policy already fails such a session) and
+    conditions outside the policy are always met. A core without valid
+    counts cannot be judged and is a contract error, never a pass.
+    """
+    if not gates_pass_on_minimum_quantity(definition.get("adapter_version")):
+        return True
+    core = verified.core_result
+    counts = core.get("action_count") if type(core) is dict else None
+    if (type(counts) is not dict or set(counts) != {"comp", "vent"}
+            or any(type(value) is not int or value < 0 for value in counts.values())):
+        raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
+    return not minimum_quantity_policy(definition["condition"], counts["comp"], counts["vent"]).active
+
+
 def evaluate(result, definition, verified):
     goal = definition["goal"]
     if verified.goal_kind != goal["kind"]:
@@ -65,7 +86,12 @@ def evaluate(result, definition, verified):
         raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
     pending = verified.goal_status == "pending_policy"
     met = None if pending else verified.observed >= goal["required"]
-    passed = bool(_is_pass(result, None, None, None, definition["condition"]["target"]))
+    # The unchanged tester rule on the score, and (D139) the ARC minimum
+    # quantity as a separate pass condition: a session below the minimum does
+    # not pass even when its displayed overall meets the threshold.
+    score_passed = bool(_is_pass(result, None, None, None, definition["condition"]["target"]))
+    minimum_met = _minimum_quantity_met(definition, verified)
+    passed = score_passed and minimum_met
     assessed_goal = {**goal, "observed": verified.observed, "met": met}
     if versioned_goal:
         assessed_goal["status"] = verified.goal_status
@@ -73,8 +99,10 @@ def evaluate(result, definition, verified):
         "goal": assessed_goal,
         "score": {"decision": "pass" if passed else "fail"},
         "program_completed": False if pending else met and passed,
+        # Fixed order: goal reason, minimum quantity (D139), score.
         "reason_codes": (["GOAL_POLICY_UNRESOLVED"] if pending else [] if met else ["GOAL_NOT_MET"])
-                        + ([] if passed else ["SCORE_NOT_PASS"]),
+                        + ([] if minimum_met else [MINIMUM_QUANTITY_REASON])
+                        + ([] if score_passed else ["SCORE_NOT_PASS"]),
     }
 
 

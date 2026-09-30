@@ -9,7 +9,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from mock_journey.auth import PRINCIPAL
 from mock_journey.contracts import (
-    CALL_BINDING_FIELDS, expected_goal_status, expected_profile_version, is_versioned_goal,
+    CALL_BINDING_FIELDS, MINIMUM_QUANTITY_REASON, expected_goal_status, expected_profile_version,
+    gates_pass_on_minimum_quantity, is_versioned_goal, minimum_quantity_policy,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.state import (
@@ -503,8 +504,24 @@ class DynamoJobRepository:
                 raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
             completed = goal["met"] and score["decision"] == "pass"
             reasons = [] if goal["met"] else ["GOAL_NOT_MET"]
-        reasons += [] if score["decision"] == "pass" else ["SCORE_NOT_PASS"]
-        if type(value["program_completed"]) is not bool or value["program_completed"] != completed or value["reason_codes"] != reasons:
+        if score["decision"] == "pass":
+            accepted = [reasons]
+        else:
+            accepted = [reasons + ["SCORE_NOT_PASS"]]
+            # D139: a fail of an adapter that gates the pass on the ARC minimum
+            # quantity is explained by the minimum, the score, or both, in that
+            # fixed order after the goal reason. The stored evaluation holds no
+            # action counts, so which of the three applies is not re-derived;
+            # the minimum code is accepted only where the D07 policy can apply
+            # to the definition's condition at all (ARC CPR). Every other
+            # adapter keeps its exact list, so the code is refused there.
+            if (gates_pass_on_minimum_quantity(adapter_version)
+                    and MINIMUM_QUANTITY_REASON in (value["reason_codes"] if type(value["reason_codes"]) is list else ())
+                    and minimum_quantity_policy(definition.get("condition"), 0, 0).active):
+                accepted += [reasons + [MINIMUM_QUANTITY_REASON],
+                             reasons + [MINIMUM_QUANTITY_REASON, "SCORE_NOT_PASS"]]
+        if (type(value["program_completed"]) is not bool or value["program_completed"] != completed
+                or value["reason_codes"] not in accepted):
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         return deepcopy(value)
 

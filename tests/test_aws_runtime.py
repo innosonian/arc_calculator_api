@@ -47,6 +47,8 @@ def test_real_role_assembly_creates_only_role_clients_and_no_initial_requests(ro
         assert registry.resolve(CURRENT_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
         # D136: the retained pending-v3 adapter still calculates in-flight attempts.
         assert registry.resolve(PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
+        # D138: the retained v4 adapter also keeps calculating its in-flight attempts.
+        assert registry.resolve("arc-internal-detection-v4", PROJECTION_VERSION).can_calculate
         assert not registry.resolve(RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
 
 

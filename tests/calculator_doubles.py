@@ -7,8 +7,9 @@ Two kinds replace the four copies the test suites carried (E-03):
   projection versions so the Dummy Dev execution definitions resolve it; the
   candidate carries the exact call binding and validation rejects any other
   binding. Its goal status follows its ``version`` through
-  contracts.expected_goal_status (the current cycle-goal adapter reports every
-  goal evaluated; a subclass registered under a pending adapter version
+  contracts.expected_goal_status (a cycle-rule adapter -- the current v5 or the
+  retained v4 -- reports every goal evaluated; a subclass registered under a
+  pending adapter version
   reports a cycles goal ``observed`` None with ``goal_status``
   "pending_policy"; an unversioned test version reports no status). The class
   attribute ``expected_measurement`` requires every call to carry exactly
@@ -30,8 +31,8 @@ import hashlib
 import json
 
 from mock_journey.contracts import (
-    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSIONS, PROJECTION_VERSION,
-    VerifiedCalculation, VerifiedChart, expected_goal_status,
+    CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSIONS, PROJECTION_VERSION,
+    VerifiedCalculation, VerifiedChart, expected_goal_status, uses_cycle_rule,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.internal_calculator import InternalCalculator
@@ -41,12 +42,12 @@ def internal_calculator_options(version):
     """InternalCalculator keyword arguments that give ``version`` its registered meaning.
 
     The same selection as mock_journey.assembly.internal_calculator: pending
-    adapters allow the pending cycle goal, the cycle-goal adapter is bound to
-    the D136 closed-cycle resolver, any other (test) version gets neither.
+    adapters allow the pending cycle goal, the cycle-rule adapters (v5, v4) are
+    bound to the D136 closed-cycle resolver, any other (test) version gets neither.
     """
     if version in PENDING_GOAL_ADAPTER_VERSIONS:
         return {"allow_pending_cycle_goal": True}
-    if version == CYCLE_GOAL_ADAPTER_VERSION:
+    if uses_cycle_rule(version):
         from mock_journey.cycle_goal import closed_cycle_count
         return {"cycle_goal_resolver": closed_cycle_count}
     return {}

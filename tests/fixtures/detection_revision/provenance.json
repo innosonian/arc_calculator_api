@@ -46,6 +46,7 @@
     "tests/dataset/cpr_3.bin": "a9b17911d46886469cf78f80fe7e492658e1267300d403fd83f7945c7c0e0862",
     "tests/dataset/cpr_4.bin": "130a7bf35a3d76fae52cac95a014199d247f8b1f5ff4e865bf8fc9a2db844ccb",
     "tests/dataset/cpr_5.bin": "c8f8984e37b66231861119cc58b278cba3a8b63ad2c3789c1494a0db49cd29bd",
+    "tests/dataset/cpr_eof_truncated_vent_1.bin": "f6b57655674d47757872e27586048b842af3dbf6fa82e31f967925b385951b86",
     "tests/dataset/result_1.json": "028021c0a040ff7b2fedf0989e240f14a2e5690dd0f57bf5b89e068e2127e705",
     "tests/dataset/result_2.json": "8b94b336ad17436caf5bac3ce2ba6c177c0990ebc81509443dbcc8f1379bfbf5",
     "tests/dataset/result_3.json": "d360229255f9fe43820306404223f41b2cee0947b7b3e62dd48a5639bef47d40",

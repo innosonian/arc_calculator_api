@@ -18,7 +18,8 @@ from mock_journey import assembly
 from mock_journey.assembly import ExecutionCatalog, build_course_application, build_relay, build_worker
 from mock_journey.aws_runtime import AwsRoleRuntime, build_runtime
 from mock_journey.contracts import (
-    CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
 )
 from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.course_provider import UnavailableCourseProvider
@@ -251,12 +252,23 @@ def test_aws_worker_adapters_and_required_bindings_include_retained(monkeypatch)
         (InternalCalculator, CURRENT_ADAPTER_VERSION, PROJECTION_VERSION, "dev", False, closed_cycle_count),
         (InternalCalculator, RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION, "dev", True, None),
         (InternalCalculator, PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION, "dev", True, None),
+        # D138: the former current adapter is retained and still bound to the cycle rule.
+        (InternalCalculator, CYCLE_GOAL_ADAPTER_VERSION, PROJECTION_VERSION, "dev", False, closed_cycle_count),
     ]
     assert tuple(captured["required_bindings"]) == (
         (CURRENT_ADAPTER_VERSION, PROJECTION_VERSION),
         (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION),
         (PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION),
+        (CYCLE_GOAL_ADAPTER_VERSION, PROJECTION_VERSION),
     )
+    # D138/D139: each registered calculator carries its version's own options.
+    assert [(a.version, a.calculation_options.eof_single_confirmation, a.calculation_options.minimum_quantity_null)
+            for a in captured["adapters"]] == [
+        ("arc-internal-detection-v5", True, False),
+        ("arc-local-calculator-pending-v2", False, True),
+        ("arc-internal-detection-pending-v3", False, True),
+        ("arc-internal-detection-v4", False, True),
+    ]
     assert set(runtime.target.adapters._registered) == set(captured["required_bindings"])
 
 

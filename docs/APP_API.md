@@ -633,7 +633,16 @@ boundary는 HTTP 라이브러리가 만들게 한다. `Content-Type` 헤더는 �
 
 호환용 base64 form도 유지한다. 파일 bytes를 URL-safe base64 `cpr_b64_data`/선택 `aed_b64_data`로 만들고, `condition`·선택 `vp_event_list`의 JSON 문자열과 함께 **form URL 인코딩 → 전체 percent 인코딩 → 전체 URL-safe base64 인코딩**한다. 이 최종 문자열을 `application/x-www-form-urlencoded`로 보낸다. 일반 form body·일반 JSON·Swagger의 자동 form 생성과 다르다. 새 앱은 multipart를 사용한다. 기존 파서의 추가 호환 입력이 필요한 경우 [상세 계산 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)을 확인한다.
 
-측정 시작에 첫 압박 전 기준선 패킷을 포함한다. 서버는 그 뒤 카운터 변화부터 압박을 센다. 호흡 종료는 최고값 대비 성인·소아 10mL, 영아 5mL 이상 감소가 두 연속 패킷에서 확인돼야 한다. 영아 5mL는 잠정이며 실물 확인이 남아 있다. 종료 확인 패킷까지 기록하고 미확정 마지막 호흡을 앱이 임의 추가하지 않는다. 같은 패킷의 압박·호흡은 각각 처리한다.
+측정 시작에 첫 압박 전 기준선 패킷을 포함한다. 서버는 그 뒤 카운터 변화부터 압박을 센다. 호흡 종료는 최고값 대비 성인·소아 10mL, 영아 5mL 이상 감소가 두 연속 패킷에서 확인돼야 한다. 영아 5mL는 잠정이며 실물 확인이 남아 있다. 미확정 마지막 호흡을 앱이 임의 추가하지 않는다. 같은 패킷의 압박·호흡은 각각 처리한다.
+
+**파일 끝에서 끊긴 마지막 호흡(D138, 2026-09-30).** 앱은 목표 횟수의 호흡을 스스로 검출한 순간(CPR 사이클 한도, 호흡 Only 8회) 자동 종료하고 종료 신호 뒤에는 아무것도 기록하지 않는다. 그래서 자동 종료된 기록은 마지막 호흡이 최고값 직후 또는 그 이전에 끊긴 채 끝나는 것이 정상 형태이며, 끊긴 지점이 최고점 이전인지 서버는 알 수 없다. 현재 어댑터(`arc-internal-detection-v5`)는 파일이 끝날 때 아직 확정되지 않은 호흡 후보가 남아 있으면 다음 중 하나일 때 그 호흡을 1회로 센다.
+
+- **① 하강이 1패킷이라도 기록된 경우:** 최고값보다 감소 기준(성인·소아 10mL, 영아 5mL) 이상 낮은 패킷이 1개 이상 있다.
+- **② 하강 패킷이 하나도 없는 경우:** 상승 중·최고점·평탄 구간에서 끊겼어도, 그때까지의 최고 호흡량이 그 호흡이 시작되기 직전 패킷의 호흡량(기준선, 파일 첫 패킷이면 0)보다 같은 감소 기준 이상 높다. 이때 끊긴 지점까지의 최고값을 그 호흡의 최고점으로 쓴다(호흡량 점수·차트도 그 값 기준).
+- 기준선보다 감소 기준 미만으로만 오른 신호, 이미 두 패킷으로 확정된 호흡(중복 없음), 확정 직후 다시 올라가지 않은 잔여 호흡량은 세지 않는다. 파일 길이로 호흡을 추정하지 않는다.
+- **앱 기록 권고:** 종료 신호 뒤에도 호흡량이 0으로 돌아올 때까지, 또는 최소 2패킷을 더 기록한 뒤 파일을 닫는다. 그러면 마지막 호흡이 실제 최고값과 함께 두 패킷으로 확정되어 호흡량·호흡 시간이 끊긴 지점이 아니라 실제 값으로 계산된다. 기록하지 않아도 위 ①·②로 횟수는 인정된다.
+- 이전 어댑터(`arc-internal-detection-v4`, `arc-internal-detection-pending-v3`)의 정의로 시작해 아직 진행 중인 시도는 원래 규칙(두 패킷)으로 끝난다. 저장된 과거 결과는 다시 계산하지 않는다.
+- 이 변경으로 Dummy Dev 15개 과정의 `definitionHash`가 바뀐다. 서버는 세션 갱신(`POST /api/v2/sessions/refresh/`)이나 새 로그인 때 새 정의를 읽으므로, 그 전에 받은 `definitionHash`로 시작하면 `409 DEFINITION_CHANGED`가 될 수 있다. 과정 상세를 다시 조회해 새 값으로 시작한다. 갱신 전의 세션이 이전 정의로 시작한 시도는 이전 규칙으로 계산된다.
 
 시험 호출 예시다. `VCC_API_BASE`는 팀에서 받은 서버 주소이며, 인증 헤더 파일과 실제 바이너리는 저장소 밖의 접근 제한된 위치에 둔다. 토큰을 명령 인자에 직접 적지 않는다.
 
@@ -734,10 +743,17 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 | `goal.required` | 1 이상 integer |
 | `goal.observed` | 0 이상 integer 또는 null |
 | `goal.met` | boolean 또는 null |
-| `goal.status` | 현재 어댑터(`arc-internal-detection-v4`)의 결과는 항상 `evaluated`. 이전 어댑터로 시작한 CPR 계열 시도는 `pending_policy`일 수 있고 과거 결과는 키 생략 가능 |
+| `goal.status` | 현재 어댑터(`arc-internal-detection-v5`)와 이전 `arc-internal-detection-v4`의 결과는 항상 `evaluated`. 더 이전 어댑터로 시작한 CPR 계열 시도는 `pending_policy`일 수 있고 과거 결과는 키 생략 가능 |
 | `score.decision` | `pass` 또는 `fail` |
 | `program_completed` | boolean |
-| `reason_codes` | `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `SCORE_NOT_PASS` 중 해당 값의 string[] |
+| `reason_codes` | 아래 네 값 중 해당 값의 string[]. 순서는 목표 사유 → `MINIMUM_QUANTITY_NOT_MET` → `SCORE_NOT_PASS`로 고정 |
+
+| `reason_codes` 값 | 의미 |
+|---|---|
+| `GOAL_POLICY_UNRESOLVED` | 목표 정책 대기(이전 pending 어댑터로 시작한 CPR 시도만). 완료 아님 |
+| `GOAL_NOT_MET` | 목표 횟수·사이클 미달(`goal.met=false`) |
+| `MINIMUM_QUANTITY_NOT_MET` | ARC CPR 최소 수행량 미달(D139): ARC2020/ARC2025의 CPR 계열에서 성인·소아 압박 90회·호흡 6회, 영아 압박 45회·호흡 6회 중 하나라도 못 채움. **표시된 총점이 80 이상이어도 `score.decision=fail`이다.** 현재 어댑터(`arc-internal-detection-v5`) 결과에만 나온다 |
+| `SCORE_NOT_PASS` | 점수 자체가 기존 tester 합격 기준에 못 미침. 최소량 때문에만 불합격이면 이 값은 없다 |
 
 `ProgressApplication`은 `applied:boolean`, `applied_epoch:빈 문자열이 아닌 string 또는 null`, `reason:아래 고정 enum`의 세 키가 필수다. epoch는 앱이 증가시키거나 새로 만드는 값이 아니다.
 
@@ -752,9 +768,20 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 }
 ```
 
-Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료한다. CPR 계열(CPR·2인 CPR·2인 CPR+AED)도 D136에 따라 판정한다: `observed`는 계산기가 CPR 사이클로 분류한 사이클 수(압박 뒤 호흡이 이어져 닫힌 사이클; 마지막 미완 묶음·호흡 전용·압박 전용 묶음 제외, 2인 과정의 가상 파트너 사이클 포함), `required`는 CPR 3·2인 CPR 8·2인 CPR+AED 10이며 `met=observed>=required`, 완료는 `met` AND 점수 합격이다. 사이클 안의 압박·호흡 개수와 AED 동작은 완료가 아니라 점수로만 반영된다. 이전 어댑터(`arc-internal-detection-pending-v3`)로 시작해 아직 진행 중인 CPR 시도만 원래 정의대로 `goal.status=pending_policy`, `observed=null`, `met=null`, `program_completed=false`로 끝난다. `reason_codes`는 `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `SCORE_NOT_PASS`의 해당 항목을 포함한다. 과거 어댑터로 저장한 결과는 `goal.status`가 없을 수 있다. 완료 미정·불합격도 계산이 정상이라면 `200`이다.
+최소 수행량 미달 예시(ARC CPR, 압박 61·호흡 6, 표시 총점 83 — 사이클 목표는 충족했지만 합격이 아니다):
 
-계산 점수는 number 또는 null이며 소수 정밀도를 유지한다. total·part·cycle에서 키 존재 여부가 다를 수 있다. null, 누락, 0, 빈 객체를 같은 값으로 바꾸지 않는다. ARC CPR 최소량(성인·소아 압박90/호흡6, 영아 압박45/호흡6)은 점수 null 처리와 관계되며 이것만으로 완료·Pass를 판단하지 않는다. `certification.Target`의 `baby`를 업로드 `condition.target=infant`와 혼동하지 않는다. 이 필드는 ARC 공식 수료증 발급을 의미하지 않는다. 아래 계산 자료형 표와 전체 성공 응답 예시에 값의 모양을 정의했다.
+```json
+{
+  "goal": {"kind":"cycles","required":3,"observed":3,"met":true,"status":"evaluated"},
+  "score": {"decision":"fail"},
+  "program_completed": false,
+  "reason_codes": ["MINIMUM_QUANTITY_NOT_MET"]
+}
+```
+
+Only는 실제 목표 횟수와 기존 tester Pass를 모두 충족해야 완료한다. CPR 계열(CPR·2인 CPR·2인 CPR+AED)도 D136에 따라 판정한다: `observed`는 계산기가 CPR 사이클로 분류한 사이클 수(압박 뒤 호흡이 이어져 닫힌 사이클; 마지막 미완 묶음·호흡 전용·압박 전용 묶음 제외, 2인 과정의 가상 파트너 사이클 포함), `required`는 CPR 3·2인 CPR 8·2인 CPR+AED 10이며 `met=observed>=required`, 완료는 `met` AND 점수 합격이다. 사이클 안의 압박·호흡 개수와 AED 동작은 완료가 아니라 점수로만 반영된다. 이전 어댑터(`arc-internal-detection-pending-v3`)로 시작해 아직 진행 중인 CPR 시도만 원래 정의대로 `goal.status=pending_policy`, `observed=null`, `met=null`, `program_completed=false`로 끝난다. 직전 어댑터(`arc-internal-detection-v4`)로 시작해 아직 진행 중인 시도는 같은 사이클 규칙으로 판정하되 계산은 원래 규칙(파일 끝 호흡 두 패킷 확정, ARC 최소량 미달 null)으로 끝난다(D138·D139). `reason_codes`는 `GOAL_POLICY_UNRESOLVED`, `GOAL_NOT_MET`, `MINIMUM_QUANTITY_NOT_MET`, `SCORE_NOT_PASS`의 해당 항목을 위 순서로 포함한다. `score.decision=pass`이면 `MINIMUM_QUANTITY_NOT_MET`와 `SCORE_NOT_PASS`는 둘 다 없다. 과거 어댑터로 저장한 결과는 `goal.status`가 없을 수 있다. 완료 미정·불합격도 계산이 정상이라면 `200`이다.
+
+계산 점수는 number 또는 null이며 소수 정밀도를 유지한다. total·part·cycle에서 키 존재 여부가 다를 수 있다. null, 누락, 0, 빈 객체를 같은 값으로 바꾸지 않는다. **ARC CPR 최소 수행량(D139, 2026-09-30): 점수는 표시하고, 합격은 인정하지 않는다.** 현재 어댑터(`arc-internal-detection-v5`)의 새 계산은 ARC2020/ARC2025 CPR에서 압박·호흡 횟수가 최소량(성인·소아 압박90/호흡6, 영아 압박45/호흡6)에 못 미쳐도 압박·호흡 그룹 점수와 총점을 다른 가이드라인과 같은 방식으로 계산해 number로 돌려준다(이전처럼 null로 만들지 않는다). 그러나 최소량은 합격 조건으로 남아 있다: 압박·호흡 중 하나라도 최소량 미만이면 총점이 80 이상이어도 `evaluation.score.decision="fail"`, `program_completed=false`이고 `reason_codes`에 `MINIMUM_QUANTITY_NOT_MET`가 들어가며 항목의 `isPassed`는 false다. 앱은 점수를 그대로 보여 주되 이 코드가 있으면 "수행량(압박·호흡 횟수)이 부족해 합격으로 인정되지 않았다"는 안내를 표시하고, 합격·완료 여부를 총점으로 직접 판단하지 않는다(정본은 `score.decision`·`program_completed`). 최소량은 CPR·2인 CPR·2인 CPR+AED에 같게 적용하고 압박 Only·호흡 Only에는 적용하지 않는다. `arc-internal-detection-v4`·`arc-internal-detection-pending-v3`의 정의로 시작해 아직 진행 중인 시도와 이미 저장된 과거 결과에는 이전 정책의 null이 남아 있을 수 있고 이 코드가 없으므로 앱은 null 처리를 계속 유지한다. 압박 Only·호흡 Only의 비대상 그룹 null(예: 호흡 Only의 압박 점수)은 이 규칙과 무관하게 그대로다. `certification.Target`의 `baby`를 업로드 `condition.target=infant`와 혼동하지 않는다. 이 필드는 ARC 공식 수료증 발급을 의미하지 않는다. 아래 계산 자료형 표와 전체 성공 응답 예시에 값의 모양을 정의했다.
 
 `progressApplication.reason`은 `APPLIED`, `PROGRESS_RESET`, `GOAL_POLICY_UNRESOLVED`, `ALREADY_COMPLETED`, `REQUIREMENTS_NOT_MET`, `PROGRESS_RECONCILIATION_REQUIRED`다. `APPLIED`일 때만 `applied=true`와 해당 epoch가 있고, 나머지는 false/null이다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나다(D117). 이미 완료한 항목을 다시 수행해 기준에 못 미쳐도 `ALREADY_COMPLETED`다. 평가가 교체되어 현재 과정에 반영을 보류하면 초기화 전 결과가 아닌 한 `PROGRESS_RECONCILIATION_REQUIRED`다. 이때도 원래 결과·합격 근거는 보존된다. 앱이 새 평가 합격을 복제하지 않는다.
 

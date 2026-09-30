@@ -160,7 +160,8 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
     from local_server.execution import LocalJobRunner
     from local_server.lease import LocalLeaseGuardFactory
     from mock_journey.contracts import (
-        CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+        CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+        RETAINED_PENDING_GOAL_ADAPTER_VERSION,
     )
     from mock_journey.cycle_goal import closed_cycle_count
     from mock_journey.internal_calculator import InternalCalculator
@@ -183,19 +184,25 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
         assert api_settings.state is worker_settings.state and api_settings.storage is worker_settings.storage
         assert worker_settings.storage.stage == runtime.STORAGE_STAGE
         # ... and accepted only internal calculators of the storage stage: the
-        # current adapter bound to the D136 closed-cycle resolver, the retained
-        # pending adapters without one (their cycles goal stays pending).
+        # current adapter and the retained v4 (D138) bound to the D136
+        # closed-cycle resolver, the retained pending adapters without one
+        # (their cycles goal stays pending).
         registered = worker.adapters._registered
         assert set(registered) == {(CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
+                                   (CYCLE_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (RETAINED_PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION)}
         for (version, projection), adapter in registered.items():
             assert type(adapter) is InternalCalculator and adapter.version == version
             assert adapter.stage == worker.storage.stage == runtime.STORAGE_STAGE
-            if version == CURRENT_ADAPTER_VERSION:
+            if version in (CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION):
                 assert adapter.cycle_goal_resolver is closed_cycle_count and adapter.allow_pending_cycle_goal is False
             else:
                 assert adapter.cycle_goal_resolver is None and adapter.allow_pending_cycle_goal is True
+            # D138/D139: only the current adapter runs with the current options.
+            assert (adapter.calculation_options.eof_single_confirmation,
+                    adapter.calculation_options.minimum_quantity_null) == (
+                (True, False) if version == CURRENT_ADAPTER_VERSION else (False, True))
             assert worker.adapters.resolve(version, projection) is adapter
         for version, projection in runtime.execution_catalog().required_bindings:
             assert worker.adapters.resolve(version, projection) is registered[(version, projection)]
@@ -210,7 +217,8 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
 
 def test_all_fifteen_definitions_use_real_enums_and_the_cycle_goal_profile():
     from mock_journey.catalog import PROGRAMS, TARGETS, Catalog
-    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION
+    from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
+    assert (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION) == ("arc-internal-detection-v5", "tester-goal-cycles-v2")
     from mock_journey import typed
     execution = runtime.execution_catalog()
     assert len(PROGRAMS) * len(TARGETS) == 15
@@ -226,7 +234,7 @@ def test_all_fifteen_definitions_use_real_enums_and_the_cycle_goal_profile():
                 "is_2rescuers": program in ("mock-two-rescuer-cpr", "mock-two-rescuer-aed"),
             }
             assert value["calculation_profile"] == {}
-            assert value["profile_version"] == CYCLE_GOAL_PROFILE_VERSION
+            assert value["profile_version"] == CURRENT_PROFILE_VERSION
             assert value["adapter_version"] == CURRENT_ADAPTER_VERSION
             definition = typed.parse_json(Catalog(execution).definition(program, target))
             assert definition["goal"] == {"kind": kind, "required": amount}

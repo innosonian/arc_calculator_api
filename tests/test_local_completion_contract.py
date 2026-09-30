@@ -44,14 +44,14 @@ PROJECTION = "local-contract-test-projection-v1"
 
 
 def _versions(pending):
-    """(adapter, profile): the current cycle-goal adapter (D136) or the retained pending-v3 adapter."""
+    """(adapter, profile): the current adapter (D136 cycle rule, D138/D139 options) or the retained pending-v3 adapter."""
     from mock_journey.contracts import (
-        CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+        CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
         PENDING_GOAL_PROFILE_VERSION,
     )
     if pending:
         return PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION
-    return CURRENT_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION
+    return CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
 
 
 def _definition(program, target, *, pending=False):
@@ -249,8 +249,17 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
     assert (status_data["attemptId"], status_data["state"]) == (case.binding["attempt_id"], "evaluated")
     assert status_data["condition"] == case.definition["condition"]
     assert "evaluation" not in status_data and "calculation" not in status_data
-    passed = bool(_is_pass(world.final, None, None, None, target))
+    score_passed = bool(_is_pass(world.final, None, None, None, target))
+    # D139: a CPR program also needs the ARC minimum quantity (adult/child 90, infant 45
+    # compressions; 6 ventilations) to pass. cpr_1.bin holds 48 compressions and 2 ventilations,
+    # so every CPR definition here fails by the minimum whatever its displayed score is.
+    counts = world.final["action_count"]
+    minimum_met = program[2] != "cycles" or (counts["comp"] >= (45 if target == "infant" else 90)
+                                             and counts["vent"] >= 6)
+    passed = score_passed and minimum_met
     assert world.evaluation["score"]["decision"] == ("pass" if passed else "fail")
+    assert ("MINIMUM_QUANTITY_NOT_MET" in world.evaluation["reason_codes"]) is (not minimum_met)
+    assert ("SCORE_NOT_PASS" in world.evaluation["reason_codes"]) is (not score_passed)
     # D136: every goal kind is evaluated by the current adapter; a cycles goal
     # counts the calculator's closed ``cpr`` cycles (cpr_1.bin holds one).
     goal = world.evaluation["goal"]
@@ -260,7 +269,8 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
     assert world.evaluation["program_completed"] is (goal["met"] and passed)
     if program[2] == "cycles":
         assert goal["observed"] == 1 and goal["met"] is False
-        assert world.evaluation["reason_codes"][0] == "GOAL_NOT_MET"
+        assert world.evaluation["reason_codes"][:2] == ["GOAL_NOT_MET", "MINIMUM_QUANTITY_NOT_MET"]
+        assert counts == {"comp": 48, "vent": 2} and minimum_met is False
     retried = _request(world, case, retry=True)
     assert (retried["statusCode"], retried["body"]) == (response["statusCode"], response["body"])
     conflict = _request(world, case, retry=True, changed=True)

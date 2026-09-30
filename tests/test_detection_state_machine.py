@@ -42,9 +42,10 @@ def packets(volumes, counts=None, depths=None):
     ]
 
 
-def vents(stream, target="adult"):
-    return [event for event in PacketActionDetector(config(target)).detect(stream)
-            if event.action_type == ACTION_TYPE_VENT]
+def vents(stream, target="adult", eof_single_confirmation=True):
+    # eof_single_confirmation=False is the retained adapters' D42 rule (v4 / pending-v3).
+    detector = PacketActionDetector(config(target), eof_single_confirmation=eof_single_confirmation)
+    return [event for event in detector.detect(stream) if event.action_type == ACTION_TYPE_VENT]
 
 
 @pytest.mark.parametrize("volumes", [
@@ -61,16 +62,29 @@ def test_user_confirmed_two_packet_examples(volumes, target):
 @pytest.mark.parametrize("offset,expected", [(-1, 0), (0, 1), (1, 1)])
 def test_drop_threshold_boundaries_in_scaled_ml(target, drop, offset, expected):
     lower = 30 - drop - offset
-    assert len(vents(packets([30, lower, lower]), target)) == expected
+    # The D39 two-packet confirmation itself (retained D42 option: the end of the file adds nothing).
+    assert len(vents(packets([30, lower, lower]), target, eof_single_confirmation=False)) == expected
+    # D138 (b): the same three-packet stream ends with the candidate still open when the drop
+    # was one unit short; it rose 30 above its baseline, so the current rule recognizes it once.
+    assert len(vents(packets([30, lower, lower]), target)) == 1
+    # Followed by more packets at the same level the confirmation boundary is the only question again.
+    assert len(vents(packets([30, lower, lower, 0, 0, 0]), target)) == 1
 
 
+@pytest.mark.parametrize("eof_single_confirmation", [False, True])
 @pytest.mark.parametrize("volumes,index", [
     ([100, 90, 95, 90], None),
     ([100, 90, 95, 90, 90], 4),
     ([100, 90, 110, 100, 100], 4),
 ])
-def test_confirmation_reset_and_peak_replacement(volumes, index):
-    events = vents(packets(volumes))
+def test_confirmation_reset_and_peak_replacement(volumes, index, eof_single_confirmation):
+    events = vents(packets(volumes), eof_single_confirmation=eof_single_confirmation)
+    if index is None and eof_single_confirmation:
+        # D138 (a): the reset candidate ends the file one observed low packet after
+        # its peak; the retained D42 option leaves it unrecognized.
+        assert [(e.packet_index, e.evidence_start, e.evidence_stop, e.peak_volume, e.peak_index,
+                 e.first_confirmation_index) for e in events] == [(3, 0, 4, 100, 0, 3)]
+        return
     assert [event.packet_index for event in events] == ([] if index is None else [index])
     if len(volumes) == 5 and volumes[2] == 110:
         assert events[0].peak_volume == 110
@@ -123,7 +137,25 @@ def test_depth_onset_during_confirmation_does_not_cancel_candidate():
 
 @pytest.mark.parametrize("volumes", [[100], [100] * 30, [100, 90], [100, 90] + [95] * 30])
 def test_eof_never_infers_missing_confirmation(volumes):
-    assert vents(packets(volumes)) == []
+    # Retained D42 option (v4 / pending-v3): unchanged.
+    assert vents(packets(volumes), eof_single_confirmation=False) == []
+
+
+@pytest.mark.parametrize("volumes,expected", [
+    # (a) one observed low packet ends the file
+    ([100, 90], [(1, 0, 2, 100, 0, 1)]),
+    # (b) no descent packet: the highest recorded volume is taken as the peak, once,
+    # whatever the length of the plateau (length is never the evidence; the rise is).
+    ([100], [(0, 0, 1, 100, 0, None)]),
+    ([100] * 30, [(29, 0, 30, 100, 0, None)]),
+    ([100, 90] + [95] * 30, [(31, 0, 32, 100, 0, None)]),   # a recovery reset the confirmation
+    ([0, 250, 380, 440, 480], [(4, 1, 5, 480, 4, None)]),   # still rising when cut
+    # A rise below the drop threshold above the baseline is not a breath.
+    ([9], []), ([0, 5, 9], []), ([9] * 30, []),
+])
+def test_eof_recognizes_an_open_candidate_by_its_descent_or_its_rise(volumes, expected):
+    assert [(e.packet_index, e.evidence_start, e.evidence_stop, e.peak_volume, e.peak_index,
+             e.first_confirmation_index) for e in vents(packets(volumes))] == expected
 
 
 def test_confirmed_long_tail_is_not_counted_again_at_eof():
@@ -138,7 +170,13 @@ def test_first_counter_is_baseline_and_reset_wrap_jump_are_observed_once():
 
 
 def test_packet_representative_is_max_not_min():
-    assert vents(packets([(100, 1), (100, 0), (100, 0)])) == []
+    # Retained D42 option: the representative (max) stays 100, so nothing confirms.
+    assert vents(packets([(100, 1), (100, 0), (100, 0)]), eof_single_confirmation=False) == []
+    assert len(vents(packets([(1, 100), (90, 0), (0, 90)]), eof_single_confirmation=False)) == 1
+    # Current rule: the same plateau is an open candidate at the end of the file (D138 b);
+    # it is one breath with the representative maximum as its peak, not the minimum.
+    assert [(e.packet_index, e.peak_volume, e.first_confirmation_index)
+            for e in vents(packets([(100, 1), (100, 0), (100, 0)]))] == [(2, 100, None)]
     assert len(vents(packets([(1, 100), (90, 0), (0, 90)]))) == 1
 
 
