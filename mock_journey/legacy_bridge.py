@@ -36,12 +36,14 @@ def parse_measurement(event):
             body = parse_body(event.get("body") or "")
         _validate_request(body)
         _validate_legacy_document(body)
-        # This existing parser guard used to fail synchronously as HTTP 400.
-        # Check the same rule before durable acceptance, without decoding the
-        # measurements twice or tightening the legacy trailing-byte policy.
-        from data_handlers.data_parser import DataParser
-        if not DataParser()._validate_data_length(body["cpr_b64_data"]):
-            raise MeasurementInputError()
+        # Validate raw framing before durable acceptance without constructing packets.
+        from data_handlers.data_parser import DataParser, RawInputRejected
+        try:
+            DataParser().validate_cpr_bytes(body["cpr_b64_data"])
+        except RawInputRejected as error:
+            if error.status == 413:
+                raise JourneyError("PAYLOAD_TOO_LARGE") from None
+            raise MeasurementInputError() from None
         return body
     except ClientError:
         raise MeasurementInputError() from None

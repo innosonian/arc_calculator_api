@@ -16,20 +16,16 @@ from mock_journey.typed import canonical_bytes
 #   the first pending-goal adapter. Verify-only: it validates its stored
 #   candidates and never runs a calculation (D25/D136).
 # * arc-internal-detection-pending-v3 (PENDING_GOAL_ADAPTER_VERSION): the
-#   September detection under the pending profile. Retained, but it still
-#   calculates attempts that were started with its definition, finishing a
-#   cycles goal as pending_policy (D136, 3A). It is not verify-only.
+#   September detection under the pending profile. Its stored cycles goals
+#   keep pending_policy (D136, 3A); it is now verify-only.
 # * arc-internal-detection-v4 (CYCLE_GOAL_ADAPTER_VERSION): the first
-#   cycle-goal adapter. A cycles goal is evaluated by the D136 closed cycle
-#   rule (mock_journey.cycle_goal) under the cycles-v1 profile. Retained: it
-#   keeps calculating its own attempts with the D42 end-of-file rule and the
-#   D07/D08 minimum-quantity nulls (D138, D139).
-# * arc-internal-detection-v5 (EOF_VENT_ADAPTER_VERSION): the current adapter.
-#   The D136 cycle rule under the cycles-v2 profile; a ventilation cut at the
-#   end of the file is recognized once its descent was observed (D138). The
-#   ARC minimum quantity (D07) no longer nulls a score group; the scores are
-#   shown and the minimum is a pass condition of the evaluation instead
-#   (D139: decision "fail" with MINIMUM_QUANTITY_NOT_MET).
+#   cycle-goal adapter. Its stored goals use the D136 closed-cycle rule
+#   (mock_journey.cycle_goal) under the cycles-v1 profile. Verify-only:
+#   stored scores retain the D42 and D07/D08 meaning (D138, D139).
+# * arc-internal-detection-v5 (EOF_VENT_ADAPTER_VERSION): the D138 adapter.
+#   Verify-only under the cycles-v2 profile. Stored scores remain visible;
+#   their evaluations enforce the ARC minimum quantity (D07) as a pass
+#   condition (D139: decision "fail" with MINIMUM_QUANTITY_NOT_MET).
 RETAINED_PENDING_GOAL_ADAPTER_VERSION = "arc-local-calculator-pending-v2"
 PENDING_GOAL_ADAPTER_VERSION = "arc-internal-detection-pending-v3"
 PENDING_GOAL_ADAPTER_VERSIONS = frozenset({PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION})
@@ -38,6 +34,9 @@ CYCLE_GOAL_ADAPTER_VERSION = "arc-internal-detection-v4"
 CYCLE_GOAL_PROFILE_VERSION = "tester-goal-cycles-v1"
 EOF_VENT_ADAPTER_VERSION = "arc-internal-detection-v5"
 EOF_VENT_PROFILE_VERSION = "tester-goal-cycles-v2"
+ROUND2_ADAPTER_VERSION = "arc-internal-detection-v6"
+ROUND2_PROFILE_VERSION = "tester-goal-cycles-v3"
+GATE_REASON = "GATE_NOT_PASSED"
 # D139 evaluation reason: a group of the session is below the ARC minimum
 # quantity (D07). Fixed position: goal reason, this code, SCORE_NOT_PASS.
 MINIMUM_QUANTITY_REASON = "MINIMUM_QUANTITY_NOT_MET"
@@ -51,36 +50,29 @@ class AdapterFeatures:
         "evaluated"); compressions/ventilations goals are always "evaluated".
     profile: the profile_version a definition of this adapter must carry.
     candidate_schema: the schema name of the candidates this adapter writes.
-    eof_single_confirmation: the detector's end-of-file ventilation rule
-        (D138 True; False is the D42 two-confirmation rule).
-    minimum_quantity_null: whether the ARC CPR minimum-quantity null policy
-        (D07/D08) applies to the score (D139 False; True is the old policy).
     minimum_quantity_pass_gate: whether the evaluation itself enforces the ARC
         minimum quantity (D07) as a pass condition and reports
         MINIMUM_QUANTITY_NOT_MET (D139 True). False for the older adapters:
         their null policy already keeps such a session from passing, and
         their evaluations keep their stored shape.
-    eof_single_confirmation and minimum_quantity_null are the
-    services.calculation_context.CalculationOptions the adapter's
-    calculations run with.
     """
     goal_status: str
     profile: str
     candidate_schema: str
-    eof_single_confirmation: bool
-    minimum_quantity_null: bool
     minimum_quantity_pass_gate: bool
 
 
 _PENDING_FEATURES = AdapterFeatures("pending_policy", PENDING_GOAL_PROFILE_VERSION,
-                                    "arc-internal-calculation-v2", False, True, False)
+                                    "arc-internal-calculation-v2", False)
 ADAPTER_FEATURES = MappingProxyType({
     RETAINED_PENDING_GOAL_ADAPTER_VERSION: _PENDING_FEATURES,
     PENDING_GOAL_ADAPTER_VERSION: _PENDING_FEATURES,
     CYCLE_GOAL_ADAPTER_VERSION: AdapterFeatures("evaluated", CYCLE_GOAL_PROFILE_VERSION,
-                                                "arc-internal-calculation-v3", False, True, False),
+                                                "arc-internal-calculation-v3", False),
     EOF_VENT_ADAPTER_VERSION: AdapterFeatures("evaluated", EOF_VENT_PROFILE_VERSION,
-                                              "arc-internal-calculation-v4", True, False, True),
+                                              "arc-internal-calculation-v4", True),
+    ROUND2_ADAPTER_VERSION: AdapterFeatures("evaluated", ROUND2_PROFILE_VERSION,
+                                            "arc-internal-calculation-v5", True),
 })
 # Every adapter whose goal carries a status (the versioned goal shape).
 VERSIONED_GOAL_ADAPTER_VERSIONS = frozenset(ADAPTER_FEATURES)
@@ -90,15 +82,15 @@ CYCLE_RULE_ADAPTER_VERSIONS = frozenset(
 # Version registry (S6-10, D127, D136, D138). New execution definitions select
 # the current adapter. The retained tuple is the registration order of the old
 # adapters the Worker must keep addressable for already accepted jobs; the
-# AWS setting must equal it exactly. Retained is not the same as verify-only:
-# only VERIFY_ONLY_ADAPTER_VERSIONS never start a calculation.
+# AWS setting must equal it exactly. All retained adapters validate stored
+# candidates only and never start a calculation.
 # execution_definitions re-exports PROJECTION_VERSION.
 PROJECTION_VERSION = "arc-local-projection-v1"
-CURRENT_ADAPTER_VERSION = EOF_VENT_ADAPTER_VERSION
+CURRENT_ADAPTER_VERSION = ROUND2_ADAPTER_VERSION
 CURRENT_PROFILE_VERSION = ADAPTER_FEATURES[CURRENT_ADAPTER_VERSION].profile
 RETAINED_ADAPTER_VERSIONS = (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-                             CYCLE_GOAL_ADAPTER_VERSION)
-VERIFY_ONLY_ADAPTER_VERSIONS = frozenset({RETAINED_PENDING_GOAL_ADAPTER_VERSION})
+                             CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION)
+VERIFY_ONLY_ADAPTER_VERSIONS = frozenset(RETAINED_ADAPTER_VERSIONS)
 
 # Input/call binding (S6-07): the arc-binding metadata digest of stored input,
 # candidate and final objects is typed.digest over exactly these fields (the
@@ -155,19 +147,13 @@ def expected_profile_version(adapter_version):
 
 
 def calculation_options(adapter_version):
-    """The CalculationOptions an adapter's calculations run with (D138, D139).
-
-    A retained adapter keeps its original semantics (the D42 end-of-file rule
-    and the D07/D08 minimum-quantity nulls) so an attempt started under its
-    definition finishes with its original meaning. A version outside the
-    registry has no stored meaning to preserve and uses the current rules.
-    """
+    """Collect ARC gate evidence only for the current calculation adapter."""
     from services.calculation_context import CalculationOptions
-    features = ADAPTER_FEATURES.get(adapter_version)
-    if features is None:
-        return CalculationOptions()
-    return CalculationOptions(eof_single_confirmation=features.eof_single_confirmation,
-                              minimum_quantity_null=features.minimum_quantity_null)
+    return CalculationOptions(collect_gates=uses_round2_gates(adapter_version))
+
+
+def uses_round2_gates(adapter_version):
+    return adapter_version == ROUND2_ADAPTER_VERSION
 
 
 def gates_pass_on_minimum_quantity(adapter_version):
@@ -176,26 +162,33 @@ def gates_pass_on_minimum_quantity(adapter_version):
     return features is not None and features.minimum_quantity_pass_gate
 
 
-def minimum_quantity_policy(condition, comp_count, vent_count):
-    """The ARC minimum-quantity policy (D07) of a session, from its single source.
+@dataclass(frozen=True)
+class _MinimumQuantityPolicy:
+    active: bool
 
-    calculators.cycle_evaluator.NullPolicy.create holds the thresholds and
-    their scope (ARC2020/ARC2025 CPR; adult/child 90 compressions, infant 45;
-    6 ventilations); nothing is re-derived here. ``active`` means at least one
-    group is below its minimum. Counts are the whole-session action counts
-    (the core result's action_count). A condition the calculator cannot
-    configure is a contract error, never a met minimum.
+
+def minimum_quantity_policy(condition, comp_count, vent_count):
+    """The ARC minimum-quantity pass condition (D07) for the whole session.
+
+    ARC2020/ARC2025 CPR requires 90 adult/child or 45 infant compressions
+    and 6 ventilations. ``active`` means at least one group is below its
+    minimum. A condition the calculator cannot configure is a contract error.
     """
-    from calculators.cycle_evaluator import NullPolicy
     from services.config import Config
     try:
-        return NullPolicy.create(Config(condition).calculation_config, comp_count, vent_count)
+        config = Config(condition).calculation_config
+        if not config.is_cpr() or config.condition.get("guideline") not in ("ARC2020", "ARC2025"):
+            return _MinimumQuantityPolicy(False)
+        minimum_comp_count = 45 if config.is_infant() else 90
+        comp_below_minimum = comp_count < minimum_comp_count
+        vent_below_minimum = vent_count < 6
+        return _MinimumQuantityPolicy(comp_below_minimum or vent_below_minimum)
     except (KeyError, TypeError, ValueError, AttributeError):
         raise JourneyError("CALCULATOR_CONTRACT_MISMATCH") from None
 
 
 def is_retained_adapter(version):
-    """Registered for already accepted jobs (D127). Not the same as verify-only."""
+    """Registered to validate stored candidates of already accepted jobs (D127)."""
     return version in RETAINED_ADAPTER_VERSIONS
 
 
@@ -212,6 +205,8 @@ class VerifiedCalculation:
     chart_kind: str
     chart_reference: object = None
     goal_status: str | None = None
+    gates: list[dict] | None = None
+    learner_counts: dict | None = None
 
     def __post_init__(self):
         if (type(self.core_result) is not dict

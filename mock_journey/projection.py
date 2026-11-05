@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 
+from calculators.gate_evaluator import GATE_RULES
 from mock_journey.errors import JourneyError
 from mock_journey import typed
 
@@ -15,9 +16,17 @@ SCALAR = "scalar"
 CONDITION_FIELDS = ("mode", "target", "training_type", "guideline", "cpr_cycle_type", "is_2rescuers")
 PROFILE_SECTIONS = ("Custom", "Open_Skill", "Usage", "Organization")
 DEFINITION_VERSION_FIELDS = ("profile_version", "adapter_version", "projection_version")
-# The five keys an ExecutionCatalog entry holds; the catalog adds goal and catalog_version.
+# Required execution keys; the catalog adds goal and catalog_version.
 DEFINITION_CORE_KEYS = ("condition", "calculation_profile") + DEFINITION_VERSION_FIELDS
 DEFINITION_KEYS = DEFINITION_CORE_KEYS + ("goal", "catalog_version")
+GATE_IDS = frozenset(GATE_RULES)
+_DEFINITION_SETTINGS = {
+    "minimumQuantity": {"compressions": SCALAR, "ventilations": SCALAR},
+    "courseType": SCALAR,
+    "requiresAed": SCALAR,
+    "assessment": {"passRule": SCALAR, "gates": dict.fromkeys(GATE_IDS, SCALAR)},
+}
+DEFINITION_SETTING_KEYS = tuple(_DEFINITION_SETTINGS)
 _CONDITION = {key: SCALAR for key in CONDITION_FIELDS}
 _VP = {key: SCALAR for key in ("event", "timestamp", "last_timestamp")}
 _CUSTOM = {key: SCALAR for key in ("CertificateAdult", "CertificateChild", "CertificateInfant", "CertificateBaby", "PassThreshold", "PassThresholdChild")}
@@ -50,11 +59,12 @@ DOCUMENT_SCHEMA = _DOCUMENT
 
 
 def definition_core_schema():
-    """Projection schema of a five-key ExecutionCatalog definition (DEFINITION_CORE_KEYS)."""
+    """Projection schema of an ExecutionCatalog definition."""
     return {
         "condition": _CONDITION,
         "calculation_profile": {key: _DOCUMENT[key] for key in PROFILE_SECTIONS},
         **{key: SCALAR for key in DEFINITION_VERSION_FIELDS},
+        **_DEFINITION_SETTINGS,
     }
 
 
@@ -163,6 +173,7 @@ def project_input(body, definition, schema):
             "calculation_profile": {key: document_schema[key] for key in PROFILE_SECTIONS},
             "goal": {"kind": SCALAR, "required": SCALAR},
             **{key: SCALAR for key in ("catalog_version",) + DEFINITION_VERSION_FIELDS},
+            **_DEFINITION_SETTINGS,
         }
         safe_definition = _project(definition, definition_schema)
         payload = {"calculation_input": calculation, "response_context": response,

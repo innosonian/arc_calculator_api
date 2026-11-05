@@ -1,15 +1,9 @@
-# 원본 hstm_v2 data_handlers/chart_data.py (V1 패리티 보존)
-# S3 업로드는 util/uploader(arc prefix) 경유, presigned URL 만료 300초 유지.
-# 검토 반영 2026-09-05: P8 업로드 예외 print 를 JSON 한 줄 구조화 로그(chart_upload_failed)로 교체,
-# 사장된 chart_dataset_log 주석 잔재 제거. 그 외 로직 불변.
-import json
+from typing import TypedDict
 
 from services.operational_logs import write_diagnostic
 from services.calculation_context import CalculationExecutionContext
-from typing import TypedDict
 
-from calculators.waveform import drop_tap_events, segment_compressions
-from config.constants import ACTION_TYPE_COMP, MINIMUM_COMP_DEPTH, PACKET_MS
+from config.constants import ACTION_TYPE_AED, ACTION_TYPE_COMP, PACKET_MS
 from config.enums import Actor
 from util.uploader import create_signed_url, upload_json_file
 
@@ -68,7 +62,7 @@ def make_chart_data(
     start_timestamp = 0.0
     end_timestamp = 0.0
     cpr_data_set = []
-    comp_run = []  # 같은 사이클의 연속 압박 액션 묶음 → 파형 이벤트 단위 바로 변환
+    comp_run = []  # 같은 파트·사이클·actor 구간 안에서 표시 순번을 매긴다.
 
     def flush_comp_run():
         if comp_run:
@@ -76,24 +70,22 @@ def make_chart_data(
             comp_run.clear()
 
     for action in action_list:
+        if action["action_type"] == ACTION_TYPE_AED:
+            continue
         calculated_cycle_key = f'part:{action["part_num"]}_{action.get("cycle_cnt")}'
         if action.get("cycle_cnt") and calculated_cycle_key not in except_cycles:
             continue
 
-        run_key = (comp_run[0]["part_num"], comp_run[0].get("cycle_cnt")) if comp_run else None
-        if run_key is not None and run_key != (action["part_num"], action.get("cycle_cnt")):
-            flush_comp_run()
         if action["action_type"] == ACTION_TYPE_COMP:
+            if comp_run and _comp_run_key(comp_run[0]) != _comp_run_key(action):
+                flush_comp_run()
             comp_run.append(action)
             continue
-        # A simultaneous/intervening breath does not cut a same-cycle pressure
-        # waveform into separate compression runs.
+
+        flush_comp_run()
         cpr_data_set.append(_action_chart_data(action))
 
     flush_comp_run()
-    # Bars and breaths were assembled separately; this only orders chart marks,
-    # never source packets or detection events.
-    cpr_data_set.sort(key=lambda mark: mark["timestamp"])
 
     aed_data_set = [
         {
@@ -124,18 +116,17 @@ def make_chart_data(
     }
 
 
+def _comp_run_key(action: dict) -> tuple:
+    # 분절하지 않고 기존 Chart 순번의 파트·사이클·actor 범위만 유지한다.
+    return (action["part_num"], action.get("cycle_cnt"), action.get("actor"))
+
+
 def _action_chart_data(action: dict) -> ChartData:
     return ChartData(
         action_type=action["action_type"],
         comp_depth_max=max(action["compression_depth"]),
         comp_depth_min=min(action["compression_depth"]),
-        # F-6: compression_count 이중성(파트 포함 액션은 CountMarker가 int로 덮어쓰고,
-        #      AED와 겹쳐 파트 제외된 액션은 패킷별 리스트로 남음)을 여기서 흡수 — 기기 스펙 확인 대기.
-        comp_count=(
-            action["compression_count"]
-            if isinstance(action["compression_count"], int)
-            else action["compression_count"][0]
-        ),
+        comp_count=action.get("compression_count", 0),  # CountMarker가 부여한 사이클 순번
         vent_vol_max=max(action["ventilation_volume"]),
         timestamp=int((action["first_timestamp"] + action["last_timestamp"]) / 2) / 1000,
         part_num=action["part_num"],
@@ -146,52 +137,17 @@ def _action_chart_data(action: dict) -> ChartData:
 
 
 def _compression_event_bars(actions: list[dict]) -> list[ChartData]:
-    # 압박 바를 액션이 아니라 파형 이벤트(실제 압박 1회) 단위로 그린다. 경계 어긋남으로
-    # 잘린 하강 꼬리·마커 윈도우가 가짜 바(예: 15회 압박이 16개로 표시)를 만들지 않는다.
-    packets = []  # (샘플 묶음, 패킷 시각, 출처 액션)
-    for action in actions:
-        depths = action["compression_depth"]
-        for i in range(0, len(depths), 10):
-            source_times = action.get("_source_timestamps")
-            timestamp = source_times[i // 10] if source_times is not None else action["first_timestamp"] + (i // 10) * PACKET_MS
-            packets.append((depths[i : i + 10], timestamp, action))
-    events = segment_compressions([p[0] for p in packets])
-
-    # 신호 있는 액션들의 다수 actor로 가상파트너 여부를 정한다(꼬리·마커 윈도우의 actor 오염 방지).
-    # F-7: 신호 판정 경계(depth > MINIMUM_COMP_DEPTH strict) — 기기 스펙 확인 대기.
-    signal_actors = [a.get("actor") for a in actions if max(a["compression_depth"]) > MINIMUM_COMP_DEPTH]
-    vp = sum(1 for actor in signal_actors if actor == Actor.VIRTUAL_PARTNER)
-    is_virtual = bool(signal_actors) and vp > len(signal_actors) - vp
-
-    # 실사용자 구간은 채점과 동일하게 탭 이벤트를 걸러 바 수 = 채점 압박 수를 유지한다.
-    # VP 구간은 앱이 인위적으로 주입한 재생 데이터라 카운트 신호가 없어 보정하지 않는다.
-    if not is_virtual:
-        counts = []
-        for action in actions:
-            action_counts = action["compression_count"]
-            counts.extend(action_counts if isinstance(action_counts, list) else [action_counts])
-        increments = sum(1 for i in range(1, len(counts)) if counts[i] > counts[i - 1])
-        events = drop_tap_events([p[0] for p in packets], events, increments)
-
-    bars = []
-    for i, event in enumerate(events, start=1):
-        chunk, packet_ts, src = packets[event.peak_packet_index]
-        sample_ms = PACKET_MS // max(len(chunk), 1)
-        bars.append(
-            ChartData(
-                action_type=src["action_type"],
-                comp_depth_max=event.peak_depth,
-                comp_depth_min=event.recoil_depth,
-                comp_count=i,
-                vent_vol_max=0,
-                timestamp=(packet_ts + event.peak_sample_offset * sample_ms) / 1000,
-                part_num=src["part_num"],
-                cycle_num=src.get("cycle_cnt"),
-                aed_overlapped_type=src["overlap_type"],
-                is_virtual_action=is_virtual,
-            )
+    return [
+        ChartData(
+            action_type=action["action_type"], comp_depth_max=action["depth_raw"],
+            comp_depth_min=action["recoil_raw"], comp_count=i, vent_vol_max=0,
+            timestamp=(action["peak_timestamp"] + action["peak_offset"] * (PACKET_MS // 10)) / 1000,
+            part_num=action["part_num"], cycle_num=action.get("cycle_cnt"),
+            aed_overlapped_type=action["overlap_type"],
+            is_virtual_action=action.get("actor") == Actor.VIRTUAL_PARTNER,
         )
-    return bars
+        for i, action in enumerate(actions, start=1)
+    ]
 
 
 def _get_calculated_cycles(cpr_scores: list[dict]) -> dict:

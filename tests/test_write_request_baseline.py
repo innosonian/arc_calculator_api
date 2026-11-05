@@ -45,7 +45,7 @@ H64 = r"[0-9a-f]{64}"
 # ARCHITECTURE §4 row table and the existing USER/SESSION/ATTEMPT/JOB/OUTBOX rows.
 KEY_LAYOUT = [
     (rf"USER#.+", r"STATE"),
-    (rf"SESSION#{UUID}", rf"AUTH|COURSE_CREATE#{UUID}"),
+    (rf"SESSION#{UUID}", rf"AUTH|COURSE_CREATE#{UUID}|PROGRESS_RESET#{UUID}"),
     (rf"ATTEMPT#{UUID}", r"META"),
     (rf"JOB#{UUID}", r"STATE"),
     (rf"OUTBOX#{UUID}", r"DISPATCH"),

@@ -1,11 +1,12 @@
 """Reference certification object and threshold precedence at the HTTP boundary."""
+import base64
 import json
+from pathlib import Path
 
 import pytest
 
 import lambda_handler
 from tests._synth import WEAK_RAMP, comp_session, condition_json, cpr_session, multipart_event
-from tests.calculation_options_support import use_retained_minimum_quantity_null
 
 
 def _post(parts):
@@ -82,10 +83,12 @@ class TestPassingScoreFallback:
 
 
 class TestNullOverallCertification:
-    def test_null_overall_is_fail_even_with_zero_threshold(self, monkeypatch):
-        # 보존 옵션(D07/D08, v4·pending-v3의 진행 중 시도): 성인 CPR 압박<90·호흡<6으로
-        # overall null이면 Target은 N/A. Passing_Score 0을 줘도 계산 불가 결과에 인증 대상을 부여하지 않는다.
-        use_retained_minimum_quantity_null(monkeypatch)
+    def test_stored_null_overall_is_fail_even_with_zero_threshold(self, monkeypatch):
+        # Replay an immutable historical candidate at the response boundary.
+        rows = json.loads((Path(__file__).parent / "fixtures/retained_v2_candidates.json").read_text())["cases"]
+        row = next(row for row in rows if row["id"] == "mock-cpr")
+        core = json.loads(base64.b64decode(row["candidate_base64"]))["core_result"]
+        monkeypatch.setattr(lambda_handler, "run_calculator", lambda *args, **kwargs: core)
         status, body = _post({
             "rawHexBPfile": cpr_session([(30, 2)]),
             "condition": condition_json(training_type="cpr"),
@@ -105,9 +108,9 @@ class TestNullOverallCertification:
         }
         status, body = _post({**parts, "Open_Skill": '{"Passing_Score": "0"}'})
         assert status == 200
-        assert body["cpr_score"]["total_score"]["overall"] == 99
+        assert body["cpr_score"]["total_score"]["overall"] == 100
         assert body["certification"] == {"Target": "adult"}
-        status, body = _post({**parts, "Open_Skill": '{"Passing_Score": "100"}'})
+        status, body = _post({**parts, "Open_Skill": '{"Passing_Score": "101"}'})
         assert status == 200
         assert body["certification"] == {"Target": "N/A"}
 

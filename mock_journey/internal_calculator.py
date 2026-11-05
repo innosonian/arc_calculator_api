@@ -12,6 +12,7 @@ import hashlib
 import re
 import uuid
 
+from calculators.gate_evaluator import evaluate_gates, valid_gate_results
 from mock_journey import typed
 from mock_journey.contracts import (
     PENDING_GOAL_ADAPTER_VERSIONS,
@@ -22,9 +23,9 @@ from mock_journey.contracts import (
     calculation_options,
     expected_goal_status,
     expected_profile_version,
-    is_verify_only_adapter,
     is_versioned_adapter,
     uses_cycle_rule,
+    uses_round2_gates,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.projection import LoadedInput, typed_identity
@@ -36,7 +37,8 @@ _BINDING = frozenset(CALL_BINDING_FIELDS)
 # adapter writes the schema of its contracts.ADAPTER_FEATURES row: the pending
 # adapters arc-internal-calculation-v2, arc-internal-detection-v4 (D136)
 # arc-internal-calculation-v3, arc-internal-detection-v5 (D138)
-# arc-internal-calculation-v4. Stored candidates keep their schema.
+# arc-internal-calculation-v4, and v6 arc-internal-calculation-v5. Stored
+# candidates keep their schema.
 _SCHEMA = "arc-internal-calculation-v1"
 _VERSION = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
 _STEM = legacy_layout.KEY_STEM
@@ -98,21 +100,15 @@ class InternalCalculator:
         self.allow_pending_cycle_goal = allow_pending_cycle_goal
         # A versioned goal carries a status (pending or cycle-goal adapters).
         self.versioned_goal = is_versioned_adapter(version)
+        self.round2 = uses_round2_gates(version)
         features = adapter_features(version)
         self.candidate_schema = _SCHEMA if features is None else features.candidate_schema
-        # D138/D139: the end-of-file ventilation rule and the minimum-quantity
-        # null policy are part of the version's fixed meaning; a retained
-        # adapter keeps calculating with its original options.
+        # Stored candidates retain their versioned schema; only v6 calculates.
         self.calculation_options = calculation_options(version)
 
     @property
     def can_calculate(self):
-        # A verify-only adapter (arc-local-calculator-pending-v2) still
-        # validates its stored candidates, but running the current detector
-        # under its old name would silently change accepted-job meaning. The
-        # retained pending-v3 and v4 adapters keep calculating their own attempts
-        # with their original meaning (D136, D138).
-        return not is_verify_only_adapter(self.version)
+        return uses_round2_gates(self.version)
 
     def _validate_input(self, projected, binding):
         try:
@@ -190,9 +186,14 @@ class InternalCalculator:
         # The concrete context API is shared with the core; no global uploader
         # monkeypatch or environment switch participates in a request.
         from main import run_calculator
+        from data_handlers.data_parser import DataParser, RawInputRejected
         from services.calculation_context import CalculationExecutionContext, AcceptedRaw, CalculationContextError
 
         projected = loaded.projected
+        try:
+            DataParser().validate_cpr_bytes(projected.cpr_bytes)
+        except RawInputRejected:
+            raise JourneyError("STORED_INPUT_INVALID") from None
         charts, observations = [], []
 
         def chart_publisher(data):
@@ -220,6 +221,8 @@ class InternalCalculator:
             )
         except JourneyError:
             raise
+        except RawInputRejected:
+            raise JourneyError("STORED_INPUT_INVALID") from None
         except CalculationContextError:
             raise _invalid() from None
         except (ValueError, TypeError, KeyError, IndexError, AttributeError, OverflowError, RecursionError):
@@ -241,6 +244,15 @@ class InternalCalculator:
         candidate = {"schema": self.candidate_schema, "binding": deepcopy(binding), "core_result": core,
                      "goal": goal, "counts": counts,
                      "chart": {"data": charts[0], "sha256": hashlib.sha256(chart_bytes).hexdigest()}}
+        if self.round2:
+            try:
+                facts = evidence.gate_evidence
+                for part, outcome in zip(core["aed_score"]["part_scores"], facts["aed_outcomes"], strict=True):
+                    part["outcome"] = outcome
+                candidate["gates"] = evaluate_gates(definition, observed, core["metrics"], evidence)
+                candidate["learner_counts"] = facts["learner_counts"]
+            except (KeyError, TypeError, ValueError):
+                raise _invalid() from None
         raw = typed.json_bytes(candidate)
         self.validate_response(raw, projected, binding)
         return raw
@@ -254,8 +266,11 @@ class InternalCalculator:
             if type(raw) is not bytes:
                 raise _invalid()
             candidate = typed.parse_json(raw)
+            candidate_keys = {"schema", "binding", "core_result", "goal", "counts", "chart"}
+            if self.round2:
+                candidate_keys.update(("gates", "learner_counts"))
             if (type(candidate) is not dict
-                    or set(candidate) != {"schema", "binding", "core_result", "goal", "counts", "chart"}
+                    or set(candidate) != candidate_keys
                     or candidate["schema"] != self.candidate_schema
                     or typed.canonical_bytes(candidate["binding"]) != typed.canonical_bytes(binding)):
                 raise _invalid()
@@ -289,11 +304,20 @@ class InternalCalculator:
             if (uses_cycle_rule(self.version) and goal["kind"] == "cycles"
                     and observed > core["training_stats"]["cycle_count"]):
                 raise _invalid()
+            gates, learner = candidate.get("gates"), candidate.get("learner_counts")
+            if self.round2 and (
+                not valid_gate_results(gates, definition, observed)
+                or type(learner) is not dict or set(learner) != {"comp", "vent"}
+                or any(_count(learner[key]) > counts[key] for key in learner)
+                or any(type(part) is not dict or part.get("outcome") not in ("shock", "no_shock")
+                       for part in core["aed_score"]["part_scores"])
+            ):
+                raise _invalid()
             checksum = hashlib.sha256(typed.json_bytes(chart["data"])).hexdigest()
             if type(chart["sha256"]) is not str or chart["sha256"] != checksum:
                 raise _invalid()
             return VerifiedCalculation(core, goal["kind"], observed, "snapshot",
-                                       {**chart, "binding": deepcopy(binding)}, goal_status)
+                                       {**chart, "binding": deepcopy(binding)}, goal_status, gates, learner)
         except JourneyError:
             raise
         except (ValueError, TypeError, KeyError, AttributeError, RecursionError, UnicodeError, OverflowError):

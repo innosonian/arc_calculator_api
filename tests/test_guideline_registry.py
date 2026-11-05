@@ -1,6 +1,6 @@
 """The non-pinned guideline registry agrees with every pinned guideline table.
 
-config/borders.py, config/calculation_config.py, NullPolicy.create and
+config/borders.py, config/calculation_config.py, contracts.minimum_quantity_policy and
 services/guide_prompts.py are hash-pinned (tests/fixtures/detection_revision/
 provenance.json) and keep their own literals. This test is the only link
 between them and config/guideline_registry.py; it never edits them.
@@ -117,11 +117,11 @@ def test_pinned_calculation_config_tables_cover_the_registry_and_apply_the_basis
 @pytest.mark.parametrize("guideline", sorted(EXPECTED_SUPPORTED))
 @pytest.mark.parametrize("target", ["adult", "child", "infant"])
 def test_minimum_count_policy_applies_to_the_arc_family_only(guideline, target):
-    from calculators.cycle_evaluator import NullPolicy
+    from mock_journey.contracts import minimum_quantity_policy
 
     condition = {"mode": "training", "target": target, "training_type": "cpr",
                  "guideline": guideline, "cpr_cycle_type": "302", "is_2rescuers": False}
-    policy = NullPolicy.create(CalculationConfigFactory.create_calculation_config(condition), 0, 0)
+    policy = minimum_quantity_policy(condition, 0, 0)
     assert policy.active is (guideline in ARC_GUIDELINES)
 
 

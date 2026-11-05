@@ -133,11 +133,11 @@ def test_observation_precedes_mutating_serializer_and_is_immutable(monkeypatch):
         with pytest.raises(FrozenInstanceError):
             snapshot.cycles[0].cycle_number = -1
 
-    def serialize(result, **kwargs):
+    def serialize(result, condition, usage, prompt_book):
         assert order == ["observe"]
         order.append("serialize")
         before = asdict(saved[0])
-        response = original_serializer(result, **kwargs)
+        response = original_serializer(result, condition, usage, prompt_book)
         assert asdict(saved[0]) == before
         return response
 

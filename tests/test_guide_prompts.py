@@ -238,3 +238,11 @@ def test_baby_ventilation_volume_korean_unchanged():
         )
         assert "600" not in baby_cpr_vv[key]
         assert "700" not in baby_cpr_vv[key]
+
+
+def test_default_region_uses_us_only_for_the_arc_book():
+    for guideline in ("ARC2020", "ARC2025"):
+        assert load_prompt_book(guideline, None) == load_prompt_book(guideline, "usa")
+        assert load_prompt_book(guideline, None) != load_prompt_book(guideline, "british")
+    for guideline in ("AHA2020", "ERC2020", "STD2015"):
+        assert load_prompt_book(guideline, None) == load_prompt_book(guideline, "british")

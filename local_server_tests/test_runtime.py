@@ -65,7 +65,7 @@ def test_removed_flags_are_argparse_errors_before_isolation_or_any_file_or_port(
 
 def test_ready_banner_names_v2_dummy_courses_cycle_rule_and_disabled_submission():
     text = "\n".join(cli.READY_BANNER)
-    assert "/api/v2" in text and "15 temporary Dummy courses" in text
+    assert "/api/v2" in text and "4 temporary Dummy courses" in text
     assert "CPR completion follows the cycle rule (D136)" in text and "ARC submission remains disabled" in text
     assert "/mock/v1" not in text and "control" not in text.lower()
 
@@ -108,7 +108,7 @@ def _material(tmp_path):
 
 def test_local_api_is_the_dummy_dev_course_application_assembled_like_aws(tmp_path):
     from mock_journey.course_wiring import CourseApplication
-    from mock_journey.dev_course import CATALOG_VERSION, DummyDevCourseProvider
+    from mock_journey.dev_course import DummyDevCourseProvider
     material, options = _material(tmp_path), LocalOptions()
     service, objects, charts = runtime.build_api(_database(), material, options, "127.0.0.1", 8000)
     try:
@@ -116,9 +116,9 @@ def test_local_api_is_the_dummy_dev_course_application_assembled_like_aws(tmp_pa
         # AWS Dev assembly: the provider itself, no DummyLearnerBinding wrapper.
         assert type(service.provider) is DummyDevCourseProvider
         assignments = service.provider.list_assignments(service.provider.learner)
-        assert [binding.public_ids.course_id for binding in assignments] == list(range(910001, 910016))
-        assert service.provider.mapping_document["mapping_version"] == CATALOG_VERSION
-        assert len(service.provider.mapping_document["mappings"]) == 30
+        assert [binding.public_ids.course_id for binding in assignments] == list(range(911001, 911005))
+        assert service.provider.mapping_document["mapping_version"] == "arc-dummy-dev-round2"
+        assert len(service.provider.mapping_document["mappings"]) == 22
         assert service.calculation.payload_limit == options.payload_limit
         assert service.state.table_name == "arc_local_assembly_test"
         assert charts.base_url == "http://127.0.0.1:8000" and objects.ready() is True
@@ -160,7 +160,7 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
     from local_server.execution import LocalJobRunner
     from local_server.lease import LocalLeaseGuardFactory
     from mock_journey.contracts import (
-        CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
+        CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
         RETAINED_PENDING_GOAL_ADAPTER_VERSION,
     )
     from mock_journey.cycle_goal import closed_cycle_count
@@ -184,25 +184,24 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
         assert api_settings.state is worker_settings.state and api_settings.storage is worker_settings.storage
         assert worker_settings.storage.stage == runtime.STORAGE_STAGE
         # ... and accepted only internal calculators of the storage stage: the
-        # current adapter and the retained v4 (D138) bound to the D136
+        # current adapter and retained v4/v5 bound to the D136
         # closed-cycle resolver, the retained pending adapters without one
         # (their cycles goal stays pending).
         registered = worker.adapters._registered
         assert set(registered) == {(CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (CYCLE_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
+                                   (EOF_VENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (RETAINED_PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION)}
         for (version, projection), adapter in registered.items():
             assert type(adapter) is InternalCalculator and adapter.version == version
             assert adapter.stage == worker.storage.stage == runtime.STORAGE_STAGE
-            if version in (CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION):
+            if version in (CURRENT_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION):
                 assert adapter.cycle_goal_resolver is closed_cycle_count and adapter.allow_pending_cycle_goal is False
             else:
                 assert adapter.cycle_goal_resolver is None and adapter.allow_pending_cycle_goal is True
-            # D138/D139: only the current adapter runs with the current options.
-            assert (adapter.calculation_options.eof_single_confirmation,
-                    adapter.calculation_options.minimum_quantity_null) == (
-                (True, False) if version == CURRENT_ADAPTER_VERSION else (False, True))
+            assert adapter.calculation_options.collect_gates is (version == CURRENT_ADAPTER_VERSION)
+            assert adapter.can_calculate is (version == CURRENT_ADAPTER_VERSION)
             assert worker.adapters.resolve(version, projection) is adapter
         for version, projection in runtime.execution_catalog().required_bindings:
             assert worker.adapters.resolve(version, projection) is registered[(version, projection)]
@@ -215,31 +214,31 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
         api_objects.close()
 
 
-def test_all_fifteen_definitions_use_real_enums_and_the_cycle_goal_profile():
-    from mock_journey.catalog import PROGRAMS, TARGETS, Catalog
+def test_all_eighteen_definitions_use_real_enums_and_the_cycle_goal_profile():
+    from mock_journey.catalog import Catalog, program_targets
     from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
-    assert (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION) == ("arc-internal-detection-v5", "tester-goal-cycles-v2")
     from mock_journey import typed
+
     execution = runtime.execution_catalog()
-    assert len(PROGRAMS) * len(TARGETS) == 15
+    assert len(tuple(program_targets())) == 18
     assert execution.required_bindings == ((CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),)
-    for program, _, kind, amount in PROGRAMS:
-        for target in TARGETS:
-            value = execution.get_definition(program, target)
-            condition = value["condition"]
-            assert condition == {
-                "mode": "training", "target": target, "guideline": "ARC2025",
-                "training_type": {"compressions": "compression_only", "ventilations": "ventilation_only"}.get(kind, "cpr"),
-                "cpr_cycle_type": "152" if target == "infant" else "302",
-                "is_2rescuers": program in ("mock-two-rescuer-cpr", "mock-two-rescuer-aed"),
-            }
-            assert value["calculation_profile"] == {}
-            assert value["profile_version"] == CURRENT_PROFILE_VERSION
-            assert value["adapter_version"] == CURRENT_ADAPTER_VERSION
-            definition = typed.parse_json(Catalog(execution).definition(program, target))
-            assert definition["goal"] == {"kind": kind, "required": amount}
-            condition["target"] = "mutated"
-            assert execution.get_definition(program, target)["condition"]["target"] == target
+    for program, target in program_targets():
+        value = execution.get_definition(program.id, target)
+        condition = value["condition"]
+        assert condition == {
+            "mode": "training", "target": target, "guideline": "ARC2025",
+            "training_type": {"compressions": "compression_only", "ventilations": "ventilation_only"}.get(
+                program.kind, "cpr"),
+            "cpr_cycle_type": "152" if target == "infant" and program.two_rescuers else "302",
+            "is_2rescuers": program.two_rescuers,
+        }
+        assert value["calculation_profile"] == {}
+        assert value["profile_version"] == CURRENT_PROFILE_VERSION
+        assert value["adapter_version"] == CURRENT_ADAPTER_VERSION
+        definition = typed.parse_json(Catalog(execution).definition(program.id, target))
+        assert definition["goal"] == {"kind": program.kind, "required": program.required}
+        condition["target"] = "mutated"
+        assert execution.get_definition(program.id, target)["condition"]["target"] == target
 
 
 class _Pipe:
@@ -640,7 +639,7 @@ def test_supervised_http_reports_real_readiness_and_stops_acceptance(tmp_path, m
             assert list(body) == ["service", "mode", "calculator_available", "login_path", "programs_path",
                                   "calculation_transport_configured", "program_target_combinations",
                                   "completion_policy"]
-            assert body["mode"] == "course_v2" and body["program_target_combinations"] == 15
+            assert body["mode"] == "course_v2" and body["program_target_combinations"] == 18
             assert body["login_path"] == "/api/v2/sessions/" and body["programs_path"] == "/api/v2/courses/progress/"
             assert body["completion_policy"] == {"cycles": "evaluated", "compressions": "evaluated",
                                                  "ventilations": "evaluated"}

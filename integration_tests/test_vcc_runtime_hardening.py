@@ -5,7 +5,8 @@ from dataclasses import replace
 
 import pytest
 
-from mock_journey.catalog import definition_keys
+from mock_journey.catalog import TARGETS, definition_key
+from tests.legacy_dummy_catalog import LEGACY_PROGRAMS
 from mock_journey.course_errors import CourseError
 from mock_journey.course_contracts import AssignmentBinding, sealed_bundle
 from mock_journey.course_response import course_detail_data
@@ -47,7 +48,7 @@ def user_row(env):
 def legacy_slots():
     """A stored legacy (pre-D103 v1) slots map: one slot per definition key, some already used."""
     slots = {key: {"completed": False, "completed_by_attempt": None, "completed_at": None, "open_attempts": 0}
-             for key in definition_keys()}
+             for key in (definition_key(program[0], target) for program in LEGACY_PROGRAMS for target in TARGETS)}
     slots["mock-compression-only:adult"].update(completed=True, completed_by_attempt="legacy-attempt",
                                                 completed_at=1_799_999_000)
     slots["mock-cpr:adult"]["open_attempts"] = 1

@@ -23,7 +23,7 @@ from mock_journey.course_settings import (
     FIXTURE_MAX_REPORTS_PER_START, FIXTURE_MAX_TRANSACTION_ACTIONS,
 )
 from mock_journey.execution_definitions import PROJECTION_VERSION, execution_catalog
-from mock_journey.settings import base64_body_bytes
+from mock_journey.settings import SessionSettings, base64_body_bytes
 STORAGE_BUCKET = "arc-local-private"
 STORAGE_DIRECTORY = "calculator_result/interpreted_rtdata/arc"
 STORAGE_STAGE = "local"
@@ -54,9 +54,11 @@ class LocalOptions:
     worker_lease_seconds: int = DEFAULT_WORKER_LEASE_SECONDS
     worker_retry_seconds: int = DEFAULT_WORKER_RETRY_SECONDS
     worker_poll_seconds: float = DEFAULT_WORKER_POLL_SECONDS
+    session: SessionSettings = SessionSettings()
 
     def __post_init__(self):
-        if (any(type(value) is not int or value <= 0 for value in (
+        if (type(self.session) is not SessionSettings
+                or any(type(value) is not int or value <= 0 for value in (
                 self.calculation_body_bytes, self.artifact_bytes, self.storage_quota_bytes,
                 self.worker_lease_seconds, self.worker_retry_seconds))
                 or self.artifact_bytes < self.calculation_body_bytes
@@ -80,7 +82,7 @@ def _settings(database, material, options):
     state = StateSettings(database.table_name, _STATE_CONFLICT_RETRIES)
     storage = StorageSettings(STORAGE_STAGE, STORAGE_BUCKET, STORAGE_DIRECTORY,
                               options.calculation_body_bytes, options.artifact_bytes)
-    return (ApiSettings(state, storage, material.environment, options.payload_limit),
+    return (ApiSettings(state, storage, material.environment, options.payload_limit, session=options.session),
             WorkerSettings(state, storage, options.worker_lease_seconds, options.worker_retry_seconds))
 
 
@@ -129,7 +131,7 @@ def local_course_settings():
 def build_api(database, material, options, host, port):
     """The /api/v2 API role over the Dummy Dev catalog, assembled like AWS Dev.
 
-    Dummy login receives the 15 temporary DummyDevCourseProvider courses. The
+    Dummy login receives the four temporary DummyDevCourseProvider courses. The
     catalog is validated against the local course limits and artifact quota
     before any private file handle is opened. No dummy learner binding.
     """

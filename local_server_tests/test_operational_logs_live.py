@@ -55,7 +55,7 @@ def test_real_api_and_worker_logs_survive_restart_without_exposing_secrets(tmp_p
         require(server.upload(token, attempt).status in (200, 202), "Real measurement must be accepted.")
         original = server.result(token, attempt).stable_body()
         require(server.upload(token, attempt).stable_body() == original, "Logs must not change result replay bytes.")
-        cancelled = server.start_attempt(token, dummy_course("mock-ventilation-only"))
+        cancelled = server.start_attempt(token, dummy_course("bls-ventilations-12"))
         require(server.request("POST", f'/api/v2/attempts/{cancelled["attemptId"]}/cancel/', token=token,
                                body={"reason": "user_cancelled"}).status == 204, "Cancellation must succeed.")
         expected = {"login_failed", "login_succeeded", "calculation_accepted", "calculation_replayed",
@@ -89,6 +89,11 @@ def test_real_api_and_worker_logs_survive_restart_without_exposing_secrets(tmp_p
         after = {r["log_id"]: r for r in read_page(server, limit=500)["records"]}
         require(all(after.get(ident) == row for ident, row in original_records.items()),
                 "Existing DB logs must survive restart unchanged.")
+        reset_request = {"clientRequestId": str(uuid.uuid4())}
+        require(server.request("POST", "/api/v2/dev/progress-reset/", token=token,
+                               body=reset_request).status == 204, "Explicit reset must succeed.")
+        require(server.request("POST", "/api/v2/dev/progress-reset/", token=token,
+                               body=reset_request).status == 204, "Reset replay must succeed.")
         require(server.request("DELETE", "/api/v2/session/", token=token).status == 204, "Logout must succeed.")
         require(server.request("DELETE", "/api/v2/session/", token=token).status == 204, "Logout replay must succeed.")
         # One more fixed-code record after both logouts: the single bounded
@@ -98,7 +103,7 @@ def test_real_api_and_worker_logs_survive_restart_without_exposing_secrets(tmp_p
         rows = wait_for(server, lambda rows: len([r for r in rows if r["event"] == "login_failed"]) == 3,
                         "Operation records after logout did not arrive.")
         require(len([r for r in rows if r["event"] == "progress_reset"]) == 1,
-                "Logout receipt replay must not claim a second progress reset.")
+                "Reset receipt replay and logout must not claim another progress reset.")
         require(marker not in json.dumps(rows), "Credentials must not be stored in operational records.")
         server.assert_private_logs()
     finally:

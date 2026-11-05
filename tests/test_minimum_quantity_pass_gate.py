@@ -14,37 +14,25 @@ The rule (arc-internal-detection-v5 evaluations only):
   definitions are untouched: no gate, no new code (their null policy already
   keeps such a session from passing).
 
-Thresholds below are written out by hand (not read from NullPolicy), so the
-tests do not follow a change of the production predicate. Scores of real
-sessions are the unchanged tester's.
+Thresholds and historical score/count facts below are written out by hand.
+Retained v5 evaluations remain readable; no test executes its retired core.
 """
 
-from copy import deepcopy
 import json
-from pathlib import Path
-import uuid
 
 import pytest
 
-from mock_journey import typed
-from mock_journey.assembly import internal_calculator
-from mock_journey.catalog import PROGRAMS
+from tests.legacy_dummy_catalog import LEGACY_PROGRAMS as PROGRAMS
 from mock_journey.contracts import VerifiedCalculation, expected_profile_version, minimum_quantity_policy
 from mock_journey.errors import JourneyError
 from mock_journey.jobs import DynamoJobRepository
-from mock_journey.projection import LoadedInput, ProjectionSchema, project_input, typed_identity
 from mock_journey.worker import evaluate
-from tests._synth import comp_session, cpr_session
-from tests.calculation_options_support import STEM
-from tests.eof_vent_support import CPR_STOPPED_AT_SIXTH_BREATH, TESTER_RECORDING, VO_STOPPED_AT_EIGHTH_BREATH
 
 
 V5, V4 = "arc-internal-detection-v5", "arc-internal-detection-v4"
 PENDING_V3, PENDING_V2 = "arc-internal-detection-pending-v3", "arc-local-calculator-pending-v2"
 G, M, F = "GOAL_NOT_MET", "MINIMUM_QUANTITY_NOT_MET", "SCORE_NOT_PASS"
-DATASET = Path(__file__).parent / "dataset"
 PROJECTION = "minimum-gate-test-projection-v1"
-RAW_BASE = "calculator_result/interpreted_rtdata/arc/test/_no_org/2023-11-14/" + STEM
 REQUIRED = {row[0]: (row[2], row[3]) for row in PROGRAMS}
 
 
@@ -171,7 +159,7 @@ def test_older_adapters_have_no_gate_and_no_new_code(adapter):
     {"action_count": {"comp": True, "vent": 6}}, {"action_count": {"comp": 90.0, "vent": 6}},
     {"action_count": {"comp": -1, "vent": 6}}, {"action_count": {"comp": "90", "vent": 6}},
 ])
-def test_current_adapter_never_passes_a_result_whose_counts_cannot_be_read(core):
+def test_saved_v5_never_passes_a_result_whose_counts_cannot_be_read(core):
     verified = VerifiedCalculation(core, "cycles", 3, "no_chart", goal_status="evaluated")
     with pytest.raises(JourneyError) as error:
         evaluate({"cpr_score": {"total_score": {"overall": 100}}}, _definition(), verified)
@@ -182,7 +170,7 @@ def test_current_adapter_never_passes_a_result_whose_counts_cannot_be_read(core)
     lambda c: c.pop("guideline"), lambda c: c.pop("target"), lambda c: c.update(target="teen"),
     lambda c: c.update(guideline="ARC1999"),
 ])
-def test_current_adapter_never_passes_under_a_condition_it_cannot_configure(damage):
+def test_saved_v5_never_passes_under_a_condition_it_cannot_configure(damage):
     definition = _definition()
     damage(definition["condition"])
     verified = VerifiedCalculation({"action_count": {"comp": 300, "vent": 20}}, "cycles", 3, "no_chart",
@@ -193,19 +181,21 @@ def test_current_adapter_never_passes_under_a_condition_it_cannot_configure(dama
         assert error.value.code == "CALCULATOR_CONTRACT_MISMATCH"
 
 
-def test_predicate_is_the_score_policys_own_rule():
-    # contracts.minimum_quantity_policy is NullPolicy.create: its scope and thresholds, not a copy.
-    from calculators.cycle_evaluator import NullPolicy
-    from services.config import Config
-    for target, training, guideline, comp, vent in (
-            ("adult", "cpr", "ARC2025", 89, 6), ("adult", "cpr", "ARC2025", 90, 6), ("infant", "cpr", "ARC2020", 44, 6),
-            ("infant", "cpr", "ARC2020", 45, 5), ("adult", "cpr", "AHA2020", 0, 0),
-            ("adult", "compression_only", "ARC2025", 0, 0), ("child", "ventilation_only", "ARC2025", 0, 0)):
-        cond = _condition(target, training, guideline)
-        expected = NullPolicy.create(Config(cond).calculation_config, comp, vent)
-        actual = minimum_quantity_policy(cond, comp, vent)
-        assert (actual.chest_null, actual.vent_null, actual.active) == (expected.chest_null, expected.vent_null,
-                                                                         expected.active)
+@pytest.mark.parametrize("target,training,guideline,comp,vent,active", [
+    ("adult", "cpr", "ARC2025", 89, 6, True),
+    ("adult", "cpr", "ARC2025", 90, 6, False),
+    ("child", "cpr", "ARC2020", 89, 6, True),
+    ("child", "cpr", "ARC2020", 90, 6, False),
+    ("infant", "cpr", "ARC2020", 44, 6, True),
+    ("infant", "cpr", "ARC2020", 45, 5, True),
+    ("infant", "cpr", "ARC2020", 45, 6, False),
+    ("adult", "cpr", "AHA2020", 0, 0, False),
+    ("adult", "compression_only", "ARC2025", 0, 0, False),
+    ("child", "ventilation_only", "ARC2025", 0, 0, False),
+])
+def test_d07_predicate_keeps_historical_scope_and_thresholds(target, training, guideline, comp, vent, active):
+    policy = minimum_quantity_policy(_condition(target, training, guideline), comp, vent)
+    assert policy.active is active
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +222,7 @@ def _refused(value, definition):
 
 
 @pytest.mark.parametrize("observed,goal_reasons", [(3, []), (2, [G])])
-def test_current_adapter_accepts_exactly_three_fail_explanations(observed, goal_reasons):
+def test_saved_v5_accepts_exactly_three_fail_explanations(observed, goal_reasons):
     definition = _definition()
     for tail in ([F], [M], [M, F]):
         value = _stored("fail", goal_reasons + tail, observed=observed)
@@ -288,119 +278,38 @@ def test_older_adapters_refuse_the_minimum_code_and_keep_their_exact_rule(adapte
 
 
 # ---------------------------------------------------------------------------
-# 3. Real calculations through the adapters
+# 3. Historical evaluation facts (no new computation under retained names)
 # ---------------------------------------------------------------------------
 
-def _through_adapter(program, data, *, target="adult", adapter=V5, guideline="ARC2025", aed=b""):
-    kind, required = REQUIRED[program]
-    training = {"compressions": "compression_only", "ventilations": "ventilation_only"}.get(kind, "cpr")
-    definition = _definition(adapter, kind=kind, required=required, target=target, training=training,
-                             guideline=guideline, two_rescuers=program in ("mock-two-rescuer-cpr",
-                                                                           "mock-two-rescuer-aed"))
-    cond = definition["condition"]
-    projected = project_input({"condition": deepcopy(cond), "cpr_b64_data": data, "aed_b64_data": aed,
-                               "vp_event_list": []}, definition, ProjectionSchema(PROJECTION, {}))
-    binding = {"attempt_id": str(uuid.uuid4()), "epoch": str(uuid.uuid4()), "input_digest": typed_identity(projected),
-               "adapter_version": adapter, "projection_version": PROJECTION,
-               "job_id": str(uuid.uuid4()), "call_id": str(uuid.uuid4())}
-    calculator = internal_calculator(adapter, projection=PROJECTION, stage="test")
-    raw = calculator.calculate(LoadedInput(projected, RAW_BASE), binding, lambda: None)
-    verified = calculator.validate_response(raw, projected, binding)
-    assessment = evaluate(verified.core_result, definition, verified)
-    assert _check(assessment, definition) == assessment
-    counts = typed.parse_json(raw)["counts"]
-    total = verified.core_result["cpr_score"]["total_score"]
-    return ((counts["comp"], counts["vent"]), total["overall"], assessment["goal"]["observed"],
-            assessment["score"]["decision"], assessment["program_completed"], assessment["reason_codes"]), total
-
-
-def _recording(number):
-    return (DATASET / f"cpr_{number}.bin").read_bytes()
-
-
-@pytest.mark.parametrize("name,data,expected", [
-    # ((comp, vent), overall shown, observed cycles, decision, completed, reason_codes) -- adult CPR, ARC2025
-    ("tester", TESTER_RECORDING, ((61, 6), 83, 3, "fail", False, [M])),      # compressions short; 83 is shown
-    ("cpr_1", _recording(1), ((48, 2), 70, 1, "fail", False, [G, M, F])),
-    ("cpr_2", _recording(2), ((99, 5), 86, 3, "fail", False, [M])),          # one ventilation short
-    ("cpr_3", _recording(3), ((100, 3), 82, 2, "fail", False, [G, M])),
-    ("cpr_4", _recording(4), ((69, 6), 80, 3, "fail", False, [M])),          # compressions short; exactly 80 shown
-    ("cpr_5", _recording(5), ((36, 4), 66, 4, "fail", False, [M, F])),
-    ("3x(30+2)", cpr_session([(30, 2)] * 3), ((90, 6), 99, 3, "pass", True, [])),
-    ("3x(30+2) cut", CPR_STOPPED_AT_SIXTH_BREATH, ((90, 6), 99, 3, "pass", True, [])),   # the sixth breath by D138
-    ("89/6", cpr_session([(30, 2), (30, 2), (29, 2)]), ((89, 6), 98, 3, "fail", False, [M])),
-    ("90/5", cpr_session([(30, 2), (30, 2), (30, 1)]), ((90, 5), 99, 3, "fail", False, [M])),
-    ("3x(10+1)", cpr_session([(10, 1)] * 3), ((30, 3), 81, 3, "fail", False, [M])),      # scores shown, not a pass
-    ("1x(30+2)", cpr_session([(30, 2)]), ((30, 2), 99, 1, "fail", False, [G, M])),
+@pytest.mark.parametrize("name,saved", [
+    # Existing v5 facts: ((comp, vent), overall, observed, decision, completed, reasons).
+    ("tester", ((61, 6), 83, 3, "fail", False, [M])),
+    ("cpr_1", ((48, 2), 70, 1, "fail", False, [G, M, F])),
+    ("cpr_2", ((99, 5), 86, 3, "fail", False, [M])),
+    ("cpr_3", ((100, 3), 82, 2, "fail", False, [G, M])),
+    ("cpr_4", ((69, 6), 80, 3, "fail", False, [M])),
+    ("cpr_5", ((36, 4), 66, 4, "fail", False, [M, F])),
+    ("3x(30+2)", ((90, 6), 99, 3, "pass", True, [])),
+    ("3x(30+2) cut", ((90, 6), 99, 3, "pass", True, [])),
+    ("89/6", ((89, 6), 98, 3, "fail", False, [M])),
+    ("90/5", ((90, 5), 99, 3, "fail", False, [M])),
+    ("3x(10+1)", ((30, 3), 81, 3, "fail", False, [M])),
+    ("1x(30+2)", ((30, 2), 99, 1, "fail", False, [G, M])),
 ], ids=lambda value: value if type(value) is str else "")
-def test_adult_cpr_sessions_under_the_current_adapter(name, data, expected):
-    outcome, total = _through_adapter("mock-cpr", data)
-    assert outcome == expected
-    # D139 keeps the scores visible: no group is nulled below the minimum.
-    for key in ("score_comp_depth", "score_recoil", "score_hand_position", "score_comp_count",
-                "score_vent_vol", "score_vent_count", "score_vent_rate", "overall"):
-        assert total[key] is not None, (name, key)
-
-
-@pytest.mark.parametrize("cycles,counts,minimum_met", [
-    ([(15, 2)] * 3, (45, 6), True),
-    ([(15, 2), (15, 2), (14, 2)], (44, 6), False),
-    ([(15, 2), (15, 2), (15, 1)], (45, 5), False),
-])
-def test_infant_cpr_boundary_with_real_sessions(cycles, counts, minimum_met):
-    outcome, _ = _through_adapter("mock-cpr", cpr_session(cycles), target="infant")
-    # The synthetic infant session's own score does not pass (unchanged tester); the
-    # minimum code appears exactly on the 44/6 and 45/5 sides and never at 45/6.
-    assert outcome[0] == counts and outcome[3] == "fail"
-    assert (M in outcome[5]) is (not minimum_met)
-    assert outcome[5] == ([] if minimum_met else [M]) + [F]
-
-
-@pytest.mark.parametrize("program,required,per_cycle", [("mock-two-rescuer-cpr", 8, 30),
-                                                       ("mock-two-rescuer-aed", 10, 15)])
-def test_two_rescuer_programs_are_gated_with_real_sessions(program, required, per_cycle):
-    full, _ = _through_adapter(program, cpr_session([(per_cycle, 2)] * required))
-    assert full[0] == (per_cycle * required, 2 * required) and M not in full[5]
-    if per_cycle == 30:
-        assert full[3:] == ("pass", True, [])
-    else:
-        # Ten 15-compression cycles (the counter byte holds at most 255) meet the quantity; the
-        # unchanged tester fails the adult 30:2 compression-count score, which is the only reason.
-        assert full[3:] == ("fail", False, [F])
-    short, _ = _through_adapter(program, TESTER_RECORDING)
-    assert short[0] == (61, 6) and short[3:] == ("fail", False, [G, M])
-    # Enough cycles for the goal but below the minimum: the goal is met, the minimum is not.
-    thin, total = _through_adapter(program, cpr_session([(5, 1)] * required))
-    assert thin[2] == required and thin[3] == "fail" and thin[4] is False and M in thin[5] and G not in thin[5]
-    assert total["overall"] is not None
-
-
-@pytest.mark.parametrize("guideline", ["AHA2020", "ERC2020", "STD2015"])
-def test_other_guidelines_are_not_gated_with_real_sessions(guideline):
-    outcome, _ = _through_adapter("mock-cpr", cpr_session([(10, 1)] * 3), guideline=guideline)
-    assert outcome[0] == (30, 3) and M not in outcome[5]
-    assert outcome[5] == ([] if outcome[3] == "pass" else [F])
-    tester, _ = _through_adapter("mock-cpr", TESTER_RECORDING, guideline=guideline)
-    assert tester[0] == (61, 6) and M not in tester[5]
-
-
-def test_single_skill_programs_are_not_gated_with_real_sessions():
-    compressions, _ = _through_adapter("mock-compression-only", comp_session(60))
-    assert compressions == ((60, 0), 100, 60, "pass", True, [])
-    ventilations, _ = _through_adapter("mock-ventilation-only", VO_STOPPED_AT_EIGHTH_BREATH, target="infant")
-    assert ventilations == ((0, 8), 92, 8, "pass", True, [])
+def test_saved_v5_adult_cpr_evaluations_keep_their_exact_meaning(name, saved):
+    counts, overall, observed, decision, completed, reasons = saved
+    result = _assess(_definition(), *counts, overall=overall, observed=observed)
+    assert _outcome(result) == (decision, completed, reasons), name
 
 
 @pytest.mark.parametrize("adapter", [V4, PENDING_V3])
-def test_retained_adapters_results_are_unchanged_by_the_gate(adapter):
+@pytest.mark.parametrize("counts,overall,observed,decision", [
+    ((61, 5), None, 3, "fail"),
+    ((99, 5), 89, 3, "pass"),
+    ((90, 6), 99, 3, "pass"),
+])
+def test_saved_older_evaluations_do_not_gain_the_v5_minimum_gate(adapter, counts, overall, observed, decision):
     pending = adapter == PENDING_V3
-    goal = ["GOAL_POLICY_UNRESOLVED"] if pending else []
-    # Their null policy decides as before; the minimum code never appears.
-    tester, total = _through_adapter("mock-cpr", TESTER_RECORDING, adapter=adapter)
-    assert tester[0] == (61, 5) and total["overall"] is None and tester[3:] == ("fail", False, goal + [F])
-    # cpr_2 (99 / 5): the ventilation group is null, the chest-only overall 89 passes under v4.
-    cpr_2, total = _through_adapter("mock-cpr", _recording(2), adapter=adapter)
-    assert cpr_2[0] == (99, 5) and total["overall"] == 89 and total["score_vent_vol"] is None
-    assert cpr_2[3:] == ("pass", not pending, goal)
-    full, _ = _through_adapter("mock-cpr", cpr_session([(30, 2)] * 3), adapter=adapter)
-    assert full[0] == (90, 6) and full[3:] == ("pass", not pending, goal)
+    reasons = (["GOAL_POLICY_UNRESOLVED"] if pending else []) + ([F] if decision == "fail" else [])
+    result = _assess(_definition(adapter), *counts, overall=overall, observed=observed)
+    assert _outcome(result) == (decision, decision == "pass" and not pending, reasons)

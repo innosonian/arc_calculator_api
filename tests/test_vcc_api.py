@@ -4,6 +4,8 @@ from copy import deepcopy
 import hashlib
 import json
 
+import pytest
+
 from mock_journey.course_contracts import (
     APP_ROUTES, CourseView, GateView, InventoryView, PAGE_SIZE_MAX, parse_owned,
 )
@@ -127,7 +129,7 @@ class TestContractFixture:
     def test_fixture_version_and_hash_are_v1(self):
         assert WIRE["contract_version"] == "vcc-internal-v1"
         assert CONTRACT_HASH == hashlib.sha256((FIXTURES / "wire_cases.json").read_bytes()).hexdigest()
-        assert len(APP_ROUTES) == 16
+        assert len(APP_ROUTES) == len(WIRE["routes"]) + 2
 
 
 class TestV05Wire:
@@ -401,6 +403,54 @@ class TestV21CalculationView:
         before = world.executed.count("measure")
         world.http.dispatch(event("GET", f"/api/v2/attempts/{ATTEMPT_ID}/calculation/"))
         assert world.executed.count("measure") == before
+
+    @pytest.mark.parametrize("status", ["disabled", "excluded", "pending", "sent", "acknowledged", "failed"])
+    def test_stored_submit_statuses_are_read_without_recalculation(self, status):
+        world = World()
+        submit = submit_arc_data(status=status, exclusion_reasons=("dummy",) if status == "excluded" else ())
+        record = {
+            "attempt_id": ATTEMPT_ID, "state": "evaluated",
+            "calculation": {"preserved": True},
+            "evaluation": {"goal": {"status": "evaluated", "program_completed": True}},
+            "progress_application": {"applied": True}, "submit_arc": submit,
+        }
+        world.calculations[ATTEMPT_ID] = deepcopy(record)
+        response = world.http.dispatch(event("GET", f"/api/v2/attempts/{ATTEMPT_ID}/calculation/"))
+        assert response["statusCode"] == 200
+        data = decode(response)["data"]
+        assert data["calculationStatus"] == "succeeded"
+        assert data["submit_arc"] == submit
+        assert data["submit_arc"]["ok"] is (status == "acknowledged")
+        assert data["calculation"] == record["calculation"]
+        assert data["evaluation"] == record["evaluation"]
+        assert data["progressApplication"] == record["progress_application"]
+        assert world.calculations[ATTEMPT_ID] == record
+        assert world.executed == []
+
+    @pytest.mark.parametrize("status", ["disabled", "excluded", "pending", "sent", "acknowledged", "failed"])
+    @pytest.mark.parametrize("damage", ["opposite", "zero", "one", "null", "string", "list", "object", "missing"])
+    def test_stored_submit_ok_must_be_the_exact_boolean_for_its_status(self, status, damage):
+        world = World()
+        submit = submit_arc_data(status=status, exclusion_reasons=("dummy",) if status == "excluded" else ())
+        if damage == "missing":
+            del submit["ok"]
+        else:
+            submit["ok"] = {
+                "opposite": status != "acknowledged", "zero": 0, "one": 1,
+                "null": None, "string": "false", "list": [], "object": {},
+            }[damage]
+        record = {
+            "attempt_id": ATTEMPT_ID, "state": "evaluated",
+            "calculation": {"preserved": True},
+            "evaluation": {"goal": {"status": "evaluated", "program_completed": True}},
+            "progress_application": {"applied": True}, "submit_arc": submit,
+        }
+        world.calculations[ATTEMPT_ID] = deepcopy(record)
+        response = world.http.dispatch(event("GET", f"/api/v2/attempts/{ATTEMPT_ID}/calculation/"))
+        assert response["statusCode"] == 503
+        assert decode(response)["error"]["code"] == "UPSTREAM_CONTRACT_MISMATCH"
+        assert world.calculations[ATTEMPT_ID] == record
+        assert world.executed == []
 
     def test_measurement_post_uses_raw_event_hook(self):
         world = World()

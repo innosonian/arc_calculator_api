@@ -1,0 +1,17 @@
+{
+  "spec": "DEPTH_V1r3",
+  "amp": 30,
+  "generation_commit": "9a36a9818399bbd17777b036dc938007f60705bf",
+  "boundary_amendment": "2026-10-28: count Record starts next action; action_end is exclusive",
+  "generator": "scripts/generate_depth_boundary_golden.py",
+  "generator_sha256": "9269e199f6c6a3386974d5ac615483f1c70a068507fc3e49e1dac250fc8c611e",
+  "source": {
+    "kind": "synthetic",
+    "oracle": "DEPTH_V1r3 §8 handwritten full-field oracle"
+  },
+  "sha256": {
+    "raw.bin": "74aadb8e3c8191c02ae38694e1c1111527cf95fe254632682990280b5938b901",
+    "input.json": "76455b130bab1f431bd2900ac383cf9728b0ba69b329205b8b4a3bca753866fc",
+    "expected.json": "cb979b234c0326b3e681bff0c1b5725e62694b32ad71544c9bd46cefc930aab7"
+  }
+}

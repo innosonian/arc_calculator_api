@@ -1,0 +1,12 @@
+{
+  "condition": {
+    "mode": "training",
+    "target": "adult",
+    "training_type": "cpr",
+    "guideline": "AHA2020",
+    "cpr_cycle_type": "302",
+    "is_2rescuers": false
+  },
+  "vp_event_list": [],
+  "aed_file": "aed.bin"
+}

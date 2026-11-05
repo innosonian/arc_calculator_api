@@ -1,0 +1,23 @@
+{
+  "spec": "DEPTH_V1r3",
+  "amp": 30,
+  "generation_commit": "9a36a9818399bbd17777b036dc938007f60705bf",
+  "boundary_amendment": "2026-10-28: count Record starts next action; action_end is exclusive",
+  "generator": "scripts/generate_depth_boundary_golden.py",
+  "generator_sha256": "af6f358d33c87e45c874fe3c6ed2fd640745aa5fc674bccf37d66d398ecc9a1d",
+  "source": {
+    "kind": "user-supplied hardware capture",
+    "directory": "depth_boundary_data/real",
+    "source_raw": "training_log_id_19148.bin",
+    "source_aed": "training_log_id_19148_aedt.bin",
+    "count_oracle": "user-supplied README.md, 2026-10-28",
+    "expected_count_at_amp30": 23,
+    "human_chart_count_review": "pending"
+  },
+  "sha256": {
+    "raw.bin": "e37ccc1244cc4be3e0e46612ff4532aa5c6e57b475b2fd4f87e05e82a73c4b55",
+    "input.json": "6c4560837e864f63c019d5bc799e9f3e87343da8da73d49a0f68c551dcfe1d22",
+    "expected.json": "50c62f299d75578a08983e2fc489c988de6943eaa264ad8ae52f4eaa1b1c3c00",
+    "aed.bin": "480339802b5d66b20f04e3d19480c842124e8b1a4f22ff5805cae9dc718af27d"
+  }
+}

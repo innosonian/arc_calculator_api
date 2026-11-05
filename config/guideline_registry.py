@@ -2,7 +2,7 @@
 
 The scoring tables themselves stay in the hash-pinned modules
 (``config/borders.py``, ``config/calculation_config.py``, ``config/score_weight.py``,
-``NullPolicy.create`` and ``services/guide_prompts.py``). Those modules keep their
+``contracts.minimum_quantity_policy`` and ``services/guide_prompts.py``). Those modules keep their
 own literals and are not edited here; ``tests/test_guideline_registry.py`` checks
 that every pinned table agrees with this registry.
 

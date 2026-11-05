@@ -1,5 +1,3 @@
-# [provenance] 원본 hstm_v2 calculators/aed_evaluator.py:1-97 동일 이식 (V1 패리티 보존).
-# 상수·수식·비교연산·반올림 일체 무변경. 주석만 추가(provenance·B-12).
 from config.borders import fall_linear_get_point, BaseBorder
 from config.constants import (
     AED_EVENT_ARRIVED,
@@ -87,8 +85,6 @@ def _evaluate_first_part(aed_part_data: dict, border: BaseBorder) -> dict:
     t2 = pads_on_timestamp - power_on_timestamp
     t3 = shock_timestamp - pads_on_timestamp
 
-    # [B-12 승인: 현행 유지] t1만 음수/과대(>10,000초) 가드하고 t2/t3는 가드하지 않는다.
-    # 이벤트 완전성은 상류 보장으로 간주 (원본 hstm_v2 aed_evaluator.py:88-89, V1 패리티 보존).
     if t1 < 0 or t1 > 10000000:
         t1 = 0
 

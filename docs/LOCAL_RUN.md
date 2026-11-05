@@ -1,6 +1,6 @@
 # 로컬 서버 실행 안내
 
-2026-09-28 기준. 기본 실행은 `/api/v2`이며 AWS Dev와 같은 Dummy Dev 임시 과정 15개를 제공한다. `/mock/v1`과 `/cpr-analysis`는 삭제되어 `404`다(D103, query 없이 요청할 때. `/api/v2/` 밖의 경로에 query가 붙으면 먼저 `400`). 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
+기본 실행은 `/api/v2`이며 AWS Dev와 같은 Round 2 Dummy 과정 4개를 조립한다. `/mock/v1`과 `/cpr-analysis`는 삭제되어 `404`다(D103, query 없이 요청할 때. `/api/v2/` 밖의 경로에 query가 붙으면 먼저 `400`). 서버·DB·계산 worker(대기 작업 실행기)·파일 저장소를 Mac에서 함께 실행한다. AWS 계정이나 ARC 계정은 필요하지 않다.
 
 ## 1. Mac에서 실행
 
@@ -17,18 +17,18 @@ var/local-python/bin/python scripts/serve_local.py
 
 ```text
 ARC local course API ready: http://127.0.0.1:8000
-Available: /api/v2 login, 15 temporary Dummy courses after Dummy login, measured binary calculation, stored results and 300-second charts.
+Available: /api/v2 login, 4 temporary Dummy courses after Dummy login, measured binary calculation, stored results and 300-second charts.
 CPR completion follows the cycle rule (D136); ARC submission remains disabled.
 DynamoDB: loopback only. Ctrl+C stops owned services and preserves local data.
 ```
 
-터미널을 켜 둔 상태에서 `http://127.0.0.1:8000/healthz`를 연다. 정상 상태는 HTTP `200`, `mode: "course_v2"`, `calculator_available: true`, `login_path: "/api/v2/sessions/"`, `programs_path: "/api/v2/courses/progress/"`, `program_target_combinations: 15`다. 로그인 화면이나 Swagger UI가 뜨는 서버는 아니다.
+터미널을 켜 둔 상태에서 `http://127.0.0.1:8000/healthz`를 연다. 정상 상태는 HTTP `200`, `mode: "course_v2"`, `calculator_available: true`, `login_path: "/api/v2/sessions/"`, `programs_path: "/api/v2/courses/progress/"`, `program_target_combinations: 18`(skill×연령 조합)다. 로그인 화면이나 Swagger UI가 뜨는 서버는 아니다.
 
-기본 명령으로 로그인·과정 목록·훈련/평가 시작·계산·결과·실제 차트 조회가 연결된다. Dummy 로그인(`test@test.com` / 문자열 `2222`) 뒤 `[Dummy Dev]` 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)가 보인다. AWS Dev와 같은 임시 카탈로그이며 ARC 배정·운영 한도가 아니고 영상·문서 자료는 없다. ARC 제출은 계속 비활성이며 Dummy 계산 결과는 `excluded`다.
+기본 명령으로 로그인·과정 목록·훈련/평가 시작·계산·결과·실제 차트 조회가 연결된다. Dummy 로그인(`test@test.com` / 문자열 `2222`) 뒤 `[Dummy Dev]` 과정 4개(BLS Adult/Infant, CPR_AED Adult/Infant)가 보인다. AWS Dev와 같은 임시 카탈로그이며 ARC 배정·운영 한도가 아니고 영상·문서 자료는 없다. ARC 제출은 계속 비활성이며 Dummy 계산 결과는 `excluded`다.
 
 `--course-v2`·`--control-only`는 제거됐다(D123). 붙이면 argparse가 알 수 없는 인자로 거절해 파일·포트·잠금을 만들기 전에 종료 코드 2로 끝난다.
 
-**예전 로컬 데이터 폴더를 그대로 쓸 때.** 예전 `--course-v2`로 쓰던 데이터 폴더에는 이전 합성 fixture 학습자 정보가 남아 있어, Dummy 로그인 뒤 `learningAvailability`가 `waiting`/`arc_progress_unavailable`이고 과정 조회가 `503 ARC_PROGRESS_UNAVAILABLE`일 수 있다. `POST /api/v2/session/refresh/`로는 풀리지 않는다. Dummy 로그아웃(`DELETE /api/v2/session/`)을 한 번 한 뒤 다시 로그인하면 15개 과정이 준비된다. 로그아웃은 Dummy 공유 진도를 초기화한다. 이전 학습자 행은 자동으로 삭제·정리하지 않는다. `/mock/v1` 기본 모드로만 쓰던 데이터 폴더에는 해당하지 않는다. 로컬 DB는 journey 스키마(PK/SK + `GSI1`)만 인식한다(D122). 예전 제어 전용(GSI1 없는) 표를 자동으로 이행하지 않으며, 다른 스키마의 표는 행·스키마·키 파일을 건드리지 않고 거절해 서버가 종료 코드 1로 끝난다. `scripts/read_local_logs.py`는 초기화 없는 읽기 전용 접속(`initialize=False`)이다.
+**예전 로컬 데이터 폴더를 그대로 쓸 때.** 예전 `--course-v2`로 쓰던 데이터 폴더에는 이전 합성 fixture 학습자 정보가 남아 있어, Dummy 로그인 뒤 `learningAvailability`가 `waiting`/`arc_progress_unavailable`이고 과정 조회가 `503 ARC_PROGRESS_UNAVAILABLE`일 수 있다. refresh만으로는 풀리지 않는다. 활성 Dummy 세션에서 `POST /api/v2/dev/progress-reset/`에 `clientRequestId` UUID를 담은 JSON body를 보내고, 같은 세션으로 `POST /api/v2/session/refresh/`에 `{}`를 보내면 현재 카탈로그가 준비된다. reset은 공유 진도를 새 epoch에서 시작하며 현재 세션을 유지한다. 로그아웃·재로그인은 진도를 초기화하지 않는다. 이전 학습자 행과 측정·결과 이력은 삭제·정리하지 않는다. `/mock/v1` 기본 모드로만 쓰던 데이터 폴더에는 해당하지 않는다. 로컬 DB는 journey 스키마(PK/SK + `GSI1`)만 인식한다(D122). 예전 제어 전용(GSI1 없는) 표를 자동으로 이행하지 않으며, 다른 스키마의 표는 행·스키마·키 파일을 건드리지 않고 거절해 서버가 종료 코드 1로 끝난다. `scripts/read_local_logs.py`는 초기화 없는 읽기 전용 접속(`initialize=False`)이다.
 
 ## 2. 실제 앱의 연결 순서
 
@@ -68,10 +68,10 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 
 | 항목 | 현재 동작 |
 |---|---|
-| 임시 과정 15개(5개 프로그램 × 3개 연령) | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
-| Compression Only / Ventilation Only | 실제 횟수와 기존 tester Pass를 모두 충족하면 완료 |
-| CPR 계열 | D136 사이클 규칙(계산기가 `cpr`로 분류한 사이클 수 ≥ 3/8/10) AND 점수 합격이면 완료. 이전 어댑터로 시작한 진행 중 시도만 `pending_policy` |
-| 파일 끝 마지막 호흡·ARC 최소량 | 현재 어댑터 `arc-internal-detection-v5`: 파일 끝에 남은 마지막 호흡을 하강 1패킷 기록 또는 기준선 대비 감소 기준 이상 상승이면 1회로 센다(D138). ARC CPR 최소량(성인·소아 압박 90·호흡 6, 영아 45·6) 미달이어도 점수는 표시하지만 합격·완료는 아니다: `score.decision=fail`, `reason_codes`에 `MINIMUM_QUANTITY_NOT_MET`(D139). `arc-internal-detection-v4`·`pending-v3`로 시작한 진행 중 시도는 원래 규칙(두 패킷·최소량 null)으로 끝난다. `scripts/run_local.py` 등 직접 실행 도구는 현재 검출·점수 규칙을 쓰며 합격 판정(평가 단계)은 하지 않는다 |
+| Dummy 과정 4개 | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
+| Compression Only / Ventilation Only | 실제 횟수로 프로그램 정의의 목표·`minimumQuantity`를 충족하고 `assessment.passRule`을 통과하면 완료 |
+| CPR 계열 | 계산기가 `cpr`로 분류한 사이클 수가 프로그램 정의의 목표(1/3/8)를 충족하고, `minimumQuantity`와 `assessment.passRule`도 통과하면 완료. `composite`는 기존 tester 점수, `gates`는 적용 gate로 판정한다. 이전 pending 어댑터의 저장 결과에는 `pending_policy`가 남을 수 있으며 새 계산은 하지 않음 |
+| 파일 끝 마지막 호흡·ARC 최소량 | 현재 `arc-internal-detection-v6`은 HSTM `92f56dc` legacy 검출을 사용한다. 호흡은 패킷 최대량 하강과 현재 패킷 최소량 10mL 미만을 함께 검사한다. 하강 없는 파일 끝은 마지막 비교값이 10mL 이상이고 직전 압박·호흡 확정 Record부터 15패킷 이상 남아야 센다([검출 상세](APP_API.md#5-측정-시도와-업로드)). 최소량 미달도 점수를 표시하되 `MINIMUM_QUANTITY_NOT_MET`로 합격·완료를 거절한다. v5 이하 네 보존 어댑터는 저장 후보·결과 검증만 가능하다. 후보 없는 이전 시도는 상세를 다시 받아 새 시도로 시작한다. 직접 실행 도구는 계산만 하며 과정 합격 판정은 하지 않는다 |
 | ARC 제출 | 전송하지 않음. 처리 중 응답은 `status=disabled`, Dummy 계산 결과는 `status=excluded`, `exclusionReasons=["dummy"]`(D90). `ok=false` |
 | 대기 | D54에 따라 앱의 파일 업로드 시작부터 최대30초. 이후에도 같은 시도의 결과를 조회 가능. 이미 접수된 작업을 자동 취소하는 시간이 아님 |
 | 차트 | 실제 로컬 JSON 파일을 서명 URL로 제공. 발급부터300초; 만료 시 인증된 API로 새 링크 발급 |
@@ -81,8 +81,8 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 ## 5. 저장·종료·재시작
 
 - 기본 `var/local-server`에 로컬 DB, 설치·서명 키, 비공개 측정·결과·차트 파일을 보관한다. 이 폴더를 Git, 배포 ZIP, 공유 드라이브에 넣지 않는다.
-- `Ctrl+C`로 정상 종료한다. 재시작은 기존 세션·접수 작업·결과를 보존하고 대기 작업을 다시 처리한다. 사용자가 직접 로그아웃하면 해당 세션이 폐기되고 Dummy 계정의 공유 진도가 초기화된다.
-- 초기화 전의 늦은 결과는 보관하되 새 진도에는 반영하지 않는다. 로그아웃으로 이미 발급된 차트 링크의 남은300초 수명은 사라지지 않는다.
+- `Ctrl+C`로 정상 종료한다. 재시작은 기존 세션·접수 작업·결과를 보존하고 대기 작업을 다시 처리한다. 로그아웃은 Dummy·비-Dummy 모두 해당 세션만 폐기하고 USER epoch와 공유 진도를 유지한다.
+- Dummy 진도 초기화는 `POST /api/v2/dev/progress-reset/`에 `clientRequestId` UUID를 보내 수행하고, 같은 세션에서 `POST /api/v2/session/refresh/`에 `{}`를 보내 새 카탈로그를 읽는다. 이전 epoch의 측정·결과 이력은 보관하고 늦은 결과는 새 진도에 반영하지 않는다. 로그아웃으로 이미 발급된 차트 링크의 남은300초 수명은 사라지지 않는다.
 - 기존 차트 링크의 재시작 후 접근에는 같은 설치·주소·포트와 남은 유효시간이 필요하다. 계산 응답 안의 오래된 URL은 바뀌지 않으므로 앱은 `chart-link` API로 갱신한다.
 - 자동 파일 삭제는 추가하지 않았다. 키 일부 삭제, DB 교체, `chmod 777`로 오류를 우회하지 않는다. 서버를 끈 뒤 설치 전체 단위로 보관·폐기를 결정한다.
 - 강제 종료나 Mac 종료는 정상 종료와 다르다. 부모 프로세스를 강제 종료하면 DB Java 프로세스가 남을 수 있다. 재시작이 포트 충돌로 거부되면 실제 소유 프로세스를 확인하며, 알 수 없는 프로세스를 일괄 종료하지 않는다.
@@ -103,9 +103,9 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 | 연결 거부 | 서버 터미널, 현재 IP·포트, 실행 모드 |
 | Mac만 연결됨 | iPad IP 허용 목록, 같은 네트워크, 기기 간 통신 제한 |
 | `401` / `403` | 세션 헤더·만료·로그아웃; 필요한 경우 새 로그인 뒤 같은 시도 재인가 |
-| `409` | 완료한 훈련 재시작, 변경된 입력, 시도 상태 확인 |
+| `409` | 변경된 입력·실행 정의, 시도 상태, 마지막 평가의 동시 진행 여부 확인. 완료·합격 후에도 재시작할 수 있고 기존 합격은 유지된다(D130·D131) |
 | `400 INVALID_REQUEST` | query는 `/api/v2/` 경로에서만 받는다. `/healthz`·`/`·서명 차트 URL에 query를 붙이면 `400`. 업로드 `Content-Type` 헤더 규칙은 [APP_API](APP_API.md) |
-| `503 ARC_PROGRESS_UNAVAILABLE` | 예전 데이터 폴더의 학습자 정보. 1절대로 Dummy 로그아웃 1회 뒤 재로그인 |
+| `503 ARC_PROGRESS_UNAVAILABLE` | 예전 데이터 폴더의 학습자 정보. 1절대로 활성 Dummy 세션에서 `clientRequestId` UUID로 전용 reset 후 refresh |
 | `503` | 저장 한도·파일/DB 상태·계산 실행기 오류. 기존 파일을 지우기 전에 오류 확인 |
 | worker/DB 고장으로 서버 종료 | 장애를 숨기며 계속 접수하지 않는 동작. 원인 확인 뒤 같은 설치로 재시작 |
 

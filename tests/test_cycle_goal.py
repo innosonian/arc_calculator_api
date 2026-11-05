@@ -1,24 +1,8 @@
-"""D136: the CPR completion cycle rule (Q22 closed).
+"""D136 closed-cycle completion under v6, with retained evaluation compatibility.
 
-Observed cycles of a ``cycles`` goal = the number of cycles the calculator
-classified as ``cpr`` (compressions followed by ventilations, closed). The
-last unfinished group and compression-only / ventilation-only / not-calculated
-groups are excluded; a virtual partner's cycles count; AED actions do not take
-part. required stays the catalog value (3 / 8 / 10); completion = cycles met
-AND score pass. The rule was introduced with ``arc-internal-detection-v4`` /
-profile ``tester-goal-cycles-v1`` and is unchanged in the current
-``arc-internal-detection-v5`` / ``tester-goal-cycles-v2`` (D138: end-of-file
-ventilation, D139: no ARC minimum-quantity null, the minimum is a pass
-condition reported as MINIMUM_QUANTITY_NOT_MET). v4 is retained and keeps
-calculating its own attempts with its original options; the retained
-``arc-internal-detection-pending-v3`` still calculates its own attempts as
-pending_policy and ``arc-local-calculator-pending-v2`` only verifies.
-
-Expected observed counts below come from the calculator's own cycle
-classification of the recorded datasets (tests/dataset/cpr_1..5.bin) and the
-synthetic sessions; scores are the unchanged tester's. Tests run under the
-current adapter unless they name v4; the v4 expectations are the pre-D138
-values, kept as they were.
+New calculations use the HSTM-compatible core and v6 learner minimums.
+Historical v4/v5 evaluation facts remain readable without replaying retired
+calculation semantics. Every retained adapter refuses new calculations.
 """
 
 from copy import deepcopy
@@ -35,7 +19,8 @@ from config.constants import (
 )
 from mock_journey import typed
 from mock_journey.assembly import internal_calculator
-from mock_journey.catalog import PROGRAMS
+from mock_journey.catalog import program_targets
+from tests.legacy_dummy_catalog import LEGACY_PROGRAMS as PROGRAMS
 from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, CYCLE_GOAL_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION,
     EOF_VENT_ADAPTER_VERSION, EOF_VENT_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
@@ -60,10 +45,12 @@ RAW_BASE = ("calculator_result/interpreted_rtdata/arc/test/_no_org/2023-11-14/"
             "CPR-ACTION-1700000000-12345678-1234-4234-9234-123456789abc")
 REQUIRED = {row[0]: row[3] for row in PROGRAMS if row[2] == "cycles"}  # mock-cpr 3, 2-rescuer 8, 2-rescuer AED 10
 MODES = (("mock-cpr", False, False), ("mock-two-rescuer-cpr", True, False), ("mock-two-rescuer-aed", True, True))
-# The two cycle-rule adapters: (adapter, profile, candidate schema).
+# Versioned cycle-rule contracts: (adapter, profile, candidate schema).
+V6 = (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, "arc-internal-calculation-v5")
 V5 = (EOF_VENT_ADAPTER_VERSION, EOF_VENT_PROFILE_VERSION, "arc-internal-calculation-v4")
 V4 = (CYCLE_GOAL_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION, "arc-internal-calculation-v3")
-CYCLE_RULE_ADAPTERS = pytest.mark.parametrize("cycle_adapter", [V5, V4], ids=["v5", "v4"])
+CURRENT_CYCLE_ADAPTER = pytest.mark.parametrize("cycle_adapter", [V6], ids=["v6"])
+RETAINED_CYCLE_ADAPTERS = pytest.mark.parametrize("cycle_adapter", [V5, V4], ids=["v5", "v4"])
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +112,14 @@ def test_closed_cycle_count_rejects_foreign_evidence_or_goal(evidence, definitio
 # ---------------------------------------------------------------------------
 
 def _definition(cond, required, *, adapter=CURRENT_ADAPTER_VERSION, profile=CURRENT_PROFILE_VERSION):
-    return {"condition": deepcopy(cond), "calculation_profile": {}, "goal": {"kind": "cycles", "required": required},
-            "catalog_version": "mock-catalog-v1", "profile_version": profile,
-            "adapter_version": adapter, "projection_version": PROJECTION}
+    value = {"condition": deepcopy(cond), "calculation_profile": {}, "goal": {"kind": "cycles", "required": required},
+             "catalog_version": "mock-catalog-v1", "profile_version": profile,
+             "adapter_version": adapter, "projection_version": PROJECTION}
+    if adapter == CURRENT_ADAPTER_VERSION:
+        value.update(courseType="BLS", requiresAed=False,
+                     minimumQuantity={"compressions": 45 if cond["target"] == "infant" else 90, "ventilations": 6},
+                     assessment={"passRule": "composite", "gates": {}})
+    return value
 
 
 def _accepted(cpr, aed, cond, required, *, vp_events=(), adapter=CURRENT_ADAPTER_VERSION,
@@ -168,7 +160,7 @@ def _dataset(number, aed):
 DATASET_CYCLES = {1: 1, 2: 3, 3: 2, 4: 3, 5: 4}
 
 
-@CYCLE_RULE_ADAPTERS
+@CURRENT_CYCLE_ADAPTER
 @pytest.mark.parametrize("target", ("adult", "child", "infant"))
 @pytest.mark.parametrize("program,two_rescuers,aed", MODES)
 @pytest.mark.parametrize("number", sorted(DATASET_CYCLES))
@@ -180,12 +172,9 @@ def test_dataset_cycle_goals_are_the_closed_cycle_count_and_completion_needs_the
                                                  adapter=adapter, profile=profile)
     observed = DATASET_CYCLES[number]
     score_passed = bool(_is_pass(verified.core_result, None, None, None, target))
-    # D139 (v5 only): the ARC minimum quantity (D07) is a pass condition. The thresholds are
-    # written out here independently of the production predicate: adult/child 90, infant 45
-    # compressions and 6 ventilations. v4 has no gate (its null policy already fails or
-    # reweights such a session) and keeps the score decision alone.
-    counts = verified.core_result["action_count"]
-    minimum_met = adapter != V5[0] or (counts["comp"] >= (45 if target == "infant" else 90) and counts["vent"] >= 6)
+    # The saved v6 definition counts learner actions in two-rescuer work.
+    counts = verified.learner_counts if two_rescuers else verified.core_result["action_count"]
+    minimum_met = counts["comp"] >= (45 if target == "infant" else 90) and counts["vent"] >= 6
     passed = score_passed and minimum_met
     assert verified.goal_status == "evaluated" and verified.observed == observed
     assert candidate["schema"] == schema and candidate["binding"]["adapter_version"] == adapter
@@ -215,19 +204,20 @@ def test_dataset_cycle_goals_are_the_closed_cycle_count_and_completion_needs_the
     (5, "mock-cpr", "adult", (4, "fail", False)),         # 4 short cycles, no score
     (1, "mock-cpr", "adult", (1, "fail", False)),
 ])
-def test_dataset_table_rows_pin_observed_score_and_completion(number, program, target, expected):
-    two_rescuers, aed = next((two, aed) for name, two, aed in MODES if name == program)
-    cpr, aed_bytes = _dataset(number, aed)
-    _, assessment, _ = _calculate(cpr, aed_bytes, _condition(target, two_rescuers), REQUIRED[program],
-                                  adapter=V4[0], profile=V4[1])
-    assert (assessment["goal"]["observed"], assessment["score"]["decision"], assessment["program_completed"]) == expected
+def test_saved_v4_table_rows_keep_observed_score_and_completion(number, program, target, expected):
+    observed, decision, completed = expected
+    definition = _definition(_condition(target, program != "mock-cpr"), REQUIRED[program], adapter=V4[0], profile=V4[1])
+    goal = {**definition["goal"], "observed": observed, "met": observed >= REQUIRED[program], "status": "evaluated"}
+    reasons = ([] if goal["met"] else ["GOAL_NOT_MET"]) + ([] if decision == "pass" else ["SCORE_NOT_PASS"])
+    saved = {"goal": goal, "score": {"decision": decision}, "program_completed": completed, "reason_codes": reasons}
+    assert DynamoJobRepository.check_evaluation(saved, {"definition_json": json.dumps(definition)}) == saved
 
 
 G, M, F = "GOAL_NOT_MET", "MINIMUM_QUANTITY_NOT_MET", "SCORE_NOT_PASS"
 
 
 @pytest.mark.parametrize("number,program,target,expected", [
-    # Current v5 (D139): (observed, overall, score decision, program_completed, reason_codes).
+    # Retained v5 (D139): (observed, overall, score decision, program_completed, reason_codes).
     # The scores are shown (no minimum-quantity null) but none of these recordings reaches
     # the ARC minimum of both groups, so none passes; the observed cycles equal the v4 rows.
     (2, "mock-cpr", "adult", (3, 86, "fail", False, [M])),      # 99 comp / 5 vent: one ventilation short
@@ -242,12 +232,16 @@ G, M, F = "GOAL_NOT_MET", "MINIMUM_QUANTITY_NOT_MET", "SCORE_NOT_PASS"
     (5, "mock-cpr", "adult", (4, 66, "fail", False, [M, F])),   # 36 comp / 4 vent: scored 66 instead of null
     (1, "mock-cpr", "adult", (1, 70, "fail", False, [G, M, F])),  # 48 comp / 2 vent: scored 70 instead of null
 ])
-def test_dataset_table_rows_under_the_current_adapter(number, program, target, expected):
-    two_rescuers, aed = next((two, aed) for name, two, aed in MODES if name == program)
-    cpr, aed_bytes = _dataset(number, aed)
-    verified, assessment, _ = _calculate(cpr, aed_bytes, _condition(target, two_rescuers), REQUIRED[program])
-    assert (assessment["goal"]["observed"], verified.core_result["cpr_score"]["total_score"]["overall"],
-            assessment["score"]["decision"], assessment["program_completed"], assessment["reason_codes"]) == expected
+def test_saved_v5_table_rows_keep_their_counts_score_and_evaluation(number, program, target, expected):
+    definition = _definition(_condition(target, program != "mock-cpr"), REQUIRED[program], adapter=V5[0], profile=V5[1])
+    counts = {1: (48, 2), 2: (99, 5), 3: (100, 3), 4: (69, 6), 5: (36, 4)}[number]
+    observed, overall, decision, completed, reasons = expected
+    verified = VerifiedCalculation({"action_count": dict(zip(("comp", "vent"), counts))},
+                                   "cycles", observed, "no_chart", goal_status="evaluated")
+    assessment = evaluate({"cpr_score": {"total_score": {"overall": overall}}}, definition, verified)
+    assert (assessment["goal"]["observed"], overall, assessment["score"]["decision"],
+            assessment["program_completed"], assessment["reason_codes"]) == expected
+    assert DynamoJobRepository.check_evaluation(assessment, {"definition_json": json.dumps(definition)}) == assessment
 
 
 @pytest.mark.parametrize("target", ("adult", "infant"))
@@ -281,10 +275,10 @@ def test_virtual_partner_cycles_count_toward_the_goal_but_not_the_score():
     partnered, assessment, _ = _calculate(data, b"", _condition("adult", True), 8, vp_events=partner)
     assert real.observed == partnered.observed == 3
     assert real_assessment["goal"]["met"] is False and assessment["goal"]["met"] is False
-    # The unchanged tester scores a partner-only session 0 (ONLY:VP), so pass and completion differ by score only.
-    assert real.core_result["cpr_score"]["total_score"]["overall"] == 99
+    # HSTM 92f56dc R00 scores this real session 100 and the ONLY:VP session 0.
+    assert real.core_result["cpr_score"]["total_score"]["overall"] == 100
     assert partnered.core_result["cpr_score"]["total_score"]["overall"] == 0
-    assert assessment["reason_codes"] == ["GOAL_NOT_MET", "SCORE_NOT_PASS"]
+    assert assessment["reason_codes"] == ["GOAL_NOT_MET", "MINIMUM_QUANTITY_NOT_MET", "SCORE_NOT_PASS"]
     met, met_assessment, _ = _calculate(data, b"", _condition("adult", False), 3, vp_events=partner)
     assert met.observed == 3 and met_assessment["goal"]["met"] is True
     assert met_assessment["program_completed"] is False and met_assessment["reason_codes"] == ["SCORE_NOT_PASS"]
@@ -294,10 +288,10 @@ def test_virtual_partner_cycles_count_toward_the_goal_but_not_the_score():
 # 3. Version rules
 # ---------------------------------------------------------------------------
 
-@CYCLE_RULE_ADAPTERS
+@CURRENT_CYCLE_ADAPTER
 def test_cycle_goal_adapter_rejects_the_pending_profile_and_pending_candidates(cycle_adapter):
     version, profile, schema = cycle_adapter
-    other_profile, other_schema = next((p, s) for v, p, s in (V5, V4) if v != version)
+    other_profile, other_schema = V5[1:]
     cond = _condition("adult", False)
     adapter = internal_calculator(version, projection=PROJECTION, stage="test")
     # Neither the pending profile nor the other cycle-rule adapter's profile is this adapter's definition.
@@ -322,57 +316,21 @@ def test_cycle_goal_adapter_rejects_the_pending_profile_and_pending_candidates(c
         assert error.value.code == "CALCULATOR_CONTRACT_MISMATCH"
 
 
-def test_retained_pending_v3_still_calculates_its_own_attempts_as_pending_policy():
-    cond = _condition("adult", False)
-    loaded, binding, definition = _accepted(cpr_session([(30, 2)] * 3), b"", cond, 3,
-                                            adapter=PENDING_GOAL_ADAPTER_VERSION, profile=PENDING_GOAL_PROFILE_VERSION)
-    adapter = internal_calculator(PENDING_GOAL_ADAPTER_VERSION, projection=PROJECTION, stage="test")
-    assert adapter.can_calculate is True and adapter.cycle_goal_resolver is None
-    raw = adapter.calculate(loaded, binding, lambda: None)
-    verified = adapter.validate_response(raw, loaded.projected, binding)
-    assert typed.parse_json(raw)["schema"] == "arc-internal-calculation-v2"
-    assert verified.goal_status == "pending_policy" and verified.observed is None
-    assessment = evaluate(verified.core_result, definition, verified)
-    assert assessment["goal"] == {"kind": "cycles", "required": 3, "observed": None, "met": None,
-                                  "status": "pending_policy"}
-    assert assessment["program_completed"] is False and assessment["reason_codes"][0] == "GOAL_POLICY_UNRESOLVED"
-    assert DynamoJobRepository.check_evaluation(assessment, {"definition_json": json.dumps(definition)}) == assessment
-    # The same raw is not a v4 or v5 candidate: no adapter accepts another's version binding.
-    for version in (CYCLE_GOAL_ADAPTER_VERSION, CURRENT_ADAPTER_VERSION):
-        other = internal_calculator(version, projection=PROJECTION, stage="test")
-        with pytest.raises(JourneyError):
-            other.validate_response(raw, loaded.projected, binding)
-
-
-def test_retained_v4_still_calculates_its_own_attempts_and_its_candidates_are_not_v5():
-    cond = _condition("adult", False)
-    loaded, binding, definition = _accepted(cpr_session([(30, 2)] * 3), b"", cond, 3, adapter=V4[0], profile=V4[1])
-    adapter = internal_calculator(V4[0], projection=PROJECTION, stage="test")
-    assert adapter.can_calculate is True and adapter.cycle_goal_resolver is closed_cycle_count
-    raw = adapter.calculate(loaded, binding, lambda: None)
-    verified = adapter.validate_response(raw, loaded.projected, binding)
-    assert typed.parse_json(raw)["schema"] == "arc-internal-calculation-v3"
-    assessment = evaluate(verified.core_result, definition, verified)
-    assert assessment["goal"] == {"kind": "cycles", "required": 3, "observed": 3, "met": True, "status": "evaluated"}
-    assert DynamoJobRepository.check_evaluation(assessment, {"definition_json": json.dumps(definition)}) == assessment
-    current = internal_calculator(CURRENT_ADAPTER_VERSION, projection=PROJECTION, stage="test")
-    with pytest.raises(JourneyError):
-        current.validate_response(raw, loaded.projected, binding)
-
-
-def test_retained_pending_v2_is_verify_only(monkeypatch):
+@pytest.mark.parametrize("version", RETAINED_ADAPTER_VERSIONS)
+def test_retained_adapters_never_start_new_cycle_calculations(version, monkeypatch):
     monkeypatch.setattr("main.run_calculator", lambda *a, **k: pytest.fail("verify-only adapter ran the core"))
+    from mock_journey.contracts import expected_profile_version
     loaded, binding, _ = _accepted(cpr_session([(30, 2)] * 3), b"", _condition("adult", False), 3,
-                                   adapter=RETAINED_PENDING_GOAL_ADAPTER_VERSION, profile=PENDING_GOAL_PROFILE_VERSION)
-    adapter = internal_calculator(RETAINED_PENDING_GOAL_ADAPTER_VERSION, projection=PROJECTION, stage="test")
+                                   adapter=version, profile=expected_profile_version(version))
+    adapter = internal_calculator(version, projection=PROJECTION, stage="test")
     assert adapter.can_calculate is False
     with pytest.raises(JourneyError) as error:
-        adapter.calculate(loaded, binding, lambda: None)
+        adapter.calculate(loaded, binding, lambda: pytest.fail("verify-only adapter renewed a lease"))
     assert error.value.code == "TEMPORARILY_UNAVAILABLE"
 
 
 def test_cycle_goal_adapter_is_never_built_without_the_rule():
-    for version in (CYCLE_GOAL_ADAPTER_VERSION, CURRENT_ADAPTER_VERSION):
+    for version in (CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, CURRENT_ADAPTER_VERSION):
         for options in ({}, {"allow_pending_cycle_goal": True}, {"allow_pending_cycle_goal": True,
                                                                    "cycle_goal_resolver": closed_cycle_count}):
             with pytest.raises(ValueError):
@@ -381,10 +339,10 @@ def test_cycle_goal_adapter_is_never_built_without_the_rule():
             is closed_cycle_count
     # An unregistered version is a composition error, never a guessed meaning.
     with pytest.raises(ValueError):
-        internal_calculator("arc-internal-detection-v6", projection=PROJECTION, stage="test")
+        internal_calculator("arc-internal-detection-unregistered", projection=PROJECTION, stage="test")
 
 
-@CYCLE_RULE_ADAPTERS
+@RETAINED_CYCLE_ADAPTERS
 def test_worker_evaluate_and_check_evaluation_follow_the_adapter_version(cycle_adapter):
     definition = _definition(_condition("adult", False), 3, adapter=cycle_adapter[0], profile=cycle_adapter[1])
     core = {"action_count": {"comp": 90, "vent": 6}}  # the adult minimum is met (read by the v5 pass gate only)
@@ -416,12 +374,12 @@ def test_aws_settings_take_the_versions_from_the_code_registry_only():
     # older document still says under `execution` is ignored.
     from mock_journey.aws_settings import AwsSettings
     from tests.aws_runtime_support import configuration
-    assert CURRENT_ADAPTER_VERSION == EOF_VENT_ADAPTER_VERSION == "arc-internal-detection-v5"
+    assert CURRENT_ADAPTER_VERSION == "arc-internal-detection-v6"
     assert RETAINED_ADAPTER_VERSIONS == (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-                                         CYCLE_GOAL_ADAPTER_VERSION)
+                                         CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION)
     assert RETAINED_ADAPTER_VERSIONS == ("arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
-                                         "arc-internal-detection-v4")
-    expected = (EOF_VENT_ADAPTER_VERSION, "arc-local-projection-v1", RETAINED_ADAPTER_VERSIONS)
+                                         "arc-internal-detection-v4", "arc-internal-detection-v5")
+    expected = (CURRENT_ADAPTER_VERSION, "arc-local-projection-v1", RETAINED_ADAPTER_VERSIONS)
     for role in ("api", "worker"):
         config = configuration(role)
         assert "execution" not in config
@@ -444,15 +402,13 @@ def test_local_health_completion_policy_reports_every_goal_kind_evaluated():
 def test_execution_catalog_definitions_carry_the_current_adapter_and_profile():
     from mock_journey.execution_definitions import execution_catalog
     execution = execution_catalog()
-    assert execution.required_bindings == (("arc-internal-detection-v5", "arc-local-projection-v1"),)
+    assert execution.required_bindings == ((CURRENT_ADAPTER_VERSION, "arc-local-projection-v1"),)
     count = 0
-    for program, _, kind, _ in PROGRAMS:
-        for target in ("adult", "child", "infant"):
-            value = execution.get_definition(program, target)
-            assert (value["adapter_version"], value["profile_version"]) == ("arc-internal-detection-v5",
-                                                                            "tester-goal-cycles-v2")
-            count += 1
-    assert count == 15
+    for program, target in program_targets():
+        value = execution.get_definition(program.id, target)
+        assert (value["adapter_version"], value["profile_version"]) == (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION)
+        count += 1
+    assert count == 18
 
 
 # ---------------------------------------------------------------------------

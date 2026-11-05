@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mock_journey.catalog import PROGRAMS, TARGETS, definition_key
+from mock_journey.catalog import definition_key, program_targets
 from mock_journey.projection import ProjectionSchema
 from mock_journey.settings import ApiSettings, StateSettings, StorageSettings
 from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
@@ -16,11 +16,11 @@ from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
 
 def definitions():
     # Merely constructor fixtures, not a supplied execution registry.
-    return {definition_key(program[0], target): {
+    return {definition_key(program.id, target): {
         "condition": {"target": target}, "calculation_profile": {
             "Custom": {"PassThreshold": 80.0, "CertificateAdult": False}},
         "profile_version": "test-profile", "adapter_version": "test-adapter", "projection_version": "test-projection",
-    } for program in PROGRAMS for target in TARGETS}
+    } for program, target in program_targets()}
 
 
 def schemas():

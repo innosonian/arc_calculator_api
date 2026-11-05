@@ -140,15 +140,20 @@ PROFILE_SCHEMA = {
 CONDITION = ("mode", "target", "training_type", "guideline", "cpr_cycle_type", "is_2rescuers")
 
 
-def test_assembly_definition_schema_is_the_five_key_core():
+def test_assembly_definition_schema_keeps_required_core_and_versioned_settings():
     from mock_journey.assembly import _DEFINITION_SCHEMA
+    from mock_journey.projection import GATE_IDS
     assert _DEFINITION_SCHEMA == {
         "condition": {key: SCALAR for key in CONDITION},
         "calculation_profile": PROFILE_SCHEMA,
         "profile_version": SCALAR, "adapter_version": SCALAR, "projection_version": SCALAR,
+        "minimumQuantity": {"compressions": SCALAR, "ventilations": SCALAR},
+        "courseType": SCALAR, "requiresAed": SCALAR,
+        "assessment": {"passRule": SCALAR, "gates": dict.fromkeys(GATE_IDS, SCALAR)},
     }
     assert list(_DEFINITION_SCHEMA) == ["condition", "calculation_profile", "profile_version",
-                                        "adapter_version", "projection_version"]
+                                        "adapter_version", "projection_version", "minimumQuantity", "courseType",
+                                        "requiresAed", "assessment"]
 
 
 def test_course_contract_key_tuples_keep_their_order():
@@ -161,10 +166,10 @@ def test_course_contract_key_tuples_keep_their_order():
 
 def _catalog_definition():
     from mock_journey.execution_definitions import execution_catalog
-    return execution_catalog().get_definition("mock-cpr", "adult")
+    return execution_catalog().get_definition("bls-cpr-3", "adult")
 
 
-def test_catalog_requires_exactly_the_five_key_definition():
+def test_catalog_requires_core_keys_and_rejects_non_schema_fields():
     from mock_journey.catalog import Catalog
     from mock_journey.errors import JourneyError
 
@@ -176,17 +181,16 @@ def test_catalog_requires_exactly_the_five_key_definition():
             return deepcopy(self.value)
 
     definition = _catalog_definition()
-    produced = json.loads(Catalog(One(definition)).definition("mock-cpr", "adult"))
-    assert set(produced) == {"condition", "calculation_profile", "profile_version", "adapter_version",
-                             "projection_version", "catalog_version", "goal"}
+    produced = json.loads(Catalog(One(definition)).definition("bls-cpr-3", "adult"))
+    assert set(produced) == set(definition) | {"catalog_version", "goal"}
     for change in ({"goal": {}}, {"catalog_version": "x"}):
         with pytest.raises(JourneyError) as error:
-            Catalog(One({**definition, **change})).definition("mock-cpr", "adult")
+            Catalog(One({**definition, **change})).definition("bls-cpr-3", "adult")
         assert error.value.code == "CALCULATOR_CONTRACT_MISMATCH"
     missing = dict(definition)
     del missing["profile_version"]
     with pytest.raises(JourneyError):
-        Catalog(One(missing)).definition("mock-cpr", "adult")
+        Catalog(One(missing)).definition("bls-cpr-3", "adult")
 
 
 def _projection_inputs():
@@ -194,12 +198,12 @@ def _projection_inputs():
     from mock_journey.execution_definitions import PROJECTION_VERSION, execution_catalog
     from mock_journey.projection import ProjectionSchema
     execution = execution_catalog()
-    definition = json.loads(Catalog(execution).definition("mock-cpr", "adult"))
+    definition = json.loads(Catalog(execution).definition("bls-cpr-3", "adult"))
     body = {"cpr_b64_data": b"\x01" * 28, "condition": deepcopy(definition["condition"])}
     return body, definition, ProjectionSchema(PROJECTION_VERSION, {})
 
 
-def test_projected_definition_accepts_the_seven_keys_and_drops_credentials_only():
+def test_projected_definition_keeps_versioned_fields_and_drops_credentials_only():
     from mock_journey.errors import JourneyError
     from mock_journey.projection import project_input
     body, definition, schema = _projection_inputs()
@@ -219,7 +223,7 @@ def test_projected_definition_accepts_the_seven_keys_and_drops_credentials_only(
 # -- adapter/profile/projection versions ----------------------------------------------
 
 # D136: a cycle-rule adapter evaluates a cycles goal by the closed-cycle rule;
-# the two pending adapters are retained (v3 still calculates, v2 verify-only).
+# the two pending adapters are retained for stored-candidate verification only.
 # D138/D139: the current adapter is v5 (end-of-file ventilation, no minimum-quantity
 # null) under the cycles-v2 profile; the former current v4 is retained and still
 # calculates its own attempts under cycles-v1.
@@ -231,7 +235,9 @@ PROFILE = "tester-goal-pending-v2"
 CYCLE_PROFILE = "tester-goal-cycles-v1"
 CURRENT_PROFILE = "tester-goal-cycles-v2"
 PROJECTION = "arc-local-projection-v1"
-REGISTRY_RETAINED = (RETAINED, PENDING, CYCLE_V4)
+ROUND2 = "arc-internal-detection-v6"
+ROUND2_PROFILE = "tester-goal-cycles-v3"
+REGISTRY_RETAINED = (RETAINED, PENDING, CYCLE_V4, CURRENT)
 
 
 def _resolver(*args):
@@ -241,43 +247,46 @@ def _resolver(*args):
 def test_version_constants():
     from mock_journey import contracts
     from mock_journey.execution_definitions import PROJECTION_VERSION
-    assert contracts.CURRENT_ADAPTER_VERSION == contracts.EOF_VENT_ADAPTER_VERSION == CURRENT
+    assert contracts.CURRENT_ADAPTER_VERSION == contracts.ROUND2_ADAPTER_VERSION == ROUND2
+    assert contracts.EOF_VENT_ADAPTER_VERSION == CURRENT
     assert contracts.CYCLE_GOAL_ADAPTER_VERSION == CYCLE_V4
     assert contracts.PENDING_GOAL_ADAPTER_VERSION == PENDING
     assert contracts.RETAINED_PENDING_GOAL_ADAPTER_VERSION == RETAINED
     assert contracts.PENDING_GOAL_ADAPTER_VERSIONS == frozenset({PENDING, RETAINED})
     assert type(contracts.PENDING_GOAL_ADAPTER_VERSIONS) is frozenset
-    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({CURRENT, CYCLE_V4, PENDING, RETAINED})
-    assert contracts.CYCLE_RULE_ADAPTER_VERSIONS == frozenset({CURRENT, CYCLE_V4})
+    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED})
+    assert contracts.CYCLE_RULE_ADAPTER_VERSIONS == frozenset({ROUND2, CURRENT, CYCLE_V4})
     assert contracts.RETAINED_ADAPTER_VERSIONS == REGISTRY_RETAINED
-    assert contracts.VERIFY_ONLY_ADAPTER_VERSIONS == frozenset({RETAINED})
+    assert contracts.VERIFY_ONLY_ADAPTER_VERSIONS == frozenset(REGISTRY_RETAINED)
     assert contracts.PENDING_GOAL_PROFILE_VERSION == PROFILE
     assert contracts.CYCLE_GOAL_PROFILE_VERSION == CYCLE_PROFILE
-    assert contracts.EOF_VENT_PROFILE_VERSION == contracts.CURRENT_PROFILE_VERSION == CURRENT_PROFILE
+    assert contracts.EOF_VENT_PROFILE_VERSION == CURRENT_PROFILE
+    assert contracts.CURRENT_PROFILE_VERSION == contracts.ROUND2_PROFILE_VERSION == ROUND2_PROFILE
     assert PROJECTION_VERSION == PROJECTION
 
 
 def test_adapter_feature_table():
     # One row per versioned adapter: (cycles goal status, profile, candidate schema,
-    # D138 end-of-file option, D139 minimum-quantity null option, D139 pass gate).
+    # D139 pass gate).
     from mock_journey import contracts
     from services.calculation_context import CalculationOptions
-    assert {version: (f.goal_status, f.profile, f.candidate_schema, f.eof_single_confirmation,
-                      f.minimum_quantity_null, f.minimum_quantity_pass_gate)
+    assert {version: (f.goal_status, f.profile, f.candidate_schema, f.minimum_quantity_pass_gate)
             for version, f in contracts.ADAPTER_FEATURES.items()} == {
-        RETAINED: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False, True, False),
-        PENDING: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False, True, False),
-        CYCLE_V4: ("evaluated", CYCLE_PROFILE, "arc-internal-calculation-v3", False, True, False),
-        CURRENT: ("evaluated", CURRENT_PROFILE, "arc-internal-calculation-v4", True, False, True),
+        RETAINED: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False),
+        PENDING: ("pending_policy", PROFILE, "arc-internal-calculation-v2", False),
+        CYCLE_V4: ("evaluated", CYCLE_PROFILE, "arc-internal-calculation-v3", False),
+        CURRENT: ("evaluated", CURRENT_PROFILE, "arc-internal-calculation-v4", True),
+        ROUND2: ("evaluated", ROUND2_PROFILE, "arc-internal-calculation-v5", True),
     }
     assert contracts.MINIMUM_QUANTITY_REASON == "MINIMUM_QUANTITY_NOT_MET"
     assert [contracts.gates_pass_on_minimum_quantity(version)
-            for version in (CURRENT, CYCLE_V4, PENDING, RETAINED, "arc-other-v9", None)] == [
-        True, False, False, False, False, False]
-    assert contracts.calculation_options(CURRENT) == CalculationOptions(True, False) == CalculationOptions()
+            for version in (ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED, "arc-other-v9", None)] == [
+        True, True, False, False, False, False, False]
+    assert contracts.calculation_options(CURRENT) == CalculationOptions()
+    assert contracts.calculation_options(ROUND2) == CalculationOptions(collect_gates=True)
     for old in (CYCLE_V4, PENDING, RETAINED):
-        assert contracts.calculation_options(old) == CalculationOptions(False, True)
-    # A version outside the registry has no stored meaning to keep: the current rules.
+        assert contracts.calculation_options(old) == CalculationOptions()
+    # Only the current version collects Round 2 gate evidence.
     assert contracts.calculation_options("arc-other-v9") == CalculationOptions()
     assert contracts.adapter_features("arc-other-v9") is None
     with pytest.raises(Exception):
@@ -380,17 +389,16 @@ def test_internal_calculator_version_rules():
                                  allow_pending_cycle_goal=True)
     retained = InternalCalculator(version=RETAINED, projection_version=PROJECTION, stage="dev",
                                   allow_pending_cycle_goal=True)
-    assert current.can_calculate is True and pending.can_calculate is True and retained.can_calculate is False
-    assert cycle_v4.can_calculate is True  # D138: retained, but it still calculates its own attempts.
+    assert current.can_calculate is pending.can_calculate is retained.can_calculate is False
+    assert cycle_v4.can_calculate is False
     assert current.candidate_schema == "arc-internal-calculation-v4"
     assert cycle_v4.candidate_schema == "arc-internal-calculation-v3"
     assert pending.candidate_schema == retained.candidate_schema == "arc-internal-calculation-v2"
-    assert current.calculation_options == CalculationOptions(eof_single_confirmation=True, minimum_quantity_null=False)
+    assert current.calculation_options == CalculationOptions()
     for old in (cycle_v4, pending, retained):
-        assert old.calculation_options == CalculationOptions(eof_single_confirmation=False,
-                                                             minimum_quantity_null=True)
+        assert old.calculation_options == CalculationOptions()
     other = InternalCalculator(version="arc-other-v9", projection_version=PROJECTION, stage="dev")
-    assert other.can_calculate is True and other.candidate_schema == "arc-internal-calculation-v1"
+    assert other.can_calculate is False and other.candidate_schema == "arc-internal-calculation-v1"
     assert other.calculation_options == CalculationOptions()
     with pytest.raises(ValueError):
         InternalCalculator(version="arc-other-v9", projection_version=PROJECTION, stage="dev",
@@ -428,9 +436,9 @@ def test_aws_execution_block_is_ignored_and_the_registry_is_the_only_source(role
     if execution != "absent":
         config["execution"] = execution
     settings = AwsSettings.parse(json.dumps(config), role)
-    assert settings.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)
+    assert settings.execution == (ROUND2, PROJECTION, REGISTRY_RETAINED)
     current, projection, kept = settings.execution
-    assert (current, projection, kept) == (CURRENT, PROJECTION, REGISTRY_RETAINED) and type(kept) is tuple
+    assert (current, projection, kept) == (ROUND2, PROJECTION, REGISTRY_RETAINED) and type(kept) is tuple
     assert settings.execution_block_ignored is (execution != "absent")
 
 
@@ -480,9 +488,9 @@ def test_aws_timing_tuples_by_role():
     assert relay.relay_budget.reserve_ms == 500 + 40 + 20
     api = AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert api.timing is None and relay.execution is None
-    assert api.execution == worker.execution == (CURRENT, PROJECTION, REGISTRY_RETAINED)  # D141: the code registry
+    assert api.execution == worker.execution == (ROUND2, PROJECTION, REGISTRY_RETAINED)  # D141: the code registry
     assert api.execution_block_ignored is False and relay.execution_block_ignored is False
-    assert hash(api.execution) == hash((CURRENT, PROJECTION, REGISTRY_RETAINED))
+    assert hash(api.execution) == hash((ROUND2, PROJECTION, REGISTRY_RETAINED))
     assert api == AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert json.dumps(worker.timing) == "[0.05, 0.1, 500]"
 

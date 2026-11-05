@@ -7,6 +7,10 @@ same scripts must still match after the removal. The integration twin
 (integration_tests/test_v2_baseline_dynamodb.py) matches the same fixtures on
 DynamoDB Local, which also cross-checks tests/memory_dynamodb.py.
 
+Round 2 C5/C6 explicitly split reset from logout and add new-session metadata.
+The expectation delta in v2_baseline_support checks the new responses/rows
+against these rules; the historical fixture files remain unchanged.
+
 Fixtures (tests/fixtures/v2_baseline/):
   dummy_dev_definitions.json  DummyDevCourseProvider 15 bundles: definitionHash,
                               Catalog.definition() bytes, placement execution bytes.
@@ -84,6 +88,17 @@ def test_dummy_dev_definition_hashes_and_execution_bytes_match_baseline():
 
 def test_v2_flow_replies_events_and_rows_match_baseline(flow_observation):
     assert_matches(flow_template(), flow_observation)
+
+
+@pytest.mark.parametrize("removed", ["account_metadata", "reset_receipt"])
+def test_round2_delta_still_requires_new_session_metadata_and_reset_receipts(flow_observation, removed):
+    observed = deepcopy(flow_observation)
+    if removed == "account_metadata":
+        next(row for row in observed["rows"] if row["SK"] == "AUTH").pop("is_dummy")
+    else:
+        observed["rows"].remove(next(row for row in observed["rows"] if row["SK"].startswith("PROGRESS_RESET#")))
+    with pytest.raises(AssertionError):
+        assert_matches(flow_template(), observed)
 
 
 def test_v2_flow_event_sequence_is_the_recorded_contract(flow_observation):
@@ -182,7 +197,7 @@ def test_legacy_rows_with_active_legacy_session_match_baseline():
         "open_attempts": 0}
     assert seeded["slots"]["mock-cpr:adult"]["open_attempts"] == 1
     assert cancelled["slots"]["mock-cpr:adult"] == DEFAULT_SLOT
-    # R3: logout resets the slots of a row that has them, with a new epoch.
+    # R3/C5: explicit reset clears legacy slots; the following logout keeps that epoch.
     assert logged_out["epoch"] != seeded["epoch"]
     assert set(logged_out["slots"]) == set(seeded["slots"])
     assert all(slot == DEFAULT_SLOT for slot in logged_out["slots"].values())

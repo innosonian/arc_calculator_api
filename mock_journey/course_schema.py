@@ -5,14 +5,16 @@ No coercion or missing-field defaults are allowed: Swift Decodable consumers mus
 receive the same scalar and nullable types for every verified snapshot.
 """
 
+from datetime import datetime
 from functools import partial
 from math import isfinite
 
 from mock_journey.course_contracts import (
-    ENROLLMENT_FIELDS, FILE_DETAIL_FIELDS, FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS,
+    COURSE_TYPES, ENROLLMENT_ADDITIONAL_FIELDS, ENROLLMENT_FIELDS, FILE_DETAIL_FIELDS, FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS,
     TRAINING_PROGRAM_DETAIL_FIELDS, USAGE_VALUES, item_type_wire, parse_owned,
-    require_public_id, require_uuid,
+    require_public_id, require_utc, require_uuid, validate_assessment_policy, validate_minimum_quantity,
 )
+from mock_journey.course_errors import CourseError
 from mock_journey.course_primitives import fail
 
 
@@ -36,8 +38,9 @@ _MISMATCH = "UPSTREAM_CONTRACT_MISMATCH"
 _mismatch = partial(fail, _MISMATCH)
 
 
-def _object(value, fields):
-    if type(value) is not dict or set(value) != set(fields):
+def _object(value, fields, *, optional=()):
+    required = set(fields)
+    if type(value) is not dict or not required <= set(value) <= required | set(optional):
         _mismatch()
     return value
 
@@ -64,7 +67,7 @@ def validate_file_detail(value):
 
 
 def _training_domain(value):
-    _object(value, _TRAINING_FIELDS)
+    _object(value, _TRAINING_FIELDS, optional=("minimumQuantity", "prompts"))
     _scalar(value["manikinType"], str, nullable=True)
     for key in ("duration", "compressionLimit", "ventilationLimit", "cycleLimit"):
         _scalar(value[key], int, nullable=True)
@@ -76,13 +79,27 @@ def _training_domain(value):
             _scalar(ratio[key], int, nullable=True)
     aed = value["aed"]
     if aed is not None:
-        _object(aed, ("id", "cprGuide", "shockMode", "scenarioNo", "volume", "language", "padsDetection", "arrivalSeconds"))
+        _scalar(aed, dict)
+        base = ("id", "cprGuide", "shockMode", "scenarioNo", "volume", "language", "padsDetection", "arrivalSeconds")
+        arrival = ("arrivalMode", "arrivalAfterCycle", "cyclesAfterShock", "padsAttachedDetection")
+        _object(aed, base + arrival if "arrivalMode" in aed else base)
         _id(aed["id"])
         for key in ("cprGuide", "shockMode", "language"):
             _scalar(aed[key], str)
-        for key in ("scenarioNo", "volume", "arrivalSeconds"):
+        for key in ("scenarioNo", "volume"):
             _scalar(aed[key], int)
+        _scalar(aed["arrivalSeconds"], int, nullable=True)
         _scalar(aed["padsDetection"], bool)
+        if "arrivalMode" in aed:
+            mode = aed["arrivalMode"]
+            if mode not in ("at_start", "after_cycle", "after_seconds"):
+                _mismatch()
+            _scalar(aed["arrivalAfterCycle"], int, nullable=mode != "after_cycle")
+            _scalar(aed["cyclesAfterShock"], int)
+            _scalar(aed["padsAttachedDetection"], bool)
+            if ((aed["arrivalSeconds"] is not None) != (mode == "after_seconds")
+                    or (aed["arrivalAfterCycle"] is not None) != (mode == "after_cycle")):
+                _mismatch()
     guideline = value["cprGuideline"]
     if guideline is not None:
         _object(guideline, _GUIDELINE_TEXT + _GUIDELINE_INTS + _GUIDELINE_NUMBERS)
@@ -94,6 +111,21 @@ def _training_domain(value):
             number = guideline[key]
             if number is not None and (type(number) not in (int, float) or not isfinite(number)):
                 _mismatch()
+    if "minimumQuantity" in value:
+        try:
+            validate_minimum_quantity(value["minimumQuantity"])
+        except CourseError:
+            _mismatch()
+    if "prompts" in value:
+        _scalar(value["prompts"], list)
+        for prompt in value["prompts"]:
+            _object(prompt, ("id", "trigger", "text", "voice", "screen"), optional=("arcReviewed",))
+            for key in ("id", "trigger", "text"):
+                _scalar(prompt[key], str)
+            for key in ("voice", "screen"):
+                _scalar(prompt[key], bool)
+            if "arcReviewed" in prompt:
+                _scalar(prompt["arcReviewed"], bool)
     rescuers = value["twoRescuers"]
     if rescuers is not None:
         _object(rescuers, ("cycleChangeCount",))
@@ -106,7 +138,12 @@ def validate_training_detail(value):
     for key in ("title", "trainingType", "feedbackType", "trainingMode"):
         _scalar(value[key], str)
     _training_domain(value["training"])
-    assessment = _object(value["assessment"], ("passThreshold",))
+    assessment = _object(value["assessment"], ("passThreshold",), optional=("passRule", "gates"))
+    if "passRule" in assessment or "gates" in assessment:
+        try:
+            validate_assessment_policy({key: assessment[key] for key in ("passRule", "gates") if key in assessment})
+        except CourseError:
+            _mismatch()
     threshold = _object(assessment["passThreshold"], ("cpr", "aed"))
     for key in ("cpr", "aed"):
         _scalar(threshold[key], int, nullable=True)
@@ -153,8 +190,20 @@ def validate_placement_order(placements):
         _mismatch()
 
 
+def due_date_timestamp(value):
+    require_utc(value, code=_MISMATCH)
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except (ValueError, OverflowError):
+        _mismatch()
+
+
 def validate_enrollment(value, *, enrollment_id, course_id):
-    _object(value, ENROLLMENT_FIELDS)
+    if type(value) is not dict:
+        _mismatch()
+    required = set(ENROLLMENT_FIELDS)
+    if not required <= value.keys() <= required.union(ENROLLMENT_ADDITIONAL_FIELDS):
+        _mismatch()
     _id(value["id"])
     _id(value["courseId"])
     if value["id"] != enrollment_id or value["courseId"] != course_id:
@@ -164,6 +213,11 @@ def validate_enrollment(value, *, enrollment_id, course_id):
     for key in ("loginAt", "finishedAt", "centerName", "enrollStatusCode"):
         _scalar(value[key], str, nullable=True)
     _scalar(value["elapsedSeconds"], int, nullable=True)
+    for key in ("sku", "organizationId", "organizationName"):
+        if (text := value.get(key)) is not None and (type(text) is not str or not text):
+            _mismatch()
+    if value.get("dueDate") is not None:
+        due_date_timestamp(value["dueDate"])
     return value
 
 
@@ -173,6 +227,10 @@ def validate_course_metadata(course, public_ids):
     _id(course["courseId"])
     if course["courseId"] != public_ids.course_id:
         _mismatch()
+    if "courseType" in course:
+        _scalar(course["courseType"], str)
+        if course["courseType"] not in COURSE_TYPES:
+            _mismatch()
     _scalar(course["courseName"], str)
     _scalar(course["certificationType"], str, nullable=True)
     metadata = course["enrollment_metadata"]

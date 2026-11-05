@@ -1,6 +1,7 @@
 """V18 unit checks for CourseCalculationBridge. Fakes only; goldens are not rewritten."""
 
 from dataclasses import replace
+from copy import deepcopy
 from pathlib import Path
 import inspect
 
@@ -108,6 +109,32 @@ class ForbiddenCatalog:
 
 
 class TestV18ExecutionFreeze:
+    def test_round2_missing_minimum_is_unsupported_before_start(self):
+        from tests.vcc_provider_support import source_bundle
+
+        document = deepcopy(BUNDLE_DOC)
+        for placement in document["placements"]:
+            if placement.get("execution") is not None:
+                placement["execution"].update(
+                    adapter_version="arc-internal-detection-v6", profile_version="tester-goal-cycles-v3",
+                )
+        _, bundle = source_bundle(document)
+        view = _view(bundle)
+        assert view.bundle.placements[2].execution_status == "unsupported"
+        with pytest.raises(CourseError, match="EXECUTION_DEFINITION_UNSUPPORTED"):
+            CourseCalculationBridge().prepare(_auth(view), _command(view), view)
+
+    @pytest.mark.parametrize("adapter,profile", [
+        ("arc-local-calculator-pending-v2", "tester-goal-pending-v2"),
+        ("arc-internal-detection-pending-v3", "tester-goal-pending-v2"),
+        ("arc-internal-detection-v4", "tester-goal-cycles-v1"),
+        ("arc-internal-detection-v5", "tester-goal-cycles-v2"),
+    ])
+    def test_retained_definitions_keep_optional_minimum(self, adapter, profile):
+        execution = deepcopy(MAPPING_DOC["mappings"]["src-place-1003"]["execution"])
+        execution.update(adapter_version=adapter, profile_version=profile)
+        assert validate_execution_definition(execution) == execution
+
     def test_intermediate_assessment_uses_training_role(self):
         from mock_journey.course_provider import validate_bundle
         from mock_journey.course_settings import fixture_course_settings

@@ -5,9 +5,9 @@ mid-call (no worker handler runs) or an unexpected calculator error. Up to five
 replacement calls are issued; the sixth interruption closes the job.
 
 Course jobs use the assigned fixture learner (tests/vcc_runtime_support.py).
-Legacy (no course binding) jobs are the queued job of the captured legacy row
-fixture (tests/fixtures/legacy_mock_v1_rows), finished by a current Worker as
-D103 keeps. No v1 API route or v1-only service method is used.
+Legacy runtime jobs use fresh v6 inputs with the captured legacy row layout.
+Stored historical definitions remain read-only; their captured candidates are
+covered by the retained recovery tests. No v1 API route or v1-only service method is used.
 """
 
 import json
@@ -17,7 +17,7 @@ import uuid
 import pytest
 
 from integration_tests.worker_journey_support import (  # noqa: F401 (store fixture)
-    attempt_row, calculation, seeded_legacy, store, user_row,
+    attempt_row, calculation, seeded_current_legacy, seeded_legacy, store, user_row,
 )
 from mock_journey.course_errors import CourseError
 from mock_journey.dispatch import OutboxRelay
@@ -115,7 +115,7 @@ def assert_relay_stops_after_close(env, job_id):
 # ---------------------------------------------------------------------------
 
 def legacy_env(store):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_current_legacy(store)
     queued = seeded.attempts["queued"]
     assert queued["row"].get("course_binding") is None and queued["row"]["state"] == "queued"
     env = SimpleNamespace(worker=h.worker, adapter=h.calculator, now=h.now, clock=h.clock, h=h, token=token)

@@ -3,13 +3,13 @@
 import base64
 from copy import deepcopy
 import json
+from pathlib import Path
 
 import pytest
 
 import lambda_handler
 import services.legacy_response as legacy_response
 from tests._synth import comp_session, condition_json, cpr_session, multipart_event
-from tests.calculation_options_support import use_retained_minimum_quantity_null
 from tests.request_support import form_event as _form_event
 
 
@@ -62,9 +62,12 @@ def _generate_from_stale_pass_document(wire, document_source, monkeypatch):
 
 @pytest.mark.parametrize("wire", ["multipart", "form"])
 @pytest.mark.parametrize("document_source", ["hstm_document", "hstm_document_b64", "top_level"])
-def test_real_null_result_replaces_stale_pass_in_generated_document(wire, document_source, monkeypatch, capsys):
-    # Retained policy (D07/D08; attempts of arc-internal-detection-v4/pending-v3 still end this way).
-    use_retained_minimum_quantity_null(monkeypatch)
+def test_stored_null_result_replaces_stale_pass_in_generated_document(wire, document_source, monkeypatch, capsys):
+    # Stored historical nulls still pass through document assembly unchanged.
+    rows = json.loads((Path(__file__).parent / "fixtures/retained_v2_candidates.json").read_text())["cases"]
+    row = next(row for row in rows if row["id"] == "mock-cpr")
+    core = json.loads(base64.b64decode(row["candidate_base64"]))["core_result"]
+    monkeypatch.setattr(lambda_handler, "run_calculator", lambda *args, **kwargs: deepcopy(core))
     response, body, recorded = _generate_from_stale_pass_document(wire, document_source, monkeypatch)
     assert body["cpr_score"]["total_score"]["overall"] is None
     assert body["certification"] == {"Target": "N/A"}
@@ -96,7 +99,7 @@ def test_below_minimum_result_is_scored_and_replaces_stale_pass_in_generated_doc
     response, body, recorded = _generate_from_stale_pass_document(wire, document_source, monkeypatch)
     total = body["cpr_score"]["total_score"]
     assert body["action_count"] == {"comp": 30, "vent": 3}
-    assert total["overall"] == 81 and total["score_comp_depth"] == 100 and total["score_vent_vol"] == 100
+    assert total["overall"] == 93 and total["score_comp_depth"] == 100 and total["score_vent_vol"] == 100
     assert total["score_comp_no"] == 0
     assert body["certification"] == {"Target": "adult"}  # Passing_Score 0
     assert "submit_hstm" not in body

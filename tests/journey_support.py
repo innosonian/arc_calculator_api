@@ -16,8 +16,8 @@
    composition's factories. It runs on ``JourneyStore.memory()``
    (tests/memory_dynamodb.py) or on a DynamoDB Local table
    (``JourneyStore(dynamodb_client, create_journey_table(...))``).
-   Default course provider: DummyDevCourseProvider (15 Dummy Dev courses) with
-   the real internal calculator, so accepted uploads are scored by real code.
+   Default course provider: the historical 15-course Dummy IDs with current
+   execution settings and the real internal calculator.
 
 The former legacy /mock/v1 helpers were removed with /mock/v1 (D103). Stored
 legacy rows come from raw row seeds (tests/legacy_rows_support.py,
@@ -306,8 +306,8 @@ class Composition:
         """The bundled internal calculators of the whole code registry on this composition's stage (real scoring).
 
         Current first, then the retained versions, as the real local/AWS Worker
-        registers them (D127): a legacy fixture job bound to the retained
-        pending-v3 adapter is calculated by that adapter (D136, 3A).
+        registers them (D127). Retained versions only validate saved candidates;
+        new calculations select the current version.
         """
         return with_registry_adapters([], stage=self.stage)
 
@@ -337,21 +337,20 @@ def compose(store, *, provider=None, objects=None, bindings=None, keys=None, key
     """Assemble the test application/Worker composition on ``store`` (E-01).
 
     Defaults are the journey harness values: MemoryS3 objects with memory
-    legacy bindings, DummyDevCourseProvider over ``execution_catalog()`` and
+    legacy bindings, the pre-Round-2 Dummy fixture and
     ``fixture_course_settings()``, ``HARNESS_RESUME_KEYS``, a clock fixed at
     ``HARNESS_START``. ``key_version`` defaults to the only key in ``keys``.
     ``mapping_document`` defaults to the provider's own document.
     """
     from mock_journey.course_settings import fixture_course_settings
-    from mock_journey.dev_course import DummyDevCourseProvider
-    from mock_journey.execution_definitions import execution_catalog
+    from tests.legacy_dummy_catalog import LegacyDummyCourseProvider, legacy_execution_catalog
     from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
 
     objects = objects if objects is not None else MemoryS3()
     bindings = bindings if bindings is not None else MemoryLegacyBindings(objects)
-    execution = execution if execution is not None else execution_catalog()
+    execution = execution if execution is not None else legacy_execution_catalog()
     course_settings = course_settings or fixture_course_settings()
-    provider = provider or DummyDevCourseProvider(settings=course_settings, execution=execution)
+    provider = provider or LegacyDummyCourseProvider(settings=course_settings, execution=execution)
     if mapping_document is None:
         mapping_document = getattr(provider, "mapping_document", None)
     keys = dict(HARNESS_RESUME_KEYS if keys is None else keys)
@@ -422,8 +421,9 @@ class QueueCapture:
 
 def dummy_course(program_id, target):
     """Public IDs of a DummyDevCourseProvider course (mock_journey/dev_course.py numbering)."""
-    from mock_journey.catalog import PROGRAMS, TARGETS
-    programs = [program[0] for program in PROGRAMS]
+    from mock_journey.catalog import TARGETS
+    from tests.legacy_dummy_catalog import LEGACY_PROGRAMS
+    programs = [program[0] for program in LEGACY_PROGRAMS]
     number = programs.index(program_id) * len(TARGETS) + TARGETS.index(target) + 1
     return SimpleNamespace(program_id=program_id, target=target, course_id=910000 + number,
                            enrollment_id=920000 + number, practice_link_id=940000 + number * 10 + 1,
@@ -537,6 +537,10 @@ class V2Journey:
     def logout(self, token, expected=204):
         return self.expect(expected, "DELETE", "/api/v2/session/", token=token)
 
+    def reset(self, token, *, request_id=None, expected=204):
+        return self.expect(expected, "POST", "/api/v2/dev/progress-reset/", token=token,
+                           body={"clientRequestId": request_id or str(uuid.uuid4())})
+
     def courses(self, token, expected=200, **query):
         return self.expect(expected, "GET", "/api/v2/courses/progress/", token=token,
                            query={key: str(value) for key, value in query.items()} or None)
@@ -609,3 +613,21 @@ class V2Journey:
         if not records:
             return {"batchItemFailures": []}
         return handle({"Records": records}, SimpleNamespace(aws_request_id=str(uuid.uuid4())), self.worker)
+
+
+def seed_current_legacy_job(h):
+    """Queue a synthetic v6 job with the legacy row layout, without changing stored fixtures."""
+    from mock_journey.auth import PRINCIPAL
+    from tests.legacy_attempt_seeds import seed_legacy_attempt, seed_legacy_session
+    from tests.legacy_dummy_catalog import LegacyCatalog
+
+    auth = seed_legacy_session(h.store.client, h.store.table, clock=h.clock, principal=PRINCIPAL)
+    definition = json.loads(LegacyCatalog(h.execution).definition("mock-compression-only", "adult"))
+    attempt = seed_legacy_attempt(
+        h.store.client, h.store.table, auth, clock=h.clock, program_id="mock-compression-only", target="adult",
+        definition_json=json.dumps(definition), environment=h.environment,
+    )
+    upload = {"headers": {"Content-Type": MULTIPART_CONTENT_TYPE}, "isBase64Encoded": True,
+              "body": multipart(definition["condition"], data=measurement_for(definition["condition"]))}
+    h.api.calculation.submit(auth, attempt["attempt_id"], upload)
+    return h.job_id(attempt["attempt_id"])

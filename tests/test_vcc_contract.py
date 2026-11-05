@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import LEGACY_PROGRAM_IDS, TARGETS
 from mock_journey.course_contracts import (
     APP_ROUTES, ATTEMPT_VIEW_FIELDS, CALCULATION_VIEW_FIELDS, CONTENT_START_VIEW_FIELDS, CONTRACT_VERSION,
     COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS, DIGEST_EXCLUDED_WIRE_FIELDS,
@@ -72,7 +72,7 @@ from mock_journey.course_errors import CourseError
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.course_contracts import CONTRACT_VERSION, APP_ROUTES
 assert CONTRACT_VERSION == 'vcc-internal-v1'
-assert len(APP_ROUTES) == 16
+assert len(APP_ROUTES) == 18
 fixture_course_settings()
 CourseError('CONTRACT_PENDING')
 assert not {'boto3', 'botocore', 'sentry_sdk'} & sys.modules.keys()
@@ -234,7 +234,7 @@ class TestD7FixtureAndExecutionMapping:
         assert expect["complete_501_does_not_complete_502"] is True
 
     def test_execution_mapping_is_complete_seven_key_only_and_matches_existing_programs(self):
-        program_ids = {row[0] for row in PROGRAMS}
+        program_ids = LEGACY_PROGRAM_IDS
         for source_id, row in MAPPING_DOC["mappings"].items():
             assert row["program_id"] in program_ids
             assert row["target"] in TARGETS
@@ -280,12 +280,12 @@ class TestD7FixtureAndExecutionMapping:
 
 
 class TestV05WireSchema:
-    def test_every_app_route_has_a_wire_case(self):
+    def test_legacy_routes_keep_their_wire_cases(self):
         wire_ids = [route["id"] for route in WIRE["routes"]]
-        spec_ids = [route.route_id for route in APP_ROUTES]
-        assert wire_ids == spec_ids
-        assert len(spec_ids) == 16
-        for spec, route in zip(APP_ROUTES, WIRE["routes"]):
+        legacy_specs = [spec for spec in APP_ROUTES if spec.route_id in wire_ids]
+        assert wire_ids == [spec.route_id for spec in legacy_specs]
+        assert {spec.route_id for spec in APP_ROUTES} - set(wire_ids) == {"session_organization", "progress_reset"}
+        for spec, route in zip(legacy_specs, WIRE["routes"]):
             assert spec.method == route["method"]
             assert spec.path == route["path"]
             assert spec.path.endswith("/")
@@ -317,7 +317,7 @@ class TestV05WireSchema:
         assert tuple(row["summary"][0]) == ("id", "itemType", "title", "displayOrder")
         detail = next(case for case in WIRE["routes"] if case["id"] == "course_detail")["success"][0]["data"]
         assert tuple(detail) == COURSE_DETAIL_FIELDS
-        assert tuple(detail["courseItems"][0]) == COURSE_ITEM_FIELDS
+        assert tuple(detail["courseItems"][0]) + ("completionKind",) == COURSE_ITEM_FIELDS
         assert tuple(detail["enrollment"]) == ENROLLMENT_FIELDS
         item = next(case for case in WIRE["routes"] if case["id"] == "item_detail")["success"][0]["data"]
         assert tuple(item) == ITEM_DETAIL_OUTER_FIELDS
@@ -325,7 +325,7 @@ class TestV05WireSchema:
         assert tuple(start["request"]) == START_REQUEST_FIELDS
         assert tuple(start["data"]) == CONTENT_START_VIEW_FIELDS
         receipt = next(case for case in WIRE["routes"] if case["id"] == "content_report")["success"][0]["data"]
-        assert tuple(receipt) == PROGRESS_RECEIPT_FIELDS
+        assert tuple(receipt) + ("completionKind",) == PROGRESS_RECEIPT_FIELDS
         attempt = next(case for case in WIRE["routes"] if case["id"] == "attempt_get")["success"][0]["data"]
         assert tuple(attempt) == ATTEMPT_VIEW_FIELDS
         calc = next(case for case in WIRE["routes"] if case["id"] == "calculation_get")["success"][2]["data"]

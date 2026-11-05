@@ -9,11 +9,13 @@ import os
 import signal
 import subprocess
 import time
+import uuid
 
 import pytest
 
 from local_server_tests.test_journey_runtime import JourneyServer, owned_db_client
 from local_server_tests.test_live_server import dummy_course, error, require
+from tests._synth import BREATH_SHAPE, PACKET_BYTES, cpr_session, packet
 
 # Real loopback sockets: opted out of the directory network guard (conftest.py).
 pytestmark = pytest.mark.loopback
@@ -126,9 +128,10 @@ def restart_with_queued_input(server, token, attempt):
     return server.result(token, attempt)
 
 
-def test_only_completion_is_shared_retraining_denied_and_early_stop_is_not_completion(state_cli):
+def test_completion_is_shared_and_early_stop_is_not_completion(state_cli):
     server = state_cli
-    course, ventilation = dummy_course(), dummy_course("mock-ventilation-only")
+    course = dummy_course("lay-compressions-30")
+    ventilation = dummy_course("bls-ventilations-12")
     first, peer = server.token(), server.token()
     error(server.start_attempt_reply(first, course, course.final_link_id), 409, "PREREQUISITES_NOT_COMPLETED")
     attempt = server.start_attempt(first, course)
@@ -157,8 +160,9 @@ def test_only_completion_is_shared_retraining_denied_and_early_stop_is_not_compl
     require(stored["progress_application"] == result["progressApplication"],
             "The wire progress application must be the stored one.")
     shared = server.course(peer, course)
-    require([(item["isCompleted"], item["isPassed"]) for item in shared["courseItems"]] == [(True, True), (False, None)],
-            "Peer must see the completed practice and a not-started final assessment.")
+    require([(item["isCompleted"], item["isPassed"]) for item in shared["courseItems"]]
+            == [(True, True)] + [(False, None)] * len(course.skills),
+            "Peer must see the completed practice and all other items unstarted.")
     # D130: the completed training may be practised again by any session; the
     # new attempt does not touch the shared completion (checked below).
     repeat = server.start_attempt(peer, course)
@@ -179,9 +183,26 @@ def test_only_completion_is_shared_retraining_denied_and_early_stop_is_not_compl
     require(server.attempt(first, attempt).stable_body() == view.stable_body()
             and stored_attempt(server, attempt) == stored,
             "A stored-result retry must not change the attempt view or its stored row.")
-    # The shared completion satisfies the final assessment prerequisite.
+    error(server.start_attempt_reply(peer, course, course.final_link_id), 409, "PREREQUISITES_NOT_COMPLETED")
+    breaths = b"".join(packet(vent_raw=raw, timestamp=breath * 6000 + index * 50)
+                       for breath in range(10) for index, raw in enumerate(BREATH_SHAPE))
+    one_cycle = cpr_session([(30, 2)])
+    packets = (one_cycle[offset:offset + PACKET_BYTES] for offset in range(0, len(one_cycle), PACKET_BYTES))
+    after_aed = b"".join(row[:20] + (int.from_bytes(row[20:], "big") + 5000).to_bytes(8, "big")
+                        for row in packets)
+    aed = b"".join(bytes((180, event)) + timestamp.to_bytes(8, "big") for event, timestamp in
+                   ((0, 1000), (1, 1500), (10, 2000), (13, 2500), (16, 3000), (19, 3100)))
+    for program, data, aed_data in (("lay-breaths-5x2", breaths, None),
+                                   ("lay-cpr-3", cpr_session([(30, 2)] * 3), None),
+                                   ("lay-aed-cpr-1", after_aed, aed)):
+        practice = server.start_attempt(first, dummy_course(program))
+        require(server.upload(first, practice, data=data, aed=aed_data).status in (200, 202),
+                "The remaining prerequisite measurement must be accepted.")
+        completed(server.result(first, practice).data())
+
+    # All four shared completions satisfy the final assessment prerequisites.
     final = server.start_attempt(peer, course, course.final_link_id)
-    require(final["role"] == "final_assessment", "The completed practice must unlock the final assessment.")
+    require(final["role"] == "final_assessment", "The completed practices must unlock the final assessment.")
     require(server.request("POST", f'/api/v2/attempts/{final["attemptId"]}/cancel/', token=peer,
                            body={"reason": "user_cancelled"}).status == 204, "The final assessment must cancel.")
 
@@ -252,21 +273,22 @@ def test_accepted_queue_automatically_finishes_after_same_installation_restart(s
             "A retry after recovery must not change the attempt view or its stored row.")
 
 
-def test_peer_logout_before_queue_recovery_preserves_result_without_restoring_old_progress(state_cli):
+def test_peer_reset_before_queue_recovery_preserves_result_without_restoring_old_progress(state_cli):
     server = state_cli
     course = dummy_course()
     survivor, peer = server.token(), server.token()
     attempt = server.start_attempt(survivor, course)
     pause_owned_worker(server)
     require(server.upload(survivor, attempt).status == 202,
-            "Original-epoch input must be accepted before the peer logs out.")
+            "Original-epoch input must be accepted before the peer resets progress.")
     require(server.attempt(survivor, attempt).data()["state"] == "queued",
-            "The paused product worker must not evaluate before logout.")
-    require(server.request("DELETE", "/api/v2/session/", token=peer).status == 204,
-            "One device logout must reset the shared tester epoch.")
+            "The paused product worker must not evaluate before reset.")
+    require(server.request("POST", "/api/v2/dev/progress-reset/", token=peer,
+                           body={"clientRequestId": str(uuid.uuid4())}).status == 204,
+            "The explicit reset API must reset the shared tester epoch.")
     require(server.request("GET", "/api/v2/session/", token=survivor).data()["learningAvailability"]
             == {"state": "waiting", "reason": "arc_progress_unavailable"},
-            "Peer logout must reset shared progress while preserving the other session.")
+            "Peer reset must reset shared progress while preserving the other session.")
     # Snapshot the reset epoch before recovery: the USER row (epoch, revision)
     # and every COURSE row of the new epoch for this course scope.
     original = stored_attempt(server, attempt)
@@ -274,7 +296,7 @@ def test_peer_logout_before_queue_recovery_preserves_result_without_restoring_ol
     reset_user = stored_user(server, original["principal"])
     reset_epoch = reset_user["epoch"]
     require(type(reset_epoch) is str and reset_epoch and reset_epoch != original["epoch"],
-            "Peer logout must move the shared tester to a new progress epoch.")
+            "Peer reset must move the shared tester to a new progress epoch.")
     reset_rows = stored_course_epoch_rows(server, scope, reset_epoch)
     recovered = restart_with_queued_input(server, survivor, attempt)
     result = recovered.data()
@@ -289,9 +311,10 @@ def test_peer_logout_before_queue_recovery_preserves_result_without_restoring_ol
     require(server.refresh(survivor)["learningAvailability"] == {"state": "ready", "reason": None},
             "The surviving session must recover the new epoch by refresh.")
     reset = server.course(survivor, course)
-    require([item["isCompleted"] for item in reset["courseItems"]] == [False, False],
+    require(all(item["isCompleted"] is False for item in reset["courseItems"]),
             "Automatic queue recovery must not restore old-epoch completion.")
-    error(server.request("GET", "/api/v2/session/", token=peer), 403, "SESSION_REVOKED")
+    require(server.request("GET", "/api/v2/session/", token=peer).status == 200,
+            "Reset must preserve the calling session.")
     read_rows = stored_course_epoch_rows(server, scope, reset_epoch)
     # Old "assessment == view" check: the whole recovered attempt view and its
     # stored row must survive the retry (stable_body strips only the timestamp).
@@ -301,7 +324,7 @@ def test_peer_logout_before_queue_recovery_preserves_result_without_restoring_ol
             "The recovered old-epoch attempt must be evaluated with its stored PROGRESS_RESET application.")
     require(server.upload(survivor, attempt).stable_body() == recovered.stable_body()
             and server.calculation(survivor, attempt).stable_body() == recovered.stable_body(),
-            "Retry after logout/reset must preserve the original committed result bytes and assessment.")
+            "Retry after explicit reset must preserve the original committed result bytes and assessment.")
     require(server.course(survivor, course) == reset, "A retry must not reapply old-epoch completion.")
     require(stored_user(server, original["principal"]) == reset_user
             and stored_course_epoch_rows(server, scope, reset_epoch) == read_rows,
@@ -316,4 +339,4 @@ def test_peer_logout_before_queue_recovery_preserves_result_without_restoring_ol
     # the reset epoch, never to the old attempt's epoch.
     fresh_row = stored_attempt(server, fresh)
     require(fresh_row["epoch"] == reset_epoch and fresh_row["course_binding"]["epoch"] == reset_epoch,
-            "A start after logout/reset must bind to the reset epoch.")
+            "A start after explicit reset must bind to the reset epoch.")

@@ -52,6 +52,8 @@ def report_request_digest(course_id, enrollment_id, placement_id, report: Conten
     event = {"type": report.event_type}
     if report.event_type == "video_segments":
         event["intervalsMs"] = [list(pair) for pair in report.intervals_ms]
+    elif report.event_type == "video_skipped":
+        event["positionMs"] = report.position_ms
     elif report.event_type == "document_confirmed":
         event["displayReportId"] = report.display_report_id
     return digest({

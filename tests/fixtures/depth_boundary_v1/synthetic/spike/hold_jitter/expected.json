@@ -1,0 +1,21 @@
+{
+  "spec": "DEPTH_V1r3",
+  "amp": 30,
+  "records": 3,
+  "compressions": [
+    {
+      "id": 1,
+      "count_record": 2,
+      "peak_record": 1,
+      "peak_offset": 5,
+      "depth_raw": 120,
+      "recoil_raw": 0,
+      "rate": null,
+      "action_start": 0,
+      "action_end": 2,
+      "hp_window": [],
+      "hp": "center"
+    }
+  ],
+  "count": 1
+}

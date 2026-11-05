@@ -1,4 +1,4 @@
-"""All 15 Dummy Dev courses through the real default CLI, /api/v2 and internal core."""
+"""All 18 Dummy Dev skill/age combinations through the real CLI and internal core."""
 
 from copy import deepcopy
 import hashlib
@@ -7,7 +7,7 @@ import json
 import pytest
 
 from local_server_tests.test_journey_runtime import DUMMY_EXCLUDED, JourneyServer
-from local_server_tests.test_live_server import ROOT, dummy_courses, require
+from local_server_tests.test_live_server import ROOT, dummy_skills, require
 from mock_journey import typed
 from tests._synth import multipart_event
 
@@ -15,7 +15,7 @@ from tests._synth import multipart_event
 pytestmark = pytest.mark.loopback
 
 
-COURSES = dummy_courses()
+SKILLS = dummy_skills()
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +63,7 @@ def reference(condition, data, aed):
     return json.loads(json.dumps(final)), charts[0], closed_cycles
 
 
-@pytest.mark.parametrize("course", COURSES, ids=[f"{c.program}-{c.target}" for c in COURSES])
+@pytest.mark.parametrize("course", SKILLS, ids=[f"{c.program}-{c.target}" for c in SKILLS])
 def test_every_course_practice_returns_unchanged_core_and_real_chart(matrix, course):
     server, token = matrix
     attempt = server.start_attempt(token, course)
@@ -72,13 +72,16 @@ def test_every_course_practice_returns_unchanged_core_and_real_chart(matrix, cou
             and attempt["role"] == "training", "The start must pin the requested Dummy course practice.")
     require(condition["guideline"] == "ARC2025" and condition["target"] == course.target,
             "Course definition must carry its approved target and guideline.")
-    require(condition["cpr_cycle_type"] == ("152" if course.target == "infant" else "302"),
-            "Approved age-specific CPR ratio must remain a string.")
+    two_rescuers = course.program.startswith("bls-2r-")
+    require(condition["is_2rescuers"] is two_rescuers
+            and condition["cpr_cycle_type"] == ("152" if two_rescuers and course.target == "infant" else "302"),
+            "The pinned ratio and rescuer count must follow the skill definition.")
     filename = ("cco_1.bin" if course.kind == "compressions" else
                 "vo_1.bin" if course.kind == "ventilations" and course.target == "infant" else
                 "adult_vo_1.bin" if course.kind == "ventilations" else "cpr_1.bin")
     data = (ROOT / "tests/dataset" / filename).read_bytes()
-    aed = (ROOT / "tests/dataset/aed_1.bin").read_bytes() if course.program == "mock-two-rescuer-aed" else b""
+    aed = ((ROOT / "tests/dataset/aed_1.bin").read_bytes()
+           if course.program in {"bls-2r-cpr-aed-8", "lay-aed-cpr-1"} else b"")
     require(server.upload(token, attempt, data=data, aed=aed or None).status in (200, 202),
             "Every Dummy course must accept its real recorded measurement.")
     response = server.result(token, attempt)
@@ -87,6 +90,9 @@ def test_every_course_practice_returns_unchanged_core_and_real_chart(matrix, cou
     expected, expected_chart, closed_cycles = reference(condition, data, aed)
     url = actual.pop("chart_dataset_url")
     expected.pop("chart_dataset_url")
+    outcomes = ["shock" if code == 16 else "no_shock" for code in aed[1::10] if code in (16, 21)]
+    require([part.pop("outcome") for part in actual["aed_score"]["part_scores"]] == outcomes,
+            "AED outcome must reflect each terminal event in the recording.")
     require(typed.canonical_bytes(actual) == typed.canonical_bytes(expected),
             "Default CLI changed a calculator value, JSON type, null, coaching or response field.")
     chart = server.chart(url)
@@ -97,6 +103,9 @@ def test_every_course_practice_returns_unchanged_core_and_real_chart(matrix, cou
             "Downloaded bytes must match the signed content hash.")
     require(result["submit_arc"] == DUMMY_EXCLUDED, "Dummy results must stay excluded from ARC submission.")
     assessment = result["evaluation"]
+    require(assessment["gates"][0]["id"] == "repetitions"
+            and assessment["gates"][0]["value"] == assessment["goal"]["observed"],
+            "The v6 Worker must return persisted gate evidence.")
     require(assessment["score"]["decision"] in ("pass", "fail"), "Score decision must remain independent of goal readiness.")
     if course.kind == "cycles":
         require(assessment["goal"] == {"kind": course.kind, "required": course.required, "observed": closed_cycles,

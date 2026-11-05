@@ -75,6 +75,10 @@ def create_receipt_key(session_id, request_id):
     return {"PK": f"SESSION#{session_id}", "SK": f"COURSE_CREATE#{request_id}"}
 
 
+def progress_reset_receipt_key(session_id, request_id):
+    return {"PK": f"SESSION#{session_id}", "SK": f"PROGRESS_RESET#{request_id}"}
+
+
 def principal_locator_key(principal, epoch):
     return {"PK": f"COURSE_PRINCIPAL#{principal}", "SK": f"EPOCH#{epoch}"}
 

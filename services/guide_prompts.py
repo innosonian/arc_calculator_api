@@ -66,7 +66,7 @@ _TABLE_OF_PROMPT = {
 
 def load_prompt_book(guideline: str | None, regional_option: str | None) -> dict | None:
     guideline_key = _resolve_prompt_source(guideline)
-    region_key = _normalize_region(regional_option)
+    region_key = _normalize_region(regional_option, guideline_key)
     return _load_prompt_book_file(guideline_key, region_key)
 
 
@@ -107,9 +107,9 @@ def _resolve_prompt_source(guideline: str | None) -> str:
     return "2015 version"
 
 
-def _normalize_region(regional_option: str | None) -> str:
+def _normalize_region(regional_option: str | None, guideline_key: str) -> str:
     if not regional_option:
-        return "british"
+        return "usa" if guideline_key == "ARC 2020" else "british"
     return regional_option.strip().lower()
 
 
@@ -117,6 +117,7 @@ def build_guide_prompts(
     calculation_result: dict,
     condition: dict | None,
     usage: dict | None,
+    prompt_book: dict | None = None,
 ) -> list[str]:
     total_score = calculation_result.get("cpr_total_scores") or {}
     overall = total_score.get("overall")
@@ -127,7 +128,9 @@ def build_guide_prompts(
     if isinstance(usage, dict):
         regional_option = usage.get("Regional_Option")
 
-    prompts_text = load_prompt_book((condition or {}).get("guideline"), regional_option)
+    prompts_text = prompt_book
+    if prompts_text is None:
+        prompts_text = load_prompt_book((condition or {}).get("guideline"), regional_option)
     if not prompts_text:
         return []
 

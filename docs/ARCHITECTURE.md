@@ -1,13 +1,13 @@
 # 현재 구조와 변경 원칙
 
-기준: 2026-09-28 코드 리뷰 후속 작업(결정 D102~D121 구현, `/mock/v1` 삭제, 동작을 보존한 품질 정리)을 마친 코드. 사용자 정책의 원본은 [DECISIONS](DECISIONS.md), 앱 요청·응답은 [APP_API](APP_API.md)와 [계산 입력·결과 상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 실행은 [LOCAL_RUN](LOCAL_RUN.md), AWS는 [DEPLOY_GUIDE](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조와 변경할 때 보존할 조건을 설명한다.
+2026-11-05 Round 2 구현을 기준으로 한다. 사용자 정책의 원본은 [DECISIONS](DECISIONS.md), 앱 요청·응답은 [APP_API](APP_API.md)와 [계산 입력·결과 상세 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md), 실행은 [LOCAL_RUN](LOCAL_RUN.md), AWS는 [DEPLOY_GUIDE](DEPLOY_GUIDE.md)를 따른다. 이 문서는 현재 구조와 변경할 때 보존할 조건을 설명한다.
 
 ## 1. 현재 구현과 실행 범위
 
 - Python 3.12 백엔드이며 iOS/Android 화면·마네킨 연결 코드는 포함하지 않는다. 앱이 수집한 실제 누적 CPR/AED 바이너리를 기존 내부 계산기로 처리한다.
-- `/api/v2`가 최종 버전이다(D103). 로컬 기본 실행과 AWS API는 모두 `build_course_application`으로 `course_v2`만 조립하며 `/mock/v1`·`/cpr-analysis`는 404다. 로컬은 AWS Dev와 같은 Dummy Dev 임시 과정 15개를 제품 코드 안의 로컬 구현 기본 한도로 조립하고 같은 카탈로그 용량 검사를 쓴다. 이미 저장된 v1 시도·작업은 조회·재인가·취소·계산 마무리만 호환한다.
+- `/api/v2`가 최종 버전이다(D103). 로컬 기본 실행과 AWS API는 모두 `build_course_application`으로 `course_v2`만 조립하며 `/mock/v1`·`/cpr-analysis`는 404다. 로컬과 AWS Dev는 같은 Dummy 과정 4개와 카탈로그 용량 검사를 사용한다. 이미 저장된 v1 시도·작업은 조회·재인가·취소·계산 마무리만 호환한다.
 - VCC는 합성 공급자와 실제 내부 계산을 연결한 로컬 내부 인수를 통과했다. 공식 ARC/MuleSoft 공급자, 실물 앱, AWS 운영 인수는 별도다.
-- AWS API/Worker 설정에는 `course_v2_dummy` 절이 필수다(없으면 설정 오류, Relay에는 넣지 않음). `dev_course.py`가 기존 계산 정의로 임시 과정 15개를 제공하며 Dummy만 허용한다. Dev stage에서만 허용되므로 Beta/Prod API·Worker 조립은 G-RELEASE 전까지 거부된다. 테스트 fixture나 가짜 점수를 배포물에 넣지 않는다.
+- AWS API/Worker 설정에는 `course_v2_dummy` 절이 필수다(없으면 설정 오류, Relay에는 넣지 않음). `dev_course.py`가 프로그램 9종을 BLS 및 CPR_AED의 Adult·Infant 과정으로 조립한다. 각 과정은 연습 뒤 마지막 skill의 평가를 제공한다. Dev stage에서만 허용되므로 Beta/Prod API·Worker 조립은 G-RELEASE 전까지 거부된다. 테스트 fixture나 가짜 점수를 배포물에 넣지 않는다.
 - 계산 성공, 프로그램 완료, 현재 공유 진도 반영, ARC 제출 상태는 서로 독립적이다. ARC/HSTM 실제 전송은 비활성이다.
 - 직접 의존성은 `requirements.txt`, 배포 간접 의존성은 `constraints-lambda.txt`, 로컬 실행과 시험은 `requirements-local.txt`·`requirements-ci.txt`를 사용한다.
 
@@ -36,7 +36,7 @@ VCC 전용 모듈은 모두 `mock_journey/` 안에 있다. HTTP → service → 
 | `course_errors.py`, `course_settings.py` | 고정 오류 코드와 명시 한도. 운영값을 fixture에서 추론하지 않음 |
 | `course_primitives.py` | 과정 경계 공통 검증·비밀 키 순회·RFC3339 primitive. 오류 코드와 UTF-8 검사 여부는 호출부가 명시(D119) |
 | `course_provider.py`, `course_fixture.py` | 외부 경계·합성 공급자·전체 정의 검증. DB/HTTP 응답 작성은 하지 않음 |
-| `dev_course.py` | 명시적인 Dummy Dev 임시 카탈로그(로컬·AWS Dev 공용, 용량 검사 `validate_dummy_catalog`). 기존 5프로그램×3연령, 훈련→최종평가, ARC 실제 배정·영상/문서 없음 |
+| `dev_course.py` | 명시적인 Dummy Dev 임시 카탈로그(로컬·AWS Dev 공용, 용량 검사 `validate_dummy_catalog`). 프로그램 9종을 BLS·CPR_AED의 Adult·Infant 과정 4개로 조립. 연습→최종평가, ARC 실제 배정·영상/문서 없음 |
 | `course_policy.py` | 시작 가능 여부·콘텐츠 완료·과정 집계·제출 분류의 순수 판정 |
 | `course_state.py` | `DynamoCourseRepository` 조립·공개 이름 재내보내기. `CourseStore`/`CourseBlobStore` 계약과 생성자는 `course_repo_core.py`(세션·USER 가드, guarded get/commit, 공유 snapshot)와 use-case별 `course_repo_inventory/refresh/start/report.py`(읽기 snapshot과 원자적 저장), 레코드·요청 digest는 `course_records.py`이며 `state.py`를 import하지 않음. 메모리 fake는 `tests/course_store_fakes.py` |
 | `course_service.py` | 검증된 명령과 조회를 조정. 외부 원문 dict를 공개하지 않음 |
@@ -68,7 +68,7 @@ VCC 전용 모듈은 모두 `mock_journey/` 안에 있다. HTTP → service → 
 - `scope_key = typed.digest([provider, tenant_id, learner_id, enrollment_id, course_id])`, `placement_key = typed.digest([scope_key, source_placement_id])`다. 제목·배열 위치·프로그램 ID를 저장 키 대신 쓰지 않는다.
 - `CourseBundle`은 검증된 전체 정의다. JSON bytes를 소유한 DTO와 typed digest로 호출자의 mutable dict 변경 및 int/bool 혼동을 막는다.
 - START/ATTEMPT는 원래 scope·epoch·배치·내용 버전·정의 hash·`content_identity_hash`를 고정한다. 동일한 버전 문자열이라도 자산/프로그램이 다르면 다른 내용이다.
-- 신규 시작은 inventory/HEAD의 동일 snapshot, source/kind/역할, template binding 전체와 7-key 실행 정의를 대조한다. 공개 link가 다른 항목으로 바뀌면 `DEFINITION_CHANGED`, 부분 생성은 0이다.
+- 신규 시작은 inventory/HEAD의 동일 snapshot, source/kind/역할, template binding 전체와 버전별 실행 정의를 대조한다. 공개 link가 다른 항목으로 바뀌면 `DEFINITION_CHANGED`, 부분 생성은 0이다.
 - 새 정체성 필드가 없는 과거 course 행은 전체 정의 hash가 같을 때만 동일성을 입증한다. 변경 정의의 완료 근거를 추측하지 않는다.
 
 ## 4. 저장과 경합 방지
@@ -84,14 +84,15 @@ VCC 전용 모듈은 모두 `mock_journey/` 안에 있다. HTTP → service → 
 | 같은 PK의 `EPOCH#…#START#…`, `EPOCH#…#REPORT#…` | 콘텐츠 시작과 immutable 보고 receipt·요청 digest |
 | `COURSE_START#… / META` | 콘텐츠 시작의 원래 scope/epoch/세션 locator |
 | `SESSION#… / COURSE_CREATE#…` | 같은 세션의 시작 요청 멱등 receipt |
-| `SUBMISSION#… / RESULT#…` | 결과별 비실행 제출 의도·제외 근거 |
+| `SESSION#… / PROGRESS_RESET#…` | 같은 활성 세션의 Dummy reset receipt. USER epoch 변경과 함께 저장 |
+| `SUBMISSION#… / RESULT#…` | 이전 결과의 비실행 분류 근거와 v6 실학생 최초 과정 완료의 CRE 대기 기록 |
 | 기존 USER/SESSION/ATTEMPT/JOB/OUTBOX | epoch·인증·계산 상태·작업 전달. course binding은 선택 필드 |
 
 비공개 파일 저장소의 원본·메타·AED·차트 키 레이아웃(D28)은 `util/legacy_layout.py` 한 곳이 정의하며, `.request.json`은 D28 레이아웃이 아니라 `JourneyStorage` 고유 manifest 접미사(`storage.MANIFEST_SUFFIX`)다.
 
 현재 epoch의 권위는 USER다. `COURSE#`·`COURSE_LEARNER#`의 진도 제어 SK는 epoch를 포함한다. locator와 세션별 멱등 receipt는 원래 epoch를 값에 고정하며 키에 추가하지 않는다. 새 HEAD/FINAL은 USER·세션 조건 아래 같이 생성하며 한쪽만 존재하면 무결성 오류다. ITEM은 첫 시작/쓰기에서 조건부 생성한다.
 
-HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEAD 집계, FINAL을 각각 다른 코드에서 독립 저장하지 않는다. `course_response`만 내부 placement hash/`completed/passed`를 공개 link ID/`isCompleted/isPassed`로 변환한다.
+HEAD의 `progress_json`과 완료 집합은 집계용이다. 영상 Skip은 START·REPORT와 함께 저장하며 HEAD의 완료 종류를 원자적으로 갱신한다. 기존 전체 재생 근거는 `watched`로 읽는다. ITEM의 근거, HEAD 집계, FINAL을 각각 다른 코드에서 독립 저장하지 않는다. `course_response`만 내부 placement hash/`completed/passed`를 공개 link ID/`isCompleted/isPassed`로 변환한다.
 
 | 작업 | commit까지 보존할 조건과 결과 |
 |---|---|
@@ -102,11 +103,13 @@ HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEA
 | 계산 finalize | 기존 owner/fence/lease·candidate·attempt binding·USER와 course 행 revision. 기존 Job 결과 확정에 course write-set을 합침 |
 | 접수 전 취소 | created·미접수·FINAL 자기 참조. 자기 역할만 free로 변경하며 새 attempt 역할은 건드리지 않음 |
 | 재인가 | 기존 resume 증표와 동일 principal·attempt revision. 세션 귀속만 바꾸며 원래 정의/epoch/역할 유지 |
-| Dummy 로그아웃 | USER epoch를 변경. 과정 행을 무제한 삭제/초기화하지 않음. 실제 ARC 학생 진도는 유지 |
+| 로그아웃(Dummy·비-Dummy 공통) | 해당 SESSION만 폐기하고 `logout_receipt: true` 저장. USER epoch와 공유 진도 유지 |
+| Dummy 전용 reset | `POST /api/v2/dev/progress-reset/`만 USER epoch를 변경. 현재 세션과 저장된 이전 epoch 근거 유지 |
+| organization 선택 | SESSION revision과 만료 조건을 확인하고 해당 세션의 선택만 갱신 |
 
 과정 저장 거래(inventory·epoch·refresh·start·report)는 커밋 직전 시계로 세션 만료도 다시 확인한다. 세션 ConditionCheck에 `expires_at > now` 조건(`CourseStore`의 condition_check 전용 `if_greater`)을 붙이며, 읽기와 커밋 사이에 만료되면 쓰기 0건으로 `SESSION_EXPIRED`다(D116). action 수는 늘지 않는다.
 
-같은 세션/request ID와 같은 body는 원래 receipt를 반환한다. 다른 body는 `409`다. 이미 완료된 일반 훈련은 새로 시작하지 못하지만 먼저 시작한 동시 시도는 보존한다. 늦은 Fail이 기존 완료를 지우지 않는다.
+같은 세션/request ID와 같은 body는 원래 receipt를 반환한다. 다른 body는 `409`다. 이미 완료된 일반 훈련도 D130에 따라 다시 시작할 수 있다. 늦은 Fail이 기존 완료를 지우지 않는다.
 
 이전 epoch 보고는 원래 START/REPORT 근거만 보관하고 현재 HEAD/ITEM/FINAL을 변경하지 않는다. 늦은 계산도 원래 결과를 보관하되 `PROGRESS_RESET`과 제출 제외를 기록한다. 이미 확정된 결과를 이후 reset 때문에 소급 분류하지 않는다.
 
@@ -122,35 +125,52 @@ HEAD의 `progress_json`과 완료 집합은 집계용이다. ITEM의 근거, HEA
 
 ## 5. 계산·완료·버전 보존
 
-기존 parser·projection·자료형·null·코칭과 승인된 ARC 최소량 정책을 사용한다. D139로 현재 adapter(v5)는 최소량 미달 그룹을 null로 만들지 않고 점수를 표시하되 최소량(D07)을 평가의 합격 조건으로 적용한다. 보존 adapter(v4·pending-v3)의 진행 중 시도는 원래의 null 처리로 끝난다. 소비하지 않는 요청 필드를 저장 입력에 무조건 포함하거나 현재 결과로 골든 정답을 재생성하지 않는다. HSTM 호환 문서는 ARC 제출 payload가 아니다.
+v6은 저장된 프로그램 정의의 최소량과 `assessment.passRule`을 사용한다. `composite`는 기본값이며 기존 tester 점수 판정을 사용한다. `gates` 모드에서만 해당 gate 실패를 합격 판정에 사용한다. 기존 계산 가중치와 null 규칙은 유지한다. ARC prompt book의 기본 지역은 `usa`다. HSTM 호환 문서는 내부 호환용이다.
 
 | 구분 | 현재 판정 |
 |---|---|
-| 압박/호흡 Only | 실제 정수 관측 횟수로 목표 충족 + 기존 tester Pass 모두 필요 |
-| CPR/2인/AED 완료(D136) | 관측 사이클 = `CalculationEvidence.cycles` 중 `calc_case == cpr`인 수(`mock_journey/cycle_goal.py`), 기준 3/8/10. 이전 pending 어댑터로 시작한 시도만 `pending_policy`·`GOAL_POLICY_UNRESOLVED` 유지 |
-| 과정 완료 | 선행 모든 항목 완료 + 마지막 assessment의 `program_completed=true` |
-| 영상·문서 | 승인된 전체 재생/표시·읽음 확인 정책을 보고 근거로 판정. 상세는 DECISIONS·API 계약 |
+| 압박·호흡 Only | 관측 동작 수로 목표와 프로그램 최소량을 검사 |
+| CPR·2인·AED | `CountMarker`가 part마다 나눈 `cpr` 사이클을 합산. VP 사이클은 목표에 포함하고 2인의 최소량에서는 VP 동작 제외 |
+| AED bridge | 첫 AED 이벤트부터 16/21까지의 CPR 동작을 기존 part 분리에서 제외. 앱이 도착을 `ARRIVED(0)`으로 먼저 기록하면 bridge 전체를 제외. 분석 중 압박 gate는 제외 전 동작을 참조 |
+| 과정 완료 | 선행 모든 항목 완료 + 마지막 평가 통과. Dummy는 `FINISHED`. v6 실학생 모델은 CRE 확인 전 `COMPLETION_PENDING_ARC` |
+| 영상·문서 | 영상은 전체 재생 또는 명시적 Skip. 문서는 표시와 읽음 확인 |
 
-현재 adapter는 `arc-internal-detection-v5`(D136 사이클 완료 규칙 + D138 파일 끝 호흡 + D139 최소량 미달 점수 표시·합격 조건 유지), profile은 `tester-goal-cycles-v2`, projection은 `arc-local-projection-v1`, 후보 형식은 `arc-internal-calculation-v4`다. 보존 목록(`contracts.RETAINED_ADAPTER_VERSIONS`)은 `arc-local-calculator-pending-v2` → `arc-internal-detection-pending-v3` → `arc-internal-detection-v4` 순서다. 이 레지스트리가 AWS와 로컬 모두에서 버전의 유일한 정본이다(D141). 직전 `arc-internal-detection-v4`(profile `tester-goal-cycles-v1`, 후보 `arc-internal-calculation-v3`)와 `arc-internal-detection-pending-v3`(profile `tester-goal-pending-v2`, 후보 `arc-internal-calculation-v2`)는 그 정의로 시작한 진행 중 시도를 원래 의미로 계속 계산한다(pending-v3의 CPR 목표는 `pending_policy`). 형식이 같아도 adapter의 검출 의미는 다르다.
+새 공개 과정·배치 ID는 이전 카탈로그와 겹치지 않는다. `definitionHash`에는 최소량·과정 유형·AED 사용·합격 규칙을 포함한 실행 정의가 반영된다. API는 refresh나 새 로그인 때 새 목록을 읽는다. ATTEMPT에 고정한 이전 정의와 저장 결과는 그대로 읽는다. 이전 어댑터는 새 계산을 하지 않으며 유효한 저장 후보만 복구한다.
+
+현재 어댑터는 `arc-internal-detection-v6`, 프로파일은 `tester-goal-cycles-v3`다. projection은 `arc-local-projection-v1`이다. 보존 목록은 `arc-local-calculator-pending-v2`, `arc-internal-detection-pending-v3`, `arc-internal-detection-v4`, `arc-internal-detection-v5` 순서다. AWS와 로컬은 같은 레지스트리를 사용한다(D141).
 
 버전별 의미는 `mock_journey/contracts.py`의 `ADAPTER_FEATURES` 표 한 곳에 있다.
 
-| adapter | CPR 목표 상태 | profile | 후보 형식 | 파일 끝 호흡(D138) | ARC 최소량 미달 점수 | 최소량 합격 조건·사유 코드(D139) | 계산 |
-|---|---|---|---|---|---|---|---|
-| `arc-internal-detection-v5`(현재) | `evaluated` | `tester-goal-cycles-v2` | `arc-internal-calculation-v4` | 열린 후보를 하강 1패킷 또는 기준선 대비 상승으로 인정 | 표시(null 없음) | 적용: `decision=fail`·`MINIMUM_QUANTITY_NOT_MET` | 가능 |
-| `arc-internal-detection-v4`(보존) | `evaluated` | `tester-goal-cycles-v1` | `arc-internal-calculation-v3` | 두 패킷만(D42) | 그룹 null(D07/D08) | 없음(코드 없음) | 가능(진행 중 시도) |
-| `arc-internal-detection-pending-v3`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 두 패킷만(D42) | 그룹 null(D07/D08) | 없음(코드 없음) | 가능(진행 중 시도) |
-| `arc-local-calculator-pending-v2`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | — | — | 없음 | 불가(검증 전용) |
+| adapter | CPR 목표 상태 | profile | 후보 형식 | 최소량 합격 조건 | 새 계산 |
+|---|---|---|---|---|---|
+| `arc-internal-detection-v6`(현재) | `evaluated` | `tester-goal-cycles-v3` | `arc-internal-calculation-v5` | 정의별 최소량·gate 결과 | 가능: HSTM `92f56dc` legacy |
+| `arc-internal-detection-v5`(보존) | `evaluated` | `tester-goal-cycles-v2` | `arc-internal-calculation-v4` | 저장 평가의 D07 고정 최소량 | 불가: 검증 전용 |
+| `arc-internal-detection-v4`(보존) | `evaluated` | `tester-goal-cycles-v1` | `arc-internal-calculation-v3` | 기존 저장 평가 유지 | 불가: 검증 전용 |
+| `arc-internal-detection-pending-v3`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 기존 저장 평가 유지 | 불가: 검증 전용 |
+| `arc-local-calculator-pending-v2`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 기존 저장 평가 유지 | 불가: 검증 전용 |
 
-두 계산 옵션은 `services/calculation_context.CalculationOptions(eof_single_confirmation, minimum_quantity_null)`로 전달된다: `InternalCalculator`가 자기 버전의 값을 `CalculationExecutionContext(options=…)`에 넣고, `main.run_calculator`가 검출 옵션을 `services.preparers.make_pre_action_list` → `ActionDataPrepare` → `PacketActionDetector`로, `services.calculate_cpr.make_calculate_result`가 최소량 옵션을 `services.calculators.calculate_cpr`로 넘긴다. `calculate_cpr`는 옵션이 켜져 있을 때만 `NullPolicy.create(...)`를 쓰고 아니면 `NullPolicy.inactive()`를 쓴다(정책 코드 자체는 해시 고정 그대로). execution context가 없는 직접 호출(로컬 도구·회귀 helper·참고 대조 스크립트)은 현재 규칙(True, False)을 쓴다. 레지스트리에 없는 버전 이름의 `InternalCalculator`도 현재 규칙을 쓴다.
+`CalculationOptions`에는 `collect_gates: bool = False`만 있다. v6 `InternalCalculator`가 이를 켜서 계산된 동작·이벤트에서 평가 근거를 수집한다. context 없는 직접 호출은 수집하지 않는다. 검출·점수 옵션은 없으며 `main.run_calculator`와 두 인자 `calculate_cpr`가 같은 HSTM legacy 코어를 실행한다. `serialize_result`에는 네 번째 인자로 prompt book을 전달한다.
 
-최소량 합격 조건(D139)은 계산 옵션이 아니라 평가 단계의 버전 기능(`ADAPTER_FEATURES.minimum_quantity_pass_gate`, v5만 True)이다. `mock_journey/worker.evaluate`가 계산 결과의 `action_count`와 정의의 `condition`으로 `contracts.minimum_quantity_policy`(= 점수 계산이 쓰던 `NullPolicy.create`, 임계값을 복제하지 않음)를 호출해 ARC2020/ARC2025 CPR에서 압박·호흡 중 하나라도 최소량 미만이면 `passed = 기존 tester 합격 AND 최소량 충족`을 false로 만들고 `reason_codes`의 목표 사유 뒤·`SCORE_NOT_PASS` 앞에 `MINIMUM_QUANTITY_NOT_MET`를 넣는다. 횟수를 읽을 수 없는 결과나 구성할 수 없는 조건은 합격이 아니라 `CALCULATOR_CONTRACT_MISMATCH`다. `mock_journey/jobs.check_evaluation`은 저장된 평가에 횟수가 없으므로 v5의 `fail`에 대해 목표 사유 뒤 `[SCORE_NOT_PASS]`·`[MINIMUM_QUANTITY_NOT_MET]`·`[MINIMUM_QUANTITY_NOT_MET, SCORE_NOT_PASS]` 세 꼴만 받고(최소량 코드는 정책이 적용될 수 있는 ARC CPR 조건에서만), `pass`에는 두 코드를 받지 않으며, v4 이하 정의에서는 이 코드를 거절한다.
+v6 실행 정의는 공급·시작 경계에서 `minimumQuantity`를 필수로 검증한다. 값이 없거나 잘못된 정의는 시작을 허용하지 않는다. 실제 수행량은 평가 단계에서 검사한다. 보존 v5의 저장 평가 검증은 세션 전체 동작과 기존 ARC CPR 고정 기준을 사용한다. v6은 계산기가 검증한 동작 근거에서 2인 학습자 횟수를 읽고 시작 당시 정의의 `minimumQuantity`와 대조한다. 목표 사유 뒤에 최소량 사유를 두고 마지막에 `SCORE_NOT_PASS` 또는 `GATE_NOT_PASSED`를 둔다. gate 결과는 `ATTEMPT`의 `evaluation_gates_json`에 저장해 소수 값을 유지한다. 기존 정수 제어 DTO의 자료형 검사는 유지한다.
 
-구버전 `arc-local-calculator-pending-v2`는 저장 후보 검증·결과 복구 전용(재계산 불가)이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
+보존 어댑터 네 개는 모두 저장 후보 검증·결과 복구 전용(재계산 불가)이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. 계산 전 접수된 과정 작업은 `TEMPORARILY_UNAVAILABLE`로 연기되며 JOB은 `running`·`call_phase=not_started`를 유지한다. owner와 lease를 해제하고 다음 확인 시각을 잡으며, ATTEMPT는 `outcome_unknown`·평가/진도 null이다. 마지막 평가의 FINAL은 `recovery_required`다. 임의 실패·취소로 확정하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
 
-현재 검출은 압박/호흡 독립, 첫 압박 패킷 기준선, 최고 호흡량 대비 두 연속 패킷의 감소 확인을 사용한다. 성인·소아 10mL, 영아 5mL 잠정값과 EOF·동시 동작 시간/cycle 정책은 DECISIONS D38~D46과 D138을 따른다. 파일 끝 규칙(D138): 반복이 끝났을 때 호흡 후보가 아직 열려 있으면(이미 확정·잠금·기준 미달 종료가 아님) ① 최고값보다 감소 기준 이상 낮은 패킷이 1개 이상 관측됐거나 ② 하강 패킷이 없어도 최고 호흡량이 후보 시작 직전 패킷의 대표 호흡량(기준선, 첫 패킷이면 0)보다 감소 기준 이상 높을 때 1회로 확정한다(`packet_index`=마지막 패킷, 근거 구간=후보 시작~파일 끝, ②는 `first_confirmation_index=None`이고 최고값은 그때까지 관측된 최대). 앱이 목표 호흡을 감지한 즉시 종료하며 끊긴 지점이 최고점 이전인지 서버가 알 수 없으므로 끊긴 지점까지의 최고값을 최고점으로 인정한다. 기준선 대비 상승이 감소 기준 미만인 후보, 잠금 상태, 이미 확정된 호흡은 추가하지 않으며 파일 길이로 추정하지 않는다. 옵션 이름 `eof_single_confirmation`은 ①만 있던 때의 이름을 그대로 쓴다. 미정 교육 완료 공식을 검출 규칙에서 추론하지 않는다.
+**현재 계산 규칙: HSTM `92f56dc` legacy(R00), DEPTH_V1r3.** 모든 지원 guideline에 같은 검출 규칙을 적용하며 점수 경계와 가중치는 guideline별 원본을 사용한다.
 
-점수·코칭·파서에 쓰는 기존 소스와 prompt book·시험 입력은 `tests/fixtures/detection_revision/provenance.json`에 파일별 SHA-256(일부는 파일·함수 AST hash)으로 고정하며 `tests/test_detection_oracle.py`가 현재 파일과 대조한다. 결과가 바뀌지 않는 수정만 파일별로 재등록할 수 있고, 그 전에 기존 계산 골든·참고 구현 대조·독립 검출 oracle·원래 구현과의 무작위 대조 시험을 모두 통과해야 한다(D102). 첫 적용은 `calculators/waveform.py`·`transformers/part_divider.py`의 계산량 개선이며 미사용 `config/guidelines.py`는 삭제하고 항목을 뺐다. 시험 실패를 없애려고 해시만 바꾸거나 계산식을 교정하지 않는다(D03).
+- 압박은 패킷별 깊이 최대값의 지그재그에서 정점 대비 30 raw(15mm) 하강한 Record에서 확정한다. 파일 끝의 미확정 압박도 골 대비 30 raw 이상 상승했으면 센다. 첫 패킷을 카운터 기준선으로 버리지 않으며 펌웨어 `Ccnt`·`CRate`는 계산에 쓰지 않는다.
+- 압박 속도는 연속 정점 표본의 간격 × 5ms로 계산한다. 사이클과 AED 다음 파트의 첫 압박 속도는 0이다.
+- 호흡은 패킷의 호흡량 최대값(10mL 미만은 0)이 직전 비교값보다 작고, 현재 패킷의 호흡량 최소값도 10mL 미만일 때 확정한다. 압박 또는 호흡 확정 시 비교값과 관측 버퍼를 초기화한다.
+- 하강 없이 끊긴 파일 끝 호흡은 마지막 비교값이 10mL 이상이고, 패킷 처리 중 직전 압박·호흡 확정 Record부터 남은 버퍼가 15패킷 이상일 때만 1회 추가한다. 확정 Record를 포함하며 이전 확정이 없으면 파일 시작부터 센다. 15패킷은 50ms 주기 기준 750ms이며, timestamp 차이로 검사하는 조건은 아니다.
+- 호흡과 같은 Record에서 확정된 압박은 시간 0 창이다. AED 창 뒤 첫 압박의 하강 구간은 복원한다(R6).
+- 손 위치는 하강·이완 표본 전체로 판정한다. 복부 `2`를 우선하고 좌우 `4/8` 중 다수, 동수면 right다. 영아는 하위 4비트를 사용한다.
+
+**앱 기록 권고:** 종료 신호 뒤에도 호흡량이 0으로 돌아올 때까지 또는 최소 2패킷을 더 기록한다. 앱 로컬 Count Limit(`Ccnt`)과 서버 `action_count`·`minimumQuantity`는 기준이 다르다. 서버가 정본이며 로컬 카운트는 종료용이다. 앱팀은 [DEPTH_V1r3 공통 벡터 54건](../tests/fixtures/depth_boundary_v1/)으로 같은 파일의 압박·호흡·차트를 대조한다.
+
+원본의 다섯 거절 검사는 `DataParser.validate_cpr_bytes`에 모아 접수와 Worker가 함께 사용한다. 오류 대응은 [앱 API 5절](APP_API.md#5-측정-시도와-업로드) 표를 따른다. 원본 `RequestRejected` 대신 ARC의 `RawInputRejected(category, reason, status)`를 사용한다. 외부 제출·R1 unified pipeline·S3 계산 업로드는 가져오지 않았다.
+
+원본 파일·허용 편차·prompt book·시험 입력의 해시는 `tests/fixtures/detection_revision/provenance.json`에 고정한다. 재등록 근거는 HSTM `92f56dc` legacy를 양쪽에서 실제 실행한 856건의 계산·차트 JSON·legacy 응답 동일성이다. key 순서·자료형·float·직렬화 bytes까지 비교하며 ARC 코칭은 지역을 명시해 두 지역을 모두 대조한다. C-7의 두 예외 파일도 이 근거로 재등록했다.
+
+복사한 역사적 `tests/dataset/result_1~5.json`·`result_cco_1.json`·`result_vo_1.json` 7개는 별도 원본 보존 자료다. `tests/test_reference_core_parity.py`가 핵심 키의 존재 여부와 값을 원본 해시로 검증한다. 이 파일에는 `action_count`가 없고, 세 압박 속도 점수는 현재 원본 실행과 다르다(cpr_1: 93→92, cpr_4: 100→97, cpr_5: 100→98). 역사적 파일은 수정하지 않으며, 현재 결과의 정답은 856건 실시간 참고 비교와 독립 raw 참조 시험으로 확인한다. 별도 호환 문서 probe 한 건만 명시적 `VentilationSpeed=None`을 원본의 `{}` 대신 ARC의 `null`로 보존한다. 이는 계산·차트·legacy 변환 856건의 0차이 조건을 완화하지 않는다. `docs/DECISIONS.md`의 과거 방침은 이번 사용자 지시로 정정할 대상이며 이 작업에서 수정하지 않았다.
 
 ## 6. 마지막 평가와 복구
 
@@ -217,21 +237,29 @@ START의 canonical bytes는 보고 commit 전 400KiB 기술 상한으로 보수�
 
 ## 9. 운영 전환과 남은 확인
 
+API 세션 설정은 `session.ttl_seconds`(기본 86400), `session.hard_cap_seconds`, `session.inactivity_logout_seconds`를 받는다. 뒤 두 값의 기본은 null이다. 서버가 TTL과 상한의 짧은 값을 적용하고 앱이 비활동 정책을 적용한다. Dummy·비-Dummy 모두 로그아웃은 해당 SESSION만 폐기하며 USER epoch와 공유 진도를 유지한다. 공유 epoch 교체는 Dummy 전용 `POST /api/v2/dev/progress-reset/`만 수행하고 현재 세션은 유지한다. 과거 `logout_epoch` 필드는 기존 행 읽기 호환으로만 남긴다. 새 Dummy 세션에는 `is_dummy: true`, `organizations: []`를 명시 저장하며 principal 기반 Dummy 추정은 이 속성이 없는 기존 행에만 적용한다.
+
+`ventilation_interval_score` gate는 `training_type == "ventilation_only"`이고 `courseType == "BLS"`인 skill에만 적용한다. 측정값은 action 기반 분당 환기율을 `cprGuideline.ventilationRateMin/Max`의 `vent_only_rate` band로 판정한 점수(0~100)다. CPR skill에서는 `applicable=false`이며 앱 Blow Timing 표시는 참고용이다. CPR 호흡 간격 gate는 ARC Science band 확정 후 별도 gate ID로 추가할 대상이며 현재 구현하지 않는다.
+
+`services/arc_oidc.py`, `ArcTakeCourseProvider`, `services/arc_cre.py`는 계약 대기 인터페이스다. 실제 ARC 사용자 토큰을 저장하지 않는다. `sku_catalog.py`는 로컬 카탈로그 참조를 제공하며 외부 SKU 값은 계약에서 받아야 한다. 배정 만료는 목록에 표시하고 새 시작만 차단한다. organization 선택은 세션에 저장한다.
+
+실학생 v6의 최초 과정 완료는 CRE 대기 상태와 비실행 의도를 같은 거래에 기록하는 모델이다. 현재 생성 경로는 `disabled/excluded/pending`만 만들며 모두 `ok=false`다. 조회·직렬화 계약은 `acknowledged`일 때만 `ok=true`를 반환하지만 CRE 계약 전에는 해당 상태를 생성하지 않는다. `sent/acknowledged/failed` 생성과 외부 전송·응답 처리기·CRE outbox는 계약을 받기 전까지 연결하지 않는다. Dummy는 기존 제외 상태로 즉시 `FINISHED`다.
+
 로컬 감독기는 자신이 띄운 DB/Worker만 소유·종료한다. 자식 준비 실패 시 계속 접수하지 않으며 같은 설치 재시작으로 복구한다. 부모 SIGKILL 뒤 Java orphan 가능성, OS/SDK의 강제 hard deadline은 해결된 것으로 주장하지 않는다.
 
 AWS API/Worker/Relay runtime은 명시 설정으로 기존 조립에 연결한다. 역할별 IAM·자원·trigger·partial batch·due schedule·DLQ·로그 전달·Linux 패키지·용량은 실환경 인수가 필요하다. Relay의 환경별 진행 행은 create-only 초기화와 revision/owner/fence/lease를 사용하며 런타임이 손상/부재 행을 자동 생성하지 않는다. 한 호출 안에서는 OUTBOX/JOB을 한 step씩 교대하되, 한 종류가 이번 pass를 끝냈거나 자기 한도(`page_size × max_pages`)에 닿으면 남은 종류를 한도와 step 시간 예산이 허락하는 만큼 계속 처리한다. 이렇게 순서 밖에서 처리한 step은 진행 행의 다음 종류를 바꾸지 않아 멈춘 종류가 다음 호출에서 먼저 처리된다(D109).
 
 Dev 세 Lambda의 코드는 `develop` 머지 시 `.github/workflows/deploy_dev.yml`이 배포한다(D137): 같은 revision의 오프라인 회귀 → ZIP 빌드·보관 → environment 승인 → OIDC → `scripts/deploy_dev_lambdas.py`의 설정 검사(`CONFIG_DRIFT`: 변수 존재·JSON object·`role`·체크아웃한 코드의 `AwsSettings.parse`)·Worker→Relay→API 갱신·`CodeSha256` 대조·Dummy 스모크. workflow는 Lambda 설정을 쓰지 않는다(D141). 현재·보존 어댑터와 projection 버전의 정본은 코드 레지스트리(`mock_journey/contracts.py`)뿐이며 `AwsSettings`의 `execution`은 거기서 채워진다. API·Worker 설정 JSON의 `execution` 블록은 읽지 않는다(있으면 첫 호출에서 운용 기록 `execution_block_ignored` 1건, 값 없음). 그 밖의 설정은 손으로 갱신한다.
 
-`course_v2_dummy`는 Dev stage에서만 허용하며 API·Worker가 같은 카탈로그 버전·9개 과정 한도·저장·실행 정의를 사용해야 한다. 실제 과정 snapshot의 직렬화 크기를 저장 한도와 대조해 시작조차 불가능한 설정을 거절한다. `scripts/validate_aws_dev_bundle.py`는 역할 간 DB/환경/저장/version 혼선, Worker와 Queue의 시간 관계, Relay가 한 항목도 처리하지 못할 실행 예산을 오프라인에서 검사한다. 실제 자원·IAM 확인을 대신하지 않는다.
+`course_v2_dummy`는 Dev stage에서만 허용하며 API·Worker가 같은 카탈로그 버전·과정 4개를 수용하는 한도·저장·실행 정의를 사용해야 한다. 실제 과정 snapshot의 직렬화 크기를 저장 한도와 대조해 시작조차 불가능한 설정을 거절한다. `scripts/validate_aws_dev_bundle.py`는 역할 간 DB/환경/저장/version 혼선, Worker와 Queue의 시간 관계, Relay가 한 항목도 처리하지 못할 실행 예산을 오프라인에서 검사한다. 실제 자원·IAM 확인을 대신하지 않는다.
 
 | 확인 경계 | 해소 전 동작 |
 |---|---|
 | G-ARC: 공식 인증·배정·정의·진도·제출 계약 | Unavailable provider/Disabled gateway. 빈 성공·가짜 ID·외부 송신 없음 |
 | G-CONTENT: 실제 앱 관측·콘텐츠 접근 계약 | 내부 보고 계약만 시험. 실물 앱 연결 별도 |
-| G-GOAL: CPR/2인/AED 교육 완료 규칙 | D136 사이클 규칙 + 실제 점수. 이전 어댑터 시도만 pending_policy |
+| G-GOAL: CPR/2인/AED 교육 완료 규칙 | 시작 당시 정의의 목표·최소량과 `assessment.passRule` 적용. 이전 pending 어댑터 시도만 `pending_policy` |
 | G-REVISION: 평가 교체·ARC 진도 정정 의미 | 원래 결과·합격 근거 보존, 새 완료 적용 보류 |
-| G-DELIVERY: 제출 멱등·응답 유실·초기화 후 전달 | 비활성/제외만 기록. 실행 가능한 ARC 전송 queue 없음 |
+| G-DELIVERY: 제출 멱등·응답 유실·초기화 후 전달 | `disabled/excluded/pending`만 생성. 실행 가능한 ARC 전송 queue 없음 |
 | G-RELEASE: 자원·용량·retention·앱 전환 | 로컬 내부 PASS만 인정. Beta/Prod API·Worker 조립은 거부(fail-closed). commit/push/배포는 사용자 결정 |
 
-전환 전에는 기존 queued/running/candidate와 private 참조의 호환 reader/worker를 검증하고 앱 전체 흐름·접수 중단·재시작을 확인한다. `/mock/v1` 삭제(D103) 뒤 새 USER 행에는 v1 진도 slot이 없어 삭제 이전 binary가 읽지 못하므로 단순 rollback하지 않는다. 이미 저장된 course binding 없는 시도·작업은 `/api/v2`의 조회·재인가·취소와 Worker의 계산 마무리만 호환한다. 신규 접수를 중단하더라도 기존 결과 조회와 호환 worker를 유지하며 데이터/키 삭제로 복구하지 않는다. 현재 검증 범위는 [VALIDATION](VALIDATION.md)을 따른다.
+전환 전에는 기존 queued/running/candidate와 private 참조의 호환 reader/worker를 검증하고 앱 전체 흐름·접수 중단·재시작을 확인한다. `/mock/v1` 삭제(D103) 뒤 새 USER 행에는 v1 진도 slot이 없어 삭제 이전 binary가 읽지 못하므로 단순 rollback하지 않는다. 이미 저장된 course binding 없는 시도·작업은 `/api/v2`의 조회·재인가·취소와 유효한 저장 후보의 Worker 복구만 호환한다. 보존 어댑터의 후보 없는 작업은 새로 계산하지 않는다. 신규 접수를 중단하더라도 기존 결과 조회와 호환 worker를 유지하며 데이터/키 삭제로 복구하지 않는다. 현재 검증 범위는 [VALIDATION](VALIDATION.md)을 따른다.

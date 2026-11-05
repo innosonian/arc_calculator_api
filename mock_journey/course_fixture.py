@@ -3,9 +3,9 @@
 from dataclasses import replace
 from functools import partial
 
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import LEGACY_PROGRAM_IDS, PROGRAM_BY_ID, TARGETS
 from mock_journey.course_contracts import (
-    EXECUTION_KEYS, PLACEMENT_KINDS, AssignmentBinding, CourseBundle, CourseScope,
+    PLACEMENT_KINDS, AssignmentBinding, CourseBundle, CourseScope,
     LearnerContext, MappingRegistry, Placement, PublicIds, item_type_wire, owned_json_bytes,
     parse_owned, require_public_id, require_source_id, validate_execution_definition,
 )
@@ -65,10 +65,10 @@ def _unique_rows(rows, key):
 
 
 def fixture_mapping_registry(mapping_document) -> MappingRegistry:
-    """Register the fixture mapping version to the exact 7-key rows. No program_id name guessing."""
+    """Register the fixture mapping version to explicit execution rows. No program_id name guessing."""
     owned = _own_document(mapping_document)
     version = require_text(owned.get("mapping_version"), code=_MISMATCH, check_utf8=False)
-    programs = {row[0] for row in PROGRAMS}
+    programs = LEGACY_PROGRAM_IDS | PROGRAM_BY_ID.keys()
     rows = owned.get("mappings")
     if type(rows) is not dict:
         _mismatch()
@@ -87,8 +87,6 @@ def fixture_mapping_registry(mapping_document) -> MappingRegistry:
             raise CourseError("EXECUTION_DEFINITION_UNSUPPORTED")
         if program_id in {source_id, row.get("source_placement_id")}:
             _mismatch()
-        if type(execution) is not dict or tuple(sorted(execution)) != tuple(sorted(EXECUTION_KEYS)):
-            raise CourseError("EXECUTION_DEFINITION_UNSUPPORTED")
         try:
             validated = validate_execution_definition(execution)
         except CourseError:
@@ -125,8 +123,6 @@ def _execution_from_item(item, kind, inner):
     if execution is None or status == "absent":
         return None, "absent"
     try:
-        if type(execution) is not dict or tuple(sorted(execution)) != tuple(sorted(EXECUTION_KEYS)):
-            return None, "unsupported"
         return validate_execution_definition(execution), "ready"
     except CourseError:
         return None, "unsupported"

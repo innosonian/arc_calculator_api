@@ -21,10 +21,10 @@ from mock_journey.course_settings import fixture_course_settings
 from mock_journey.course_state import DynamoCourseRepository
 from tests.course_store_fakes import InMemoryBlobStore
 from mock_journey.handler import handle
+from mock_journey.models import AuthContext
 from mock_journey.state import DynamoCourseStore, DynamoStateRepository
 from mock_journey.typed import parse_json
 from tests.journey_support import JourneyStore
-from tests.legacy_attempt_seeds import seed_session_without_slots
 from tests.legacy_rows_support import seed_legacy_rows
 from tests.vcc_support import event
 
@@ -102,10 +102,15 @@ def test_legacy_attempt_get_without_provider(dynamodb_client, dynamodb_table):
 
 
 def fixture_learner_session(dynamodb_client, dynamodb_table, token_hash):
-    return seed_session_without_slots(
-        dynamodb_client, dynamodb_table, clock=lambda: 1_800_000_000,
-        principal=BUNDLE["learners"]["real"]["principal"], token_hash=token_hash, expires_at=1_808_640_000,
-    )
+    now, expires_at = 1_800_000_000, 1_808_640_000
+    state = DynamoStateRepository(dynamodb_client, dynamodb_table, clock=lambda: now)
+    session_id, principal = str(uuid.uuid4()), BUNDLE["learners"]["real"]["principal"]
+    state.create_session({
+        "session_id": session_id, "principal": principal, "token_hash": token_hash, "issued_at": now,
+        "expires_at": expires_at, "status": "active", "revision": 0, "is_dummy": False,
+        "organizations": [{"id": "fixture-org", "name": "Fixture organization"}],
+    })
+    return AuthContext(session_id, principal, 0, expires_at)
 
 
 def test_video_intervals_complete_and_historical_null_on_old_epoch(dynamodb_client, dynamodb_table):

@@ -195,8 +195,10 @@ class TestAvailabilityHelper:
     def test_matches_course_wiring_session_reader_with_absorb(self):
         from types import SimpleNamespace
         from mock_journey.course_wiring import _session_reader
-        journey = SimpleNamespace(check_session=lambda auth: None)
-        auth = SimpleNamespace(session_id="s", expires_at=0)
+        from mock_journey.models import AuthContext
+        from mock_journey.settings import SessionSettings
+        journey = SimpleNamespace(check_session=lambda auth: None, auth=SimpleNamespace(settings=SessionSettings()))
+        auth = AuthContext("s", "p", 0, 0)
         outcomes = [CourseError(code) for code in sorted(AUTH_ERROR_CODES)] + [
             CourseError("CONTRACT_PENDING"), CourseError("NOT_FOUND"), RuntimeError("x"), ValueError("y"),
             JourneyError("SESSION_EXPIRED"), object(),

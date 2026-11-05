@@ -1,10 +1,10 @@
 # AWS·Dev 배포와 인수 안내
 
-2026-09-24 기준, 2026-09-28 코드 리뷰 후속 결정(D103~D114) 반영. **새 `/api/v2` Dummy Dev 배포 후 사용자 출력으로 HTTPS 로그인·조회, 기존 성인 압박 파일의 일반 훈련·최종평가 계산과 과정 FINISHED, 원본·결과·운용 로그·차트를 확인했다. 다른 세션의 조회 차단, 차트의 실제 만료/재발급, 완료된 시작·업로드의 순차 재전송과 기존 기록 보존도 통과했다. 이 범위에서 앱 연결 시험을 시작할 수 있으며 전체 AWS 운영 인수는 진행 중이다.** 다음 단계는 [앱팀에 연결 정보 전달](#beginner-dev-app-handoff)이다. 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
+2026-09-24 AWS 확인 기록과 2026-09-28 코드 리뷰 후속 결정(D103~D114)을 보존하고, 현재 설정·카탈로그·로그아웃 안내는 Round 2 구현에 맞춘다. **과거 `/api/v2` Dummy Dev 배포 후 사용자 출력으로 HTTPS 로그인·조회, 기존 성인 압박 파일의 일반 훈련·최종평가 계산과 과정 FINISHED, 원본·결과·운용 로그·차트를 확인했다. 다른 세션의 조회 차단, 차트의 실제 만료/재발급, 완료된 시작·업로드의 순차 재전송과 기존 기록 보존도 통과했다.** 이 기록은 Round 2의 실제 AWS 배포·인수 증거가 아니다. 현재 로컬 검증과 실제 AWS 확인 범위는 [VALIDATION](VALIDATION.md)을 따른다. 이 문서의 AWS 명령은 사용자가 승인한 대상에 실행할 절차이며 완료한 생성 명령을 처음부터 반복하지 않는다.
 
-AWS API는 항상 `/api/v2`로 조립하며 `/mock/v1`과 `/cpr-analysis`는 삭제되어 404다(D103). API·Worker 설정에는 `course_v2_dummy` 절이 필수이고 Dev stage에서만 허용되므로, Beta/Prod의 API·Worker 조립은 G-RELEASE에서 정식 과정 공급자와 계약을 정하기 전까지 거부된다(fail-closed). **이번 목표는 이 `/api/v2` Dev 시험**이다. 내장 Dummy 임시 과정 15개(기존 5프로그램×3연령, 각 훈련→최종평가)를 사용하고 실제 업로드 바이너리로 계산한다. 영상·문서 자료나 공식 ARC 배정을 만들지 않는다. Dummy 결과는 ARC 제출 `excluded`, 일반 비활성 상태는 `disabled`, CPR 완료는 `pending_policy`다. 생성된 Dev 주소와 완료한 검증 범위를 함께 앱팀에 안내한다.
+AWS API는 항상 `/api/v2`로 조립하며 `/mock/v1`과 `/cpr-analysis`는 삭제되어 404다(D103). API·Worker 설정에는 `course_v2_dummy` 절이 필수이고 Dev stage에서만 허용되므로, Beta/Prod의 API·Worker 조립은 G-RELEASE에서 정식 과정 공급자와 계약을 정하기 전까지 거부된다(fail-closed). **이번 목표는 이 `/api/v2` Dev 시험**이다. 현재 내장 Dummy 임시 과정은 4개(BLS·CPR_AED × adult·infant)이며 실제 업로드 바이너리로 계산한다. 영상·문서 자료나 공식 ARC 배정을 만들지 않는다. Dummy 결과는 ARC 제출 `excluded`, 일반 비활성 상태는 `disabled`다. 생성된 Dev 주소와 완료한 검증 범위를 함께 앱팀에 안내한다.
 
-실제 주소·계정·리전·자원·한도·비용·보관기간을 이 문서에서 정하지 않는다. 기존 계산·null·코칭, 인증·소유권·멱등성·epoch·lease/fence, 비공개 파일을 유지한다. CPR 완료는 `pending_policy`, ARC 제출은 `disabled`, 실제 HSTM 전송은 금지다. commit·push·AWS 변경·배포는 사용자 결정이다.
+실제 주소·계정·리전·자원·한도·비용·보관기간을 이 문서에서 정하지 않는다. 버전별 계산·null·코칭, 인증·소유권·멱등성·epoch·lease/fence, 비공개 파일을 유지한다. v6 프로그램별 목표·최소량·passRule 판정과 ARC 제출은 별개이며 실제 ARC 제출은 비활성, 실제 HSTM 전송은 금지다. commit·push·AWS 변경·배포는 사용자 결정이다.
 
 <a id="beginner-dev"></a>
 ## 0. 처음 배포하는 사람의 순서
@@ -20,8 +20,8 @@ AWS API는 항상 `/api/v2`로 조립하며 `/mock/v1`과 `/cpr-analysis`는 삭
 7. **세 Lambda에 코드를 올린다.** 승인한 Dev 함수에서 `Code → Upload from → .zip file`로 같은 ZIP을 올리고 아래 Handler를 각각 지정한다. Python 3.12를 사용한다. `Configuration → Environment variables`에 각자에게 맞는 설정을 넣는다. 처음부터 앱에 공개하지 말고 Worker·Relay 준비를 먼저 확인한다. 기존 Calculator용 자동 스크립트 두 개는 과거 자료(D113, 7절)이며 이 세 역할을 설치하지 않는다.
 8. **기록장·보관함·대기줄을 연결한다.** 5절의 DB 키/인덱스, 비공개 S3와 역할별 권한을 맞춘다. SQS 트리거는 Worker에 연결하고 `ReportBatchItemFailures`를 켠다. Relay는 새 작업 알림용 DynamoDB Stream과 재확인용 EventBridge 예약에 연결한다. 예약은 6절의 진행 행을 처음 준비한 후 켠다. Queue visibility는 Worker timeout의 6배+batch window 이상이어야 한다. 실제 연결 권한과 실행 결과도 확인한다.
 9. **앱이 들어오는 문을 연결한다.** API Gateway의 **REST API**에서 `/api/v2/{proxy+}`의 `ANY`를 API Lambda의 **Lambda proxy integration**으로 연결할 수 있다. 이미 같은 경로가 있으면 먼저 충돌을 확인한다. 앱의 `Authorization: Bearer ...`와 원래 경로·query를 그대로 넘긴다. `multipart/form-data`를 binary media type으로 설정하고 원본 파일 hash 보존을 시험한다. 변경한 뒤 승인한 Dev stage로 `Deploy API`한다. 공유 API의 다른 미배포 변경까지 포함되는지 먼저 확인한다. [AWS proxy 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-set-up-simple-proxy.html), [binary 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-payload-encodings.html)
-10. **작게 한 번 시험한다.** 앱팀에 Dev 주소와 [APP_API](APP_API.md)를 전달한다. 로그인→`[Dummy Dev]` 과정 15개 조회→성인 압박 Only 훈련→실제 누적 파일 업로드→결과/차트 조회→최종평가를 확인한다. 점수가 나온 것과 프로그램 통과를 구별한다. 처음에는 `202`(접수/처리 중), 완료 후 `200`(결과)이며 Dummy 제출은 `excluded`다. `/healthz`는 AWS 확인 주소가 아니다.
-11. **실패 시험과 비용을 확인한다.** 다른 세션의 결과 접근 거절, 같은 업로드 재전송, 로그아웃 후 공유 진도 초기화와 결과 보존, 차트 만료, 작업 재전달을 10절대로 시험한다. CloudWatch 오류·SQS 대기/DLQ·DB 운용 로그·AWS 비용을 확인한다. 경보 수신자와 시험 예산도 정한다. 통과한 주소만 앱팀의 시험 주소로 사용한다.
+10. **작게 한 번 시험한다.** 앱팀에 Dev 주소와 [APP_API](APP_API.md)를 전달한다. 로그인→`[Dummy Dev]` 과정 4개 조회→선택한 과정의 훈련→실제 누적 파일 업로드→결과/차트 조회→최종평가를 확인한다. 점수가 나온 것과 프로그램 통과를 구별한다. 처음에는 `202`(접수/처리 중), 완료 후 `200`(결과)이며 Dummy 제출은 `excluded`다. `/healthz`는 AWS 확인 주소가 아니다.
+11. **실패 시험과 비용을 확인한다.** 다른 세션의 결과 접근 거절, 같은 업로드 재전송, 로그아웃 후 공유 진도 보존, 전용 reset API 후 공유 진도 초기화와 결과 보존, 차트 만료, 작업 재전달을 10절대로 시험한다. CloudWatch 오류·SQS 대기/DLQ·DB 운용 로그·AWS 비용을 확인한다. 경보 수신자와 시험 예산도 정한다. 통과한 주소만 앱팀의 시험 주소로 사용한다.
 
 | 적을 내용 | 찾는 위치·뜻 |
 |---|---|
@@ -182,14 +182,19 @@ Lambda 함수 이름들:
 | `execution` — API/Worker (무시) | 2026-10-01 D141부터 읽지 않는다. 있어도 없어도 되며 값은 무시한다(있으면 첫 호출에서 운용 기록 `execution_block_ignored` 1건, 값 미포함). 버전의 정본은 코드 레지스트리다. Relay에는 넣지 않음(넣으면 설정 오류) |
 | `course` — API/Worker 필수 | `mode="course_v2_dummy"`, `catalog_version="arc-dummy-dev-v1"`, `settings`에 아래 9개 한도 전부. 없거나 null이면 설정 오류. Relay에는 넣지 않음(넣으면 설정 오류) |
 | `api` — API | `payload_limit`: body 문자열 UTF-8 크기 제한, 양의 정수 bytes. `storage.input_bytes`의 base64 크기 `4×ceil(input_bytes/3)` 이상이어야 함(D106). multipart 여유까지 보장하는 검사는 아님 |
+| `session` — API(선택) | `ttl_seconds`: 양의 정수 초, 기본 `86400`. `hard_cap_seconds`, `inactivity_logout_seconds`: 양의 정수 초 또는 `null`, 기본 `null`. 절과 각 필드는 생략 가능하며 빈 객체도 허용한다. 절 자체의 `null`은 거절하며 Worker/Relay에는 넣지 않음 |
 | `worker` — Worker | `lease_seconds`, `retry_seconds`: 양의 정수 초; `renewal_interval_seconds`, `renewal_timeout_seconds`: 양수 초; `processing_reserve_ms`: 양의 정수 |
 | `relay` — Relay | `queue_url`, `lease_seconds`, `retry_seconds`, `page_size`, `max_pages`, `processing_reserve_ms`. 수치는 양의 정수; Queue는 같은 계정·리전의 Standard SQS |
 
 Worker는 갱신 interval≤lease/3, interval+갱신 timeout<lease를 검사한다. Relay는 SDK timeout/시도·DB 충돌·로그/반환·시계 여유를 포함한 예산을 검사한다. `page_size × max_pages`는 각 종류의 논리적 조회 예산이며 실제 Query는 `Limit=1`이다. 복구 재조정은 OUTBOX/JOB을 한 step씩 교대하되, 한 종류가 이번 호출에서 끝났거나 자기 예산에 닿으면 남은 종류를 자기 예산과 시간이 허락하는 만큼 계속 처리한다(D109). 멈춘 종류는 다음 호출에서 먼저 처리된다. 설정 검사가 실제 AWS의 전체 실행시간을 보장하지는 않는다.
 
-`course.settings`의 필수 양의 정수는 `max_course_items`, `max_assignments`, `max_bundle_bytes`, `max_control_body_bytes`, `max_intervals_per_report`, `max_merged_intervals_per_start`, `max_reports_per_start`, `max_transaction_actions`, `max_conflict_retries`다. Dev 카탈로그를 수용하려면 과정 항목≥2·배정≥15·transaction actions≥8(최종평가 시작 거래가 8개를 씀, D105)이며 충돌 재시도≤8이다. 실제 bundle 크기와 `max_bundle_bytes`/`storage.artifact_bytes`도 검사한다. 이것은 구현의 수용 조건이며 권장 운영 한도표가 아니다. `storage.stage`는 `dev` 또는 `development`여야 한다. API/Worker에서 같은 값을 사용한다. `course`가 없거나 null이면 개별 검사는 `configuration_invalid`(종료 2), 묶음 검사는 `ROLE_CONFIGURATION_INVALID`이고, Lambda는 SDK client를 만들기 전에 `503 TEMPORARILY_UNAVAILABLE`로 요청을 거절한다. 과거의 `course` 없는 `/mock/v1` 조립은 없다.
+`course.settings`의 필수 양의 정수는 `max_course_items`, `max_assignments`, `max_bundle_bytes`, `max_control_body_bytes`, `max_intervals_per_report`, `max_merged_intervals_per_start`, `max_reports_per_start`, `max_transaction_actions`, `max_conflict_retries`다. Round 2 카탈로그의 과정당 항목은 BLS 6개·CPR_AED 5개다. 전체 카탈로그 수용 하한은 `max_course_items ≥ 6`, `max_assignments ≥ 4`, `max_transaction_actions ≥ 8`(최종평가 시작 거래가 8개를 씀, D105)이며 충돌 재시도는 8 이하다.
 
-현재 adapter는 `arc-internal-detection-v5`(D138·D139; D136 사이클 규칙은 그대로), projection은 `arc-local-projection-v1`, 보존 목록은 코드 레지스트리 `mock_journey/contracts.py`의 `RETAINED_ADAPTER_VERSIONS`(현재 `["arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3", "arc-internal-detection-v4"]`, 이 순서)다. **이 세 값의 정본은 코드뿐이다(D141, D127·D140 정정).** API·Worker 설정 JSON의 `execution` 블록은 읽지 않으므로 지워도 되고, 남아 있어도(예: v4 값 그대로) 무시된다 — 이 경우 Lambda가 첫 호출에서 운용 기록 `execution_block_ignored`(값 없음)를 한 건 남긴다. 따라서 계산 버전이 바뀌는 코드를 배포할 때 설정을 바꿀 필요가 없고, 배포 workflow도 설정을 쓰지 않는다. 로컬 Worker도 같은 레지스트리를 읽는다. `var/deployment/` 아래의 사용자 설정 파일은 이 작업에서 바꾸지 않았다(그 안의 `execution` 블록은 무시된다). 보존 버전 v2는 저장된 유효 후보 검증·차트 복구만 지원하고 계산을 다시 실행하지 않는다. 미지원 옛 작업을 새 버전으로 바꾸거나 가짜 Fail로 확정하지 않는다. 완료 결과는 저장 bytes로 조회한다.
+용량 검사는 두 기준을 구분한다. `max_bundle_bytes ≥ 15588`은 과정·진도·항목 JSON 원문들의 합계에 대한 하한이고, `storage.artifact_bytes ≥ 17881`은 scope·ID·hash를 포함한 저장용 bundle 전체의 직렬화 크기에 대한 하한이다. 둘 다 현재 카탈로그의 최대값이며 BLS infant 과정에서 나온다. 요청에 적힌 직렬화 크기 17,469 bytes는 C-4의 `arcReviewed` 메타데이터·문구 반영 전 값이다. `mock_journey/aws_settings.py`의 `validate_dummy_catalog` 호출은 API·Worker 조립 전에 이 한도들을 검사한다. `storage.artifact_bytes ≥ storage.input_bytes` 제약도 별도로 만족해야 한다. 이 수치는 카탈로그의 최소 수용 조건이며 실제 훈련 자료를 위한 권장 운영 한도가 아니다.
+
+`storage.stage`는 `dev` 또는 `development`여야 한다. API/Worker에서 같은 값을 사용한다. `course`가 없거나 null이면 개별 검사는 `configuration_invalid`(종료 2), 묶음 검사는 `ROLE_CONFIGURATION_INVALID`이고, Lambda는 SDK client를 만들기 전에 `503 TEMPORARILY_UNAVAILABLE`로 요청을 거절한다. 과거의 `course` 없는 `/mock/v1` 조립은 없다.
+
+현재 adapter는 `arc-internal-detection-v6`(Round 2), projection은 `arc-local-projection-v1`, 보존 목록은 코드 레지스트리 `mock_journey/contracts.py`의 `RETAINED_ADAPTER_VERSIONS`(현재 `["arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3", "arc-internal-detection-v4", "arc-internal-detection-v5"]`, 이 순서)다. **이 세 값의 정본은 코드뿐이다(D141, D127·D140 정정).** API·Worker 설정 JSON의 `execution` 블록은 읽지 않으므로 지워도 되고, 남아 있어도(예: v5 값 그대로) 무시된다 — 이 경우 Lambda가 첫 호출에서 운용 기록 `execution_block_ignored`(값 없음)를 한 건 남긴다. 따라서 계산 버전이 바뀌는 코드를 배포할 때 설정을 바꿀 필요가 없고, 배포 workflow도 설정을 쓰지 않는다. 로컬 Worker도 같은 레지스트리를 읽는다. `var/deployment/` 아래의 사용자 설정 파일은 이 작업에서 바꾸지 않았다(그 안의 `execution` 블록은 무시된다). 보존 pending-v2·pending-v3·v4·v5는 모두 저장된 유효 후보 검증·차트 복구만 지원하고 새 계산이나 재계산을 하지 않는다. 저장 결과의 원래 값·자료형·null은 유지한다. 후보 없이 계산 전인 구버전 시도는 상세를 다시 받아 현재 정의로 새 시도를 시작한다. 미지원 옛 작업을 새 버전으로 바꾸거나 가짜 Fail로 확정하지 않는다. 완료 결과는 저장 bytes로 조회한다.
 
 새 runtime은 하나의 `region`을 DynamoDB·S3·SQS·로그 client에 적용한다. `AWS_REGION`, `AWS_DEFAULT_REGION`, `ARC_MOCK_REGION`, `ARC_STORAGE_REGION`이 함께 있으면 일치해야 한다. AWS 예약 변수는 사용자 환경파일에 추가하지 않는다. `STAGE`, `ARC_MOCK_ENVIRONMENT`, `ARC_MOCK_TABLE_NAME`도 JSON과 일치해야 한다. 교차 리전이 필요하면 연결 확장을 검토하며 실제값을 바꾸어 검사를 우회하지 않는다. `AWS_ENDPOINT_URL*` 재지정은 거절된다.
 
@@ -1068,24 +1073,24 @@ aws dynamodb describe-time-to-live --region us-east-2 \
 
 2. 준비한 `var/deployment/dev-runtime-20260923-0octlgf9/api-direct-check.py`를 CloudShell Actions → Upload file로 업로드한다. Mac 파일 선택 창에서는 `⌘⇧G` 후 `/Users/mac/arc_calculator_api/var/deployment/dev-runtime-20260923-0octlgf9`로 이동해 파일을 선택한다. 이 `/Users/mac/...` 주소는 **Mac 파일 선택 창의 폴더 주소**이며 CloudShell 명령창에 실행하는 명령이 아니다. 표준 Python3와 기존 AWS CLI를 사용하므로 추가 패키지나 접근 키 입력은 없다.
 
-3. 아래 명령을 한 번 실행한다. 이 시험은 설정 조회와 달리 Lambda를 실제 호출한다. Dummy 세션과 과정 공급 자료/캐시·진도 gate·운용 기록의 DB/S3 저장이 발생할 수 있다. 실제 훈련 시작·계산·공유 진도 초기화·Gateway 배포는 수행하지 않는다. 공용 Dummy 로그아웃은 공유 epoch를 변경하므로 시험 뒤 자동 로그아웃하지 않는다. 새 세션의 인증 유효기간은24시간이고 DB 행 자동 삭제와 구별한다.
+3. 아래 명령을 한 번 실행한다. 이 시험은 설정 조회와 달리 Lambda를 실제 호출한다. Dummy 세션과 과정 공급 자료/캐시·진도 gate·운용 기록의 DB/S3 저장이 발생할 수 있다. 실제 훈련 시작·계산·공유 진도 초기화·Gateway 배포는 수행하지 않는다. 시험은 자동 로그아웃하지 않는다. 현재 로그아웃은 해당 SESSION만 폐기하며 공유 epoch·진도를 보존한다. 공유 진도 초기화는 `POST /api/v2/dev/progress-reset/`에서만 수행한다. 새 세션의 인증 유효기간은 기본 24시간(`session.ttl_seconds`)이며 DB 행 자동 삭제와 구별한다.
 
 ```sh
 python3 "$HOME/api-direct-check.py"
 ```
 
-스크립트는 정확한 계정150612770165/리전us-east-2/API 함수ARN을 사용한다. STS 계정 확인 뒤 인증 없이 세션 조회401 SESSION_REQUIRED → Dummy 로그인201·ready·토큰 발급 → 발급 토큰으로 세션 조회200·동일 세션 → 과정 목록200·15개·Dummy 표시를 확인한다. GET의 query는 REST event의 queryStringParameters에 넣고 URL path에 붙이지 않는다. 기존 과정 status를 NOT_STARTED로 강제하지 않는다. [AWS Lambda 직접 호출 명세](https://docs.aws.amazon.com/cli/latest/reference/lambda/invoke.html)
+스크립트는 정확한 계정150612770165/리전us-east-2/API 함수ARN을 사용한다. 현재 Round 2 배포의 기대 흐름은 STS 계정 확인 뒤 인증 없이 세션 조회401 SESSION_REQUIRED → Dummy 로그인201·ready·토큰 발급 → 발급 토큰으로 세션 조회200·동일 세션 → 과정 목록200·4개·Dummy 표시다. GET의 query는 REST event의 queryStringParameters에 넣고 URL path에 붙이지 않는다. 기존 과정 status를 NOT_STARTED로 강제하지 않는다. [AWS Lambda 직접 호출 명세](https://docs.aws.amazon.com/cli/latest/reference/lambda/invoke.html)
 
 토큰은 전용0700 임시 폴더의0600 요청/응답 파일에서 다루며 화면·명령 인자에 출력하지 않는다. AWS 인증 호출 전에 로컬 `aws configure get cli_history`를 캡처 조회하여 기록 기능이 기본 비활성 또는 명시 disabled일 때만 진행한다. enabled/조회 실패면 토큰을 만들기 전에 중단하며 기존 AWS 설정을 변경하지 않는다. 선택적 CLI history는 요청/응답 원문을 저장할 수 있기 때문이다. [AWS CLI 데이터 보호 안내](https://docs.aws.amazon.com/cli/latest/userguide/data-protection.html) CLI stdout/stderr와 응답 원문을 공유하지 않고 정해진 상태/건수/허용 오류코드만 출력한다. 종료 시 스크립트가 만든 임시 파일만 정리하며 기존 DB/S3 자료·키는 삭제하지 않는다. Lambda RequestResponse/LogType None, CLI 최대 시도1, 응답 대기45초/하위 프로세스65초 한도로 실행한다. 접수200·FunctionError·실제 HTTP 상태와 응답 envelope를 각각 검사한다. 중단/timeout이면 실제 실행 여부가 불확실할 수 있어 자동 재시도하지 않는다.
 
-정상 출력은 account 및 without_login/login/session/courses 각각 Result=PASS, 마지막 Result=ALL_PASS다. without_login의 HTTPStatus=401은 의도한 접근 차단이다. login은 HTTPStatus=201, TokenPresent=true, LearningState=ready/Reason=null이며 session은200, courses는200/CourseCount15/ReturnedCount15/AllDummyCourses=true여야 한다. FAIL/STOP이면 반복 로그인 전에 출력으로 원인을 확인한다. 출력 전체는 비밀을 제외한 요약이므로 사용자 후속 확인에 사용한다. 실제 토큰 파일을 cat하거나 Lambda 로그인 응답 전체를 대화에 붙이지 않는다.
+정상 출력은 account 및 without_login/login/session/courses 각각 Result=PASS, 마지막 Result=ALL_PASS다. without_login의 HTTPStatus=401은 의도한 접근 차단이다. login은 HTTPStatus=201, TokenPresent=true, LearningState=ready/Reason=null이며 session은200, 현재 카탈로그의 courses는200/CourseCount4/ReturnedCount4/AllDummyCourses=true여야 한다. 2026-09-23에 준비한 helper를 다시 사용할 때는 현재 4개 카탈로그와 검사 조건이 맞는지 먼저 확인한다. 과거 helper의 15개 기대값을 현재 서버에 적용하지 않는다. FAIL/STOP이면 반복 로그인 전에 출력으로 원인을 확인한다. 출력 전체는 비밀을 제외한 요약이므로 사용자 후속 확인에 사용한다. 실제 토큰 파일을 cat하거나 Lambda 로그인 응답 전체를 대화에 붙이지 않는다.
 
 통과 범위는 직접 Lambda의 인증·세션·과정 공급/저장·조회다. 이는 실물 훈련 파일, Worker/SQS 전달, 점수·차트, 운용 로그의 실제 저장 확인, API Gateway HTTPS 경로/제한/배포 인수를 대신하지 않는다. 후속 사용자 선택으로 Gateway의 Dev 초기 제한은 D98(초당10회/burst20개)이며 실제 적용은 다음 단계다.
 
 <a id="beginner-gateway-stage-readback"></a>
 ### 직접 로그인 통과 다음: 접속 주소 배포 전 현재 상태 확인
 
-사용자가 정확한 테이블 TTL=DISABLED와 직접 API 시험의 계정PASS, 미로그인401 SESSION_REQUIRED, 로그인201/ready/토큰 있음, 세션200/동일 세션, 과정200/15개/Dummy, 최종 ALL_PASS를 전달했다. 이 출력 범위의 직접 Lambda 시험은 통과했다. Mac 폴더 주소를 CloudShell에 입력해 발생한 No such file or directory는 후속 스크립트 실행 성공으로 파일 재업로드/재실행이 필요하지 않다.
+2026-09-23 당시 사용자가 정확한 테이블 TTL=DISABLED와 직접 API 시험의 계정PASS, 미로그인401 SESSION_REQUIRED, 로그인201/ready/토큰 있음, 세션200/동일 세션, 과정200/15개/Dummy, 최종 ALL_PASS를 전달했다. 이는 당시 15개 카탈로그의 직접 Lambda 시험 기록이며 현재 Round 2의 4개 카탈로그 검증을 대신하지 않는다. Mac 폴더 주소를 CloudShell에 입력해 발생한 No such file or directory는 후속 스크립트 실행 성공으로 파일 재업로드/재실행이 필요하지 않았다.
 
 초기 요청량 제한은 사용자 D98에 따라 **초당10회, burst20개**다. AWS throttle은 최선 노력 방식으로 요청/비용의 엄격한 상한은 아니며 초과 요청에429가 발생할 수 있다. [AWS 요청량 제한 안내](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html) 다음은 실제 stage가 이미 있는지 확인하는 읽기 전용 단계다. 새 stage 생성이나 기존 배포 변경은 이 조회로 수행되지 않는다.
 
@@ -1160,7 +1165,7 @@ curl --silent --show-error --include \
 python3 "$HOME/api-https-check.py"
 ```
 
-추가 패키지·AWS 키 입력은 없다. 고정 Dev HTTPS 주소로 미로그인401 → Dummy 로그인201/ready → 동일 세션200 → 임시 과정15개200 → 한 개씩 조회200 → 마지막 `/` 없는 경로404를 검사한다. `pagination`은 Gateway가 query를 전달하는지, `missing_trailing_slash`는 경로를 임의 보정하지 않는지 확인한다. 마지막 두 요청의 기대 상태가 각각200/404인 것은 정상이다.
+추가 패키지·AWS 키 입력은 없다. 현재 Round 2 배포의 기대 흐름은 고정 Dev HTTPS 주소로 미로그인401 → Dummy 로그인201/ready → 동일 세션200 → 임시 과정4개200 → 한 개씩 조회200 → 마지막 `/` 없는 경로404다. 앞 절과 같이 과거 helper의 카탈로그 검사 조건을 먼저 확인한다. `pagination`은 Gateway가 query를 전달하는지, `missing_trailing_slash`는 경로를 임의 보정하지 않는지 확인한다. 마지막 두 요청의 기대 상태가 각각200/404인 것은 정상이다.
 
 3. 여섯 단계 모두 `Result=PASS`, 마지막에 `Result=ALL_PASS`, `Scope=https_login_session_courses_query_path`면 이 범위를 통과한 것이다. 출력에는 토큰·응답 원문·세션ID·서명URL이 없다. `STOP`이면 출력부터 확인하고 무조건 재실행하지 않는다. 시간 초과나 연결 중단은 이미 로그인됐을 수도 있어 자동 재시도하지 않는다. `DIRECT_CHECK_HELPER_MISSING/MISMATCH`는 기존 `api-direct-check.py`의 누락/내용 불일치이므로 준비한 원본 파일을 대조한다. `TLS_KEY_LOGGING_CONFIGURED`는 TLS 통신 키 기록 설정을 발견한 것으로 원인 확인 전 시험을 진행하지 않는다.
 
@@ -1171,7 +1176,7 @@ python3 "$HOME/api-https-check.py"
 <a id="beginner-api-calculation-check"></a>
 ### HTTPS 로그인·조회 통과 다음: 기존 압박 파일 한 건 계산
 
-사용자가 `api-https-check.py`의 여섯 PASS와 `ALL_PASS/https_login_session_courses_query_path` 출력을 제공했다. 미로그인401, 로그인201/ready, 동일 세션200, 과정15개200, pageSize1 query 전달200, 마지막 슬래시 누락404와 JSON/no-store/요청ID 검사가 실제 Dev HTTPS에서 통과했다. 다음은 D99의 기존 자료를 실제 multipart로 업로드하는 최초 계산 시험이다.
+2026-09-23 당시 사용자가 `api-https-check.py`의 여섯 PASS와 `ALL_PASS/https_login_session_courses_query_path` 출력을 제공했다. 미로그인401, 로그인201/ready, 동일 세션200, 과정15개200, pageSize1 query 전달200, 마지막 슬래시 누락404와 JSON/no-store/요청ID 검사가 실제 Dev HTTPS에서 통과했다. 이는 당시 카탈로그의 기록이며 현재 Round 2의 4개 카탈로그 검증을 대신하지 않는다. 다음은 D99의 기존 자료를 실제 multipart로 업로드했던 최초 계산 시험 절차다.
 
 1. 같은 오하이오 CloudShell의 Actions → Upload file에서 **`api-calculation-check.py`와 `cco_1.bin` 두 파일을 각각 업로드**한다. Mac 파일 선택창에서 `⌘⇧G`를 누르고 `/Users/mac/arc_calculator_api/var/deployment/dev-runtime-20260923-0octlgf9`를 입력한다. 이 폴더에는 검증한 원본 `tests/dataset/cco_1.bin`의 동일 사본을 준비했다. 폴더 경로를 CloudShell 명령으로 실행하지 않는다. 기존 시험 파일들은 보존한다.
 
@@ -1523,7 +1528,7 @@ python3 "$HOME/api-ownership-check.py"
 
 도구는 고정 Dev HTTPS 주소로 원래 세션·훈련·성공 결과·차트 발급의 정상 응답을 먼저 확인한다. 새 로그인201과 별도 유효 세션200 뒤 새 세션의 훈련·계산·차트 발급 요청 모두 정확한404 NOT_FOUND를 요구한다. 마지막에 원래 결과와 로컬 체크포인트의 보존을 확인한다. 총10요청 중 POST는 로그인1회이며 자동 재시도·리다이렉트·프록시·차트 URL 다운로드는 없다. 토큰·시도 식별자·서명 URL·응답 본문은 출력하지 않는다.
 
-마지막 `ALL_PASS`와 `Scope=same_account_cross_session_ownership`이면 이 기존 시도의 세션 간 조회 차단 시험이 통과한 것이다. 다른 사용자·환경·재인가·실제 만료·중복 처리·장애 시험까지 확대하지 않는다. 세션은 로그인부터24시간이므로 SESSION_EXPIRED가 나오면 이 시험을 통과로 세지 않고 중단한다. STOP/FAIL이면 화면 출력만 공유하고 체크포인트를 삭제하거나 새 계산·로그아웃을 실행하지 않는다. 추가 세션은 메모리에만 보관하며 종료 시 토큰을 파일에 저장하지 않는다.
+마지막 `ALL_PASS`와 `Scope=same_account_cross_session_ownership`이면 이 기존 시도의 세션 간 조회 차단 시험이 통과한 것이다. 다른 사용자·환경·재인가·실제 만료·중복 처리·장애 시험까지 확대하지 않는다. 세션의 기본 유효기간은 로그인부터24시간(`session.ttl_seconds`)이며 SESSION_EXPIRED가 나오면 이 시험을 통과로 세지 않고 중단한다. STOP/FAIL이면 화면 출력만 공유하고 체크포인트를 삭제하거나 새 계산·로그아웃을 실행하지 않는다. 추가 세션은 메모리에만 보관하며 종료 시 토큰을 파일에 저장하지 않는다.
 
 2026-09-24 후속 사용자 실행은 원래 세션의 정상 조회4개, 새 로그인/유효 세션 확인, 다른 세션의 세 경로404, 원래 결과 일치와 체크포인트 보존 및 ALL_PASS였다. 이 기존 훈련의 세션 간 조회 차단 확인을 마쳤으며 같은 시험을 다시 실행할 필요는 없다.
 
@@ -1580,7 +1585,7 @@ python3 "$HOME/api-replay-check.py"
 <a id="beginner-dev-app-handoff"></a>
 ### 이제 앱 담당자에게 전달하기
 
-AWS Dev 서버가 만들어졌고 위의 기본 흐름은 통과했다. 다음은 실제 앱이 이 서버에 연결되는지 확인하는 단계다. 기존 AWS 자원 생성이나 ZIP 업로드를 반복하지 않는다.
+기존 AWS Dev 서버의 과거 시험 기록은 위와 같다. 현재 Round 2 배포와 4개 카탈로그를 확인한 뒤 실제 앱 연결을 시험한다. 기존 AWS 자원 생성을 반복하지 않는다.
 
 1. 앱 담당자에게 [APP_API.md](APP_API.md) 파일을 전달한다. Mac에서는 `/Users/mac/arc_calculator_api/docs/APP_API.md`에 있다. 서버 주소와 API 사용법을 모은 문서다.
 2. 다음 연결 정보를 함께 전달한다. 서버 주소의 `/dev`와 개별 요청 끝의 `/`를 유지한다.
@@ -1590,14 +1595,14 @@ AWS Dev 서버가 만들어졌고 위의 기본 흐름은 통과했다. 다음�
    | 시험 환경 | 공유 Dummy Dev · 오하이오 |
    | 서버 기본 주소 | `https://2ftxmdtrx1.execute-api.us-east-2.amazonaws.com/dev` |
    | Dummy 로그인 | `test@test.com` / 문자열 `2222` |
-   | 첫 확인 순서 | 로그인 → 과정 목록15개 → 현재 완료 진도 표시 |
-   | 현재 완료된 과정 | 기존 시험의 성인 압박 Only 과정 |
+   | 첫 확인 순서 | 로그인 → 현재 Round 2 과정 목록4개 → 서버가 반환한 현재 진도 표시 |
+   | 과거 완료 기록 | 2026-09-23 기존 시험의 성인 압박 Only 과정. 현재 4개 과정의 완료를 뜻하지 않음 |
 
-3. 앱 담당자에게 앱 화면에서 로그인과 목록/진도가 표시되는지 확인해 달라고 요청한다. 완료한 과정의 새 훈련·평가 시작이 거절되는 것은 현재 규칙이다. 새 로그인 세션으로 이전 세션의 개별 훈련 결과를 읽을 때404가 나오는 것도 소유권 규칙이며, 공유 진도 조회와 구별한다. 이를 우회하려고 자동 로그아웃·진도 초기화를 추가하지 않는다. Dummy 로그아웃은 팀이 공유하는 진도를 초기화한다.
+3. 앱 담당자에게 앱 화면에서 로그인과 목록/진도가 표시되는지 확인해 달라고 요청한다. 완료한 일반 훈련과 합격한 최종평가도 다시 시작할 수 있으며(D130), 반복 결과가 더 나빠도 이미 얻은 항목 완료·평가 합격·과정 완료는 보존한다(D131). 최종평가의 앞선 항목 완료·동시 응시 제한 등 나머지 시작 조건은 유지한다. 새 로그인 세션으로 이전 세션의 개별 훈련 결과를 읽을 때404가 나오는 것은 소유권 규칙이며, 공유 진도 조회와 구별한다. 이를 우회하려고 자동 로그아웃·진도 초기화를 추가하지 않는다. Dummy·비Dummy 모두 로그아웃은 해당 SESSION만 폐기하고 공유 epoch·진도를 보존한다. Dummy 공유 진도 초기화는 `POST /api/v2/dev/progress-reset/`에서만 수행한다.
 4. 실제 앱이 저장한 파일이 준비되면 해당 훈련 종류·연령·크기로 별도 계산 시험을 진행한다. 현재31380bytes 압박 파일의 성공만으로 다른 종류나2MiB 최대 입력·동시 사용을 검증했다고 표시하지 않는다. 기존 완료 과정을 다시 쓰기 위해 임의로 초기화하지 않고 시험할 항목과 공유 진도 영향을 먼저 맞춘다.
 5. 관리자 Angelo에게 아직 전달받지 못한 FitCloud 비용 조회 계정과 예산 알림 안내를 요청한다. 계정이 오면 실제 Dev 비용을 확인한다. 현재 장애 이메일 수신 성공은 비용 알림 완료를 뜻하지 않는다.
 
-이는 팀의 앱 연결 시험을 시작할 수 있다는 기술 판정이다. 실제 앱/기기·동시 요청·세션 만료/복구·장애/백업 복원·용량/비용 검증은 별도로 남아 있다. 공식 ARC 인증/과정 공급/제출은 계속 비활성이고 CPR 완료 규칙은 `pending_policy`이며, Beta/Prod 운영 완료로 해석하지 않는다.
+이 앱 연결 안내의 과거 AWS 시험 기록은 현재 Round 2 배포 확인을 대신하지 않는다. 실제 앱/기기·동시 요청·세션 만료/복구·장애/백업 복원·용량/비용 검증은 별도로 남아 있다. 공식 ARC 인증/과정 공급/제출은 계속 비활성이며, Beta/Prod 운영 완료로 해석하지 않는다.
 
 ## 7. 기존 Calculator/Gateway 배포 도구 — 과거 자료
 
@@ -1718,7 +1723,7 @@ scripts/ship_dev.sh "커밋 메시지"
 | credentials | GitHub Environment `development` 승인 뒤 OIDC로만 역할 `gha-arc-calc-dev-deploy` 위임 | 액세스 키 경로 없음 |
 | check_config | `scripts/deploy_dev_lambdas.py check-config`: 아무것도 쓰지 않는다. API·Worker의 `ARC_JOURNEY_CONFIG`가 있고, JSON object이고, `role`이 맞고, 체크아웃한 코드의 `AwsSettings.parse`를 통과하는지 확인한다(D141: 이 파서는 `execution` 키를 무시하므로 옛 버전 값이 남아 있어도 통과) | 다르면 `CONFIG_DRIFT`(exit 2)로 코드 교체 전에 중단. 역할·필드·기대값만 출력하고 설정 JSON·계정·자원 이름은 출력하지 않음 |
 | deploy | `scripts/deploy_dev_lambdas.py deploy`: Worker → Relay → API 순으로 `UpdateFunctionCode`(버전 발행 없음) → 갱신 완료 대기 → 함수의 `CodeSha256`가 ZIP의 sha256(base64)과 같은지 대조. 설정(환경 변수)은 보내지 않는다 | 한 함수라도 실패하면 즉시 중단(exit 3, 해시 불일치 exit 4). 이미 갱신된 함수는 요약에 남음 |
-| smoke | `scripts/deploy_dev_lambdas.py smoke`: 공개 Dummy 로그인(`201`, `tokenType`·`userName`·`accessToken` 존재) → 과정 목록(`200`, 1개 이상) | 로그아웃(`DELETE /api/v2/session/`)은 호출하지 않음(공유 Dummy 진도 초기화). 토큰·본문은 출력하지 않고 상태·고정 코드만 출력(exit 5) |
+| smoke | `scripts/deploy_dev_lambdas.py smoke`: 공개 Dummy 로그인(`201`, `tokenType`·`userName`·`accessToken` 존재) → 과정 목록(`200`, 1개 이상) | 로그아웃·진도 reset은 호출하지 않음. 현재 로그아웃은 SESSION만 폐기하며 공유 진도 초기화는 전용 reset API만 수행. 토큰·본문은 출력하지 않고 상태·고정 코드만 출력(exit 5) |
 | summary | `$GITHUB_STEP_SUMMARY`에 커밋·산출물 sha256·함수별 `CodeSha256`/`LastModified`·스모크 결과 | `always()`; 토큰·JSON 내용 없음 |
 
 승인(environment `development`의 required reviewers)은 job 시작 전에 걸린다(GitHub는 environment가 붙은 job을 승인 뒤에 시작한다). 따라서 회귀·빌드도 승인 뒤에 실행되며, workflow 안에서도 회귀 단계까지는 secret·variable을 참조하지 않으므로 승인 없이 secret이 읽히는 경로는 없다. `concurrency: deploy-development`(진행 중 실행 취소 없음)로 같은 Dev에 두 배포가 겹치지 않는다. `scripts/validate_actions.py check`가 PR마다 이 workflow의 트리거·권한·환경·env·단계 순서·고정 명령·단일 OIDC 단계·액세스 키 부재·`secrets`/`vars` 참조 위치를 정적으로 검사하며, 기존 액션 SHA 고정·`action.yml` 지문 검사는 새 액션(upload/download-artifact)에도 같은 방식으로 적용된다.
@@ -1806,8 +1811,8 @@ scripts/ship_dev.sh --redeploy                    # 진행·승인 대기 중인
 |---|---|
 | 접근/소유권 | 개인 접근 허용·회수, 로그인, 세션 없음·다른 시도 거절, 환경 간 접근 거절 |
 | 전체 처리 | 로그인→시도→실제 누적 binary→Worker→저장 결과/차트. 원본 hash·자료형·null·코칭 유지 |
-| 별도 상태 | 계산 성공·프로그램 완료·현재 진도 반영·ARC 상태 구분. Only 목표+Pass, CPR pending, ARC disabled |
-| 작업 수명 | 중복/지연 Queue·Stream 실패·예약 backlog·lease/fence·로그아웃 epoch·구버전 후보·기존 결과 조회 |
+| 별도 상태 | 계산 성공·프로그램 완료·현재 진도 반영·ARC 상태 구분. 현재 v6 프로그램별 목표·최소량·passRule 판정과 보존 버전의 완료 규칙 구분, 실제 ARC 제출 비활성 |
+| 작업 수명 | 중복/지연 Queue·Stream 실패·예약 backlog·lease/fence·로그아웃 시 SESSION만 폐기·전용 reset 시 epoch 변경·구버전 후보·기존 결과 조회 |
 | 파일/로그 | 익명 원본 거절·차트 만료/재발급·민감값 부재·로그 장애 중 훈련·저장 실패/누락 관측 |
 | 복구 | 허용한 부분 장애 뒤 코드/전체 설정/키/DB 참조/S3/트리거 복원과 기존 결과 조회 |
 

@@ -1,8 +1,10 @@
 """Atomic finalize write-set and launch-only ARC intent. No SDK commit or network."""
 
 from config.guideline_registry import ARC_GUIDELINES as REGISTRY_ARC_GUIDELINES
+from mock_journey.contracts import ROUND2_ADAPTER_VERSION
 from mock_journey.course_contracts import (
-    CONTRACT_VERSION, EXCLUSION_REASON_ORDER, EXECUTION_KEYS, FINAL_PHASES, POLICY_VERSION,
+    CONTRACT_VERSION, EXCLUSION_REASON_ORDER, EXECUTION_KEYS, FINAL_PHASES, POLICY_VERSION, SUBMIT_ARC_STATUSES,
+    PRODUCIBLE_SUBMIT_STATUSES,
     RECEIPT_FORBIDDEN_KEYS, RESUME_SECRET_KEYS, ArcReceipt, CourseBinding, CourseBundle, WritePlan, parse_owned,
     require_hash, require_member, require_uuid,
 )
@@ -10,10 +12,12 @@ from mock_journey.course_errors import CourseError
 from mock_journey.course_policy import CoursePolicy, placement_key, resting_phase, scope_key
 from mock_journey.course_primitives import contains_key, fail, require_text
 from mock_journey import storage_keys
+from mock_journey.projection import DEFINITION_SETTING_KEYS
 from mock_journey.typed import digest, json_bytes
 
 
 SUBMISSION_POLICY_VERSION = "vcc-submission-policy-v1"
+COURSE_SUBMISSION_POLICY_VERSION = "vcc-submission-policy-v2"
 WRITE_PLAN_SCHEMA = "vcc-finalize-write-plan-v1"
 # D91: only the ARC family is ever an ARC submission (config/guideline_registry.py).
 ARC_GUIDELINES = REGISTRY_ARC_GUIDELINES
@@ -96,7 +100,8 @@ def _evaluation(verified_result):
         payload = raw["evaluation"]
     else:
         _fail("CALCULATOR_CONTRACT_MISMATCH")
-    if type(payload) is not dict or set(payload) != _EVALUATION_KEYS:
+    if (type(payload) is not dict or set(payload) - {"gates"} != _EVALUATION_KEYS
+            or ("gates" in payload and type(payload["gates"]) is not list)):
         _fail("CALCULATOR_CONTRACT_MISMATCH")
     goal, score = payload["goal"], payload["score"]
     if type(goal) is not dict or type(score) is not dict:
@@ -160,25 +165,33 @@ def collect_exclusion_reasons(*, is_dummy, guideline, attempt_epoch, current_epo
     return tuple(reason for reason in EXCLUSION_REASON_ORDER if reason in found)
 
 
-def classify_launch_status(reasons):
+def _producible_submit(payload):
+    if payload.get("status") not in PRODUCIBLE_SUBMIT_STATUSES or payload.get("ok") is not False:
+        _fail("CALCULATOR_CONTRACT_MISMATCH")
+    return payload
+
+
+def classify_launch_status(reasons, *, course_completed=False):
     owned = tuple(reasons)
     extra = set(owned) - set(EXCLUSION_REASON_ORDER)
     if extra or owned != tuple(reason for reason in EXCLUSION_REASON_ORDER if reason in owned):
         _fail()
     if owned:
-        return {
+        return _producible_submit({
             "status": "excluded", "ok": False, "error": None, "exclusion_reasons": list(owned),
-        }
-    return {
+        })
+    if course_completed:
+        return _producible_submit({"status": "pending", "ok": False, "error": None, "exclusion_reasons": []})
+    return _producible_submit({
         "status": "disabled", "ok": False, "error": "arc_contract_pending", "exclusion_reasons": [],
-    }
+    })
 
 
 def classify_submission(
     binding, verified_result_json, *, is_dummy, current_epoch, already_finalized=False,
-    attempt_epoch=None, guideline=None,
+    attempt_epoch=None, guideline=None, course_completed=False,
 ):
-    """Pure launch classification. Eligible complete and incomplete stay disabled."""
+    """Only the final assessment establishing course completion can be pending."""
     parsed = verified_result_json if type(verified_result_json) is dict else _json_object(verified_result_json)
     evaluation = _evaluation(parsed)
     bound = binding if type(binding) is CourseBinding else _binding({"course_binding": binding})
@@ -188,7 +201,11 @@ def classify_submission(
         is_dummy=is_dummy, guideline=guide, attempt_epoch=epoch,
         current_epoch=current_epoch, already_finalized=already_finalized,
     )
-    return json_bytes(classify_launch_status(reasons))
+    if type(course_completed) is not bool:
+        _fail()
+    completed = (course_completed and not already_finalized and bound is not None
+                 and bound.start_role == "final_assessment" and evaluation["program_completed"] is True)
+    return json_bytes(classify_launch_status(reasons, course_completed=completed))
 
 
 def final_phase_for_evaluation(evaluation, *, start_role):
@@ -221,10 +238,10 @@ def _stored_submit(attempt, course_rows):
             continue
         payload = _json_object(raw)
         reasons = payload.get("exclusion_reasons", payload.get("exclusionReasons"))
-        if payload.get("status") in ("disabled", "excluded") and type(reasons) is list:
+        if payload.get("status") in SUBMIT_ARC_STATUSES and type(reasons) is list:
             return {
                 "status": payload["status"],
-                "ok": False,
+                "ok": payload["status"] == "acknowledged",
                 "error": payload.get("error"),
                 "exclusion_reasons": list(reasons),
             }
@@ -265,7 +282,7 @@ def _course_keys(binding, epoch):
     }
 
 
-def _course_writes(binding, attempt, rows, evaluation, phase):
+def _course_writes(binding, attempt, rows, evaluation, phase, *, submission_eligible):
     """Build all derived course state from the same verified read snapshot."""
     attempt_id = _get(attempt, "attempt_id")
     bundle = rows.get("bundle")
@@ -295,7 +312,7 @@ def _course_writes(binding, attempt, rows, evaluation, phase):
     current_definition = parse_owned(current.execution_json) if current and current.execution_json else None
     same_execution = (
         type(started_definition) is dict and type(current_definition) is dict
-        and all(started_definition.get(key) == current_definition.get(key) for key in EXECUTION_KEYS)
+        and all(started_definition.get(key) == current_definition.get(key) for key in EXECUTION_KEYS + DEFINITION_SETTING_KEYS)
     )
     saved_identity = _get(attempt, "content_identity_hash")
     same_content = current is not None and (
@@ -362,6 +379,13 @@ def _course_writes(binding, attempt, rows, evaluation, phase):
     # Do not carry an old generic evaluation across a new active final attempt.
     current_progress.pop("evaluation", None)
     aggregate = parse_owned(CoursePolicy.aggregate_progress(bundle, json_bytes(current_progress)))
+    new_completion = (
+        submission_eligible and binding.start_role == "final_assessment" and phase == "passed"
+        and aggregate["course_complete"] is True and head.get("course_complete") is not True
+        and current_progress.get("arc_submission_status") is None
+    )
+    if new_completion:
+        aggregate.update(arc_submission_status="pending", course_status="COMPLETION_PENDING_ARC")
     head_update = {
         "completed_placements": aggregate["completed_placements"],
         "course_complete": aggregate["course_complete"],
@@ -384,7 +408,7 @@ def _course_writes(binding, attempt, rows, evaluation, phase):
         "item_revision": item["revision"], "final_revision": final["revision"],
         "final_active_attempt_id": final.get("active_attempt_id"), "final_phase": final.get("phase"),
     }
-    return writes, conditions, reconciliation
+    return writes, conditions, reconciliation, new_completion
 
 
 class CourseCompletionPlan:
@@ -429,7 +453,11 @@ class CourseCompletionPlan:
                 is_dummy=is_dummy, guideline=guideline, attempt_epoch=attempt_epoch,
                 current_epoch=user_epoch, already_finalized=False,
             ))
-        intent_id = submission_intent_id(attempt_id, input_digest, result_digest)
+        definition = _json_object(_get(attempt, "definition_json"))
+        course_only = (binding is not None and definition is not None
+                       and definition.get("adapter_version") == ROUND2_ADAPTER_VERSION)
+        policy_version = COURSE_SUBMISSION_POLICY_VERSION if course_only else SUBMISSION_POLICY_VERSION
+        intent_id = submission_intent_id(attempt_id, input_digest, result_digest, policy_version=policy_version)
         reset = attempt_epoch != user_epoch
         item_row = rows.get("item") if type(rows.get("item")) is dict else {}
         item_already = item_row.get("completed") is True
@@ -481,27 +509,16 @@ class CourseCompletionPlan:
             branch = "legacy"  # legacy (D103): v1 attempt, no course rows or SUBMISSION write
         else:
             branch = "course"
-            submission_key = storage_keys.pair(storage_keys.submission_key(attempt_id, result_digest))
-            writes.append({
-                "kind": "SUBMISSION",
-                "key": list(submission_key),
-                "set": {
-                    "intent_id": intent_id,
-                    "status": submit["status"],
-                    "ok": False,
-                    "error": submit["error"],
-                    "exclusion_reasons": list(submit["exclusion_reasons"]),
-                    "policy_version": SUBMISSION_POLICY_VERSION,
-                    "result_digest": result_digest,
-                    "queue": [],
-                },
-            })
-            affected.append(submission_key)
+            submission_index = len(writes)
+            affected_index = len(affected)
             if not reset:
-                keys = _course_keys(binding, attempt_epoch)
-                course_writes, course_conditions, reconciliation = _course_writes(
+                course_writes, course_conditions, reconciliation, new_completion = _course_writes(
                     binding, attempt, rows, evaluation, phase,
+                    submission_eligible=course_only and not already and submit["status"] == "disabled",
                 )
+                if new_completion:
+                    submit = classify_launch_status((), course_completed=True)
+                    writes[1]["set"]["submit_arc"] = submit
                 writes.extend(course_writes)
                 affected.extend(tuple(write["key"]) for write in course_writes)
                 conditions.update(course_conditions)
@@ -512,11 +529,31 @@ class CourseCompletionPlan:
                     }
                     writes[1]["set"]["progress_application"] = progress
 
+            if not course_only or (not already and submit["status"] != "disabled"):
+                # Retained attempts keep their frozen classification and writes.
+                # On v6, excluded records are audits and only course completion is pending.
+                submission_key = storage_keys.pair(storage_keys.submission_key(attempt_id, result_digest))
+                writes.insert(submission_index, {
+                    "kind": "SUBMISSION",
+                    "key": list(submission_key),
+                    "set": {
+                        "intent_id": intent_id,
+                        "status": submit["status"],
+                        "ok": False,
+                        "error": submit["error"],
+                        "exclusion_reasons": list(submit["exclusion_reasons"]),
+                        "policy_version": policy_version,
+                        "result_digest": result_digest,
+                        "queue": [],
+                    },
+                })
+                affected.insert(affected_index, submission_key)
+
         actions = {
             "schema": WRITE_PLAN_SCHEMA,
             "contract_version": CONTRACT_VERSION,
             "policy_version": POLICY_VERSION,
-            "submission_policy_version": SUBMISSION_POLICY_VERSION,
+            "submission_policy_version": policy_version,
             "branch": branch,
             "two_phase": False,
             "submit_queue": [],
@@ -544,6 +581,7 @@ class CourseCompletionPlan:
             "result_digest": result_digest,
             "branch": branch,
         }
+        _producible_submit(submit)
         _forbid_secrets(actions)
         _forbid_secrets(receipt)
         if actions["two_phase"] is not False or actions["submit_queue"] != []:

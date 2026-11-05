@@ -11,6 +11,8 @@ import boto3
 import pytest
 
 from mock_journey import typed
+from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
+from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.errors import JourneyError
 from mock_journey.jobs import DynamoJobRepository, JobLeaseLost
 from mock_journey.projection import ProjectionSchema, project_input, typed_identity
@@ -21,7 +23,7 @@ from tests.mock_storage_support import MemoryLegacyBindings, MemoryS3
 from tests.mock_state_support import ScriptedClient, item
 
 
-VERSION = "security-test-internal-v1"
+VERSION = CURRENT_ADAPTER_VERSION
 PROJECTION = "security-test-projection-v1"
 SECRET = "P2_PRIVATE_CREDENTIAL_MARKER"
 
@@ -32,8 +34,12 @@ def _input(training="compression_only"):
     definition = {
         "condition": deepcopy(condition), "calculation_profile": {},
         "goal": {"kind": kind, "required": 60 if kind == "compressions" else 8 if kind == "ventilations" else 3},
-        "catalog_version": "mock-catalog-v1", "profile_version": "tester-v1",
+        "catalog_version": "mock-catalog-v1", "profile_version": CURRENT_PROFILE_VERSION,
         "adapter_version": VERSION, "projection_version": PROJECTION,
+        "courseType": "BLS", "requiresAed": False,
+        "minimumQuantity": {"compressions": 60 if kind == "compressions" else 90 if kind == "cycles" else 0,
+                            "ventilations": 8 if kind == "ventilations" else 6 if kind == "cycles" else 0},
+        "assessment": {"passRule": "composite", "gates": {}},
     }
     cpr = (comp_session(60) if training == "compression_only"
            else cpr_session([(0, 8)]) if training == "ventilation_only"
@@ -59,6 +65,7 @@ def _input(training="compression_only"):
 
 def _adapter(**kwargs):
     from mock_journey.internal_calculator import InternalCalculator
+    kwargs.setdefault("cycle_goal_resolver", closed_cycle_count)
     return InternalCalculator(version=VERSION, projection_version=PROJECTION,
                               stage="development", **kwargs)
 
@@ -132,16 +139,18 @@ def test_cpr_without_a_confirmed_resolver_stops_before_calculation(monkeypatch):
         pytest.fail("Unconfigured CPR completion started a calculation.")
 
     monkeypatch.setattr(main, "run_calculator", forbidden)
-    with pytest.raises(JourneyError) as raised:
-        _adapter().calculate(loaded, binding, lambda: None)
-    assert raised.value.code == "TEMPORARILY_UNAVAILABLE"
+    # v6 refuses an absent resolver at construction, before any input executes.
+    with pytest.raises(ValueError, match="Invalid internal calculator configuration"):
+        _adapter(cycle_goal_resolver=None)
 
 
 def test_preexisting_cpr_candidate_does_not_bypass_a_missing_completion_resolver():
     # This explicit test callback is not a production CPR completion policy.
     _, _, loaded, binding, _, raw = _candidate("cpr", cycle_goal_resolver=lambda evidence, definition: 0)
+    adapter = _adapter()
+    adapter.cycle_goal_resolver = None  # A damaged runtime must still refuse the stored candidate.
     with pytest.raises(JourneyError) as raised:
-        _adapter().validate_response(raw, loaded.projected, binding)
+        adapter.validate_response(raw, loaded.projected, binding)
     assert raised.value.code == "TEMPORARILY_UNAVAILABLE"
 
 

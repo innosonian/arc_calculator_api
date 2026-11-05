@@ -80,8 +80,10 @@ def calculate(env, attempt_view, *, count=None, completed):
     assert result["calculationStatus"] == "succeeded"
     assert type(result["calculation"]) is dict
     assert result["evaluation"]["program_completed"] is completed
+    final_pass = attempt_view["role"] == "final_assessment" and completed
     assert result["submit_arc"] == {
-        "status": "disabled", "ok": False, "error": "arc_contract_pending", "exclusionReasons": [],
+        "status": "pending" if final_pass else "disabled", "ok": False,
+        "error": None if final_pass else "arc_contract_pending", "exclusionReasons": [],
     }
     public_attempt = request(env, "GET", f"/api/v2/attempts/{attempt_id}/", expected=200)
     assert public_attempt["state"] == "evaluated"
@@ -167,11 +169,11 @@ def test_assigned_course_full_http_lifecycle_and_final_retry_rules(dynamodb_clie
     assert all(row["isCompleted"] is True for row in finished["courseItems"])
     assert finished["courseItems"][-1]["isPassed"] is True
     listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
-    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
+    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "COMPLETION_PENDING_ARC"), (502, "NOT_STARTED")]
     replay = request(env, "POST", "/api/v2/attempts/", body=final_body, expected=200)
     assert replay["attemptId"] == final["attemptId"]
-    # D130/D131: the passed final may be retaken; while active and after a worse
-    # result the course stays FINISHED with the last item completed and passed.
+    # D130/D131: the passed final may be retaken. Its completion stays recorded;
+    # ARC submission remains pending while active and after a worse result.
     retake, _ = start(env, 1005)
     assert retake["role"] == "final_assessment" and retake["attemptId"] != final["attemptId"]
     error = request(env, "POST", "/api/v2/attempts/", body=start_body(env, 1005), expected=409)
@@ -179,14 +181,14 @@ def test_assigned_course_full_http_lifecycle_and_final_retry_rules(dynamodb_clie
     during = course(env)
     assert during["courseItems"][-1]["isCompleted"] is True and during["courseItems"][-1]["isPassed"] is True
     listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
-    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
+    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "COMPLETION_PENDING_ARC"), (502, "NOT_STARTED")]
     worse = calculate(env, retake, count=2, completed=False)
     assert worse["progressApplication"]["reason"] == "ALREADY_COMPLETED"
     after = course(env)
     assert all(row["isCompleted"] is True for row in after["courseItems"])
     assert after["courseItems"][-1]["isPassed"] is True
     listing = request(env, "GET", "/api/v2/courses/progress/", expected=200)
-    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "FINISHED"), (502, "NOT_STARTED")]
+    assert [(row["enrollmentId"], row["status"]) for row in listing["results"]] == [(501, "COMPLETION_PENDING_ARC"), (502, "NOT_STARTED")]
 
 
 def test_session_and_course_waiting_agree_without_losing_existing_start(dynamodb_client, dynamodb_table, monkeypatch):
@@ -226,8 +228,8 @@ def test_calculation_excluded_wire_after_owned_epoch_reset(dynamodb_client, dyna
     response = handle(upload, CONTEXT, env.app)
     assert response["statusCode"] == 202, response["body"]
     job_id = env.app.state.get_attempt(env.auth, attempt["attemptId"])["job_id"]
-    # The public API has no reset route. Inject only the reset authority's epoch
-    # transition in this test-owned table to exercise late-result serialization.
+    # The public reset route is Dummy-only. Inject the reset authority's epoch
+    # transition for this non-Dummy fixture to exercise late-result serialization.
     key = {"PK": {"S": f"USER#{env.auth.principal}"}, "SK": {"S": "STATE"}}
     user = dynamodb_client.get_item(TableName=dynamodb_table, Key=key, ConsistentRead=True)["Item"]
     dynamodb_client.update_item(
@@ -252,3 +254,29 @@ def test_calculation_excluded_wire_after_owned_epoch_reset(dynamodb_client, dyna
     }
     assert "exclusion_reasons" not in result["submit_arc"]
     assert request(env, "GET", upload["path"], expected=200) == result
+
+
+def test_video_skip_replays_and_cannot_downgrade_watched(dynamodb_client, dynamodb_table):
+    env = runtime(dynamodb_client, dynamodb_table)
+    video, _ = start(env, 1001, content=True)
+    skip = {"type": "video_skipped", "positionMs": 5000}
+    receipt, body = report(env, video, skip)
+    path = "/api/v2/courses/101/progress/"
+    assert receipt["isCompleted"] is True and receipt["completionKind"] == "skipped"
+    assert course(env)["courseItems"][0]["completionKind"] == "skipped"
+    assert request(env, "PUT", path, body=body, expected=200) == receipt
+    changed = {**body, "event": {**skip, "positionMs": 5001}}
+    assert request(env, "PUT", path, body=changed, expected=409)["code"] == "IDEMPOTENCY_CONFLICT"
+
+    for position in (-1, 20001, True, 1.5):
+        invalid = {**body, "reportId": str(uuid.uuid4()), "event": {**skip, "positionMs": position}}
+        assert request(env, "PUT", path, body=invalid, expected=400)["code"] == "INVALID_REQUEST"
+
+    later, _ = start(env, 1001, content=True)
+    watched, _ = report(env, later, {"type": "video_segments", "intervalsMs": [[0, 20000]]})
+    assert watched["completionKind"] == "watched"
+    replay_late, _ = report(env, video, skip)
+    assert replay_late["completionKind"] == "watched"
+    assert course(env)["courseItems"][0]["completionKind"] == "watched"
+    assert request(env, "PUT", path, body=body, expected=200) == receipt
+    assert course(env, enrollment=502)["courseItems"][0]["completionKind"] is None

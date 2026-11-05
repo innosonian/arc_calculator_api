@@ -305,9 +305,9 @@ def test_supervised_health_body_is_exact(chart_service, dispatched, operations, 
     assert status == "200 OK"
     expected = ('{"service": "arc-local-api", "mode": "course_v2", "calculator_available": true, '
                 '"login_path": "/api/v2/sessions/", "programs_path": "/api/v2/courses/progress/", '
-                '"calculation_transport_configured": true, "program_target_combinations": 15, '
-                '"completion_policy": {"cycles": "evaluated", "compressions": "evaluated", '
-                '"ventilations": "evaluated"}')
+                '"calculation_transport_configured": true, "program_target_combinations": 18, '
+                '"completion_policy": {"compressions": "evaluated", "ventilations": "evaluated", '
+                '"cycles": "evaluated"}')
     if logs is not None:
         expected += ', "operational_logs": ' + json.dumps(logs)
     assert body == (expected + "}").encode()
@@ -316,10 +316,10 @@ def test_supervised_health_body_is_exact(chart_service, dispatched, operations, 
 def test_completion_policy_is_derived_from_catalog_goal_kinds_and_adapter_status():
     from mock_journey.catalog import PROGRAMS
     from mock_journey.contracts import CURRENT_ADAPTER_VERSION, expected_goal_status
-    kinds = [program[2] for program in PROGRAMS]
-    assert set(kinds) == {"cycles", "compressions", "ventilations"} and len(kinds) == 5
+    kinds = [program.kind for program in PROGRAMS]
+    assert set(kinds) == {"cycles", "compressions", "ventilations"} and len(kinds) == 9
     # First-seen catalog order and the current adapter's status per kind (D13, D136).
-    assert [kind for kind, _ in local_http._COMPLETION_POLICY] == ["cycles", "compressions", "ventilations"]
+    assert [kind for kind, _ in local_http._COMPLETION_POLICY] == list(dict.fromkeys(kinds))
     assert dict(local_http._COMPLETION_POLICY) == {kind: expected_goal_status(kind, CURRENT_ADAPTER_VERSION)
                                                   for kind in kinds}
     assert dict(local_http._COMPLETION_POLICY) == {"cycles": "evaluated", "compressions": "evaluated",

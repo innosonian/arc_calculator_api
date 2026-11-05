@@ -20,7 +20,9 @@ scope_key, must match literally. Diagnostic *_ms durations are <ms> in the
 template; the calculation body is reduced before matching (calculation_summary).
 """
 
+import base64
 import hashlib
+from copy import deepcopy
 import json
 from pathlib import Path
 import re
@@ -49,11 +51,13 @@ def load(name):
 
 def flow_template():
     return {"responses": load("flow_responses.json"), "events": load("flow_events.json"),
-            "rows": load("flow_rows.json"), "user_slots": load("user_slots.json")["flow"]}
+                               "rows": load("flow_rows.json"), "user_slots": load("user_slots.json")["flow"]}
 
 
 def legacy_template(name):
     return {**load("legacy_compat.json")[name], "user_slots": load("user_slots.json")[name]}
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +79,22 @@ def calculation_summary(calculation):
 
 
 def _shape_body(body):
-    if type(body) is dict and type(body.get("data")) is dict and "calculation" in body["data"]:
-        body = {**body, "data": {**body["data"], "calculation": calculation_summary(body["data"]["calculation"])}}
-    return body
+    if type(body) is not dict or type(body.get("data")) is not dict:
+        return body
+    data = dict(body["data"])
+    if "calculation" in data:
+        data["calculation"] = calculation_summary(data["calculation"])
+    # The frozen pre-Round-2 capture asserts the original wire fields.
+    if "sessionId" in data:
+        for key in ("organizations", "organizationId", "inactivityLogoutSeconds", "hardCapSeconds"):
+            data.pop(key, None)
+    if type(data.get("enrollment")) is dict:
+        data["enrollment"] = {key: value for key, value in data["enrollment"].items()
+                              if key not in {"sku", "dueDate", "organizationId", "organizationName"}}
+    if "courseItems" in data:
+        data["courseItems"] = [{key: value for key, value in item.items() if key != "completionKind"}
+                               for item in data["courseItems"]]
+    return {**body, "data": data}
 
 
 def split_rows(rows):
@@ -139,14 +156,13 @@ def _harness(store, **options):
 
 def definition_observation():
     """DummyDev 15-course bundles: definitionHash and exact execution definition bytes."""
-    from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
+    from mock_journey.catalog import TARGETS
     from mock_journey.course_settings import fixture_course_settings
-    from mock_journey.dev_course import DummyDevCourseProvider
-    from mock_journey.execution_definitions import execution_catalog
+    from tests.legacy_dummy_catalog import LEGACY_PROGRAMS, LegacyCatalog, LegacyDummyCourseProvider, legacy_execution_catalog
 
-    execution = execution_catalog()
-    provider = DummyDevCourseProvider(settings=fixture_course_settings(), execution=execution)
-    catalog = Catalog(execution)
+    execution = legacy_execution_catalog()
+    provider = LegacyDummyCourseProvider(settings=fixture_course_settings(), execution=execution)
+    catalog = LegacyCatalog(execution)
     courses = []
     for binding in provider.list_assignments(provider.learner):
         bundle = provider.fetch_bundle(binding)
@@ -162,7 +178,7 @@ def definition_observation():
             } for placement in bundle.placements],
         })
     return {
-        "catalog_pairs": [[program[0], target] for program in PROGRAMS for target in TARGETS],
+        "catalog_pairs": [[program[0], target] for program in LEGACY_PROGRAMS for target in TARGETS],
         "courses": courses,
         "mapping_document_sha256": hashlib.sha256(json.dumps(
             provider.mapping_document, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
@@ -215,6 +231,7 @@ def golden_flow(store):
     h.course(first.token, course)
     h.courses(first.token)
     h.refresh(first.token)
+    h.reset(first.token)
     h.logout(first.token)
     h.session(first.token, expected=403)
     h.advance(1)
@@ -222,21 +239,43 @@ def golden_flow(store):
     h.attempt(second.token, redo["attemptId"], expected=404)
     h.reauthorize(second.token, redo["attemptId"], redo["resumeCredential"])
     h.result(second.token, redo["attemptId"])
+    h.reset(second.token)
     h.logout(second.token)
     return recorder.observation()
 
 
-def legacy_active_session(store, *, seed=seed_legacy_rows):
+def seed_legacy_candidate(store, objects=None):
+    """Seed the unchanged historical rows plus a pre-port saved pending-v3 candidate.
+
+    The candidate is synthetic compatibility evidence, never a new scoring oracle.
+    Its original binding, private-object metadata and expired lease remain intact.
+    """
+    seeded = seed_legacy_rows(store, objects)
+    recovery = json.loads((Path(__file__).parent / "fixtures" / "legacy_mock_v1_recovery" /
+                           "queued_candidate.json").read_text())
+    job = recovery["job"]
+    assert job["PK"] == {"S": "JOB#" + seeded.attempts["queued"]["job_id"]}
+    store.put_raw(job)
+    for entry in recovery["objects"]:
+        raw = base64.b64decode(entry["body"], validate=True)
+        assert len(raw) == recovery["candidate_size"]
+        assert hashlib.sha256(raw).hexdigest() == recovery["candidate_sha256"]
+        seeded.objects.put_object(Bucket=entry["bucket"], Key=entry["key"], Body=raw, Metadata=entry["metadata"])
+    seeded.recovery_clock = recovery["resume_clock"]
+    return seeded
+
+
+def legacy_active_session(store, *, seed=seed_legacy_candidate):
     """R1-R6 while the legacy /mock/v1 session is still active (the app keeps its token).
 
     Legacy attempts are viewable, the evaluated result and chart link are
-    served, the queued legacy job is finished by Relay -> queue -> Worker with
-    legacy slot progress, the created attempt is cancelled, and logout resets
-    the legacy slots. ``seed`` is the fixture seeding function; the write
+    served, the queued legacy job resumes a saved candidate through Relay -> queue -> Worker with
+    legacy slot progress (no new historical calculation), the created attempt is cancelled, and explicit reset
+    clears the legacy slots before logout. ``seed`` is the fixture seeding function; the write
     baseline passes one whose writes are excluded from the recording (E-07).
     """
     seeded = seed(store)
-    h, recorder = _harness(store, objects=seeded.objects, start=seeded.meta["capture_clock"] + 60)
+    h, recorder = _harness(store, objects=seeded.objects, start=seeded.recovery_clock)
     attempts = seeded.attempts
     token = seeded.issue_session_token()
     recorder.checkpoint("seeded")
@@ -257,17 +296,18 @@ def legacy_active_session(store, *, seed=seed_legacy_rows):
     h.cancel(token, attempts["created"]["attempt_id"])
     recorder.checkpoint("created_cancelled")
     h.attempt(token, attempts["created"]["attempt_id"])
+    h.reset(token)
     h.logout(token)
     recorder.checkpoint("logged_out")
     return recorder.observation()
 
 
-def legacy_new_session(store, *, seed=seed_legacy_rows):
+def legacy_new_session(store, *, seed=seed_legacy_candidate):
     """R1-R6 after the legacy session expired: a /api/v2 login reauthorizes legacy attempts.
 
     The existing USER row (with slots) is kept by login, another session cannot
     see the legacy attempts until reauthorize, and the reauthorized attempts
-    can be cancelled, finished by the Worker and read. ``seed`` as in
+    can be cancelled, recovered from a pre-port saved candidate and read. ``seed`` as in
     ``legacy_active_session``.
     """
     seeded = seed(store)
@@ -290,6 +330,7 @@ def legacy_new_session(store, *, seed=seed_legacy_rows):
     h.result(session.token, attempts["queued"]["attempt_id"])
     h.result(session.token, attempts["evaluated"]["attempt_id"])
     h.chart_link(session.token, attempts["queued"]["attempt_id"])
+    h.reset(session.token)
     h.logout(session.token)
     recorder.checkpoint("logged_out")
     return recorder.observation()

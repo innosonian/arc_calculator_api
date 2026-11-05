@@ -18,6 +18,7 @@ _SEGMENT = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 # Shared bounds (also enforced by DynamoStateRepository and the AWS settings
 # patterns). Each module keeps its own error type and message.
 MAX_CONFLICT_RETRIES = 8
+SESSION_SECONDS = 86400
 
 
 def _invalid():
@@ -142,13 +143,30 @@ class StorageSettings:
 
 
 @dataclass(frozen=True)
+class SessionSettings:
+    """Defaults preserve the existing Dummy session lifetime."""
+    ttl_seconds: int = SESSION_SECONDS
+    hard_cap_seconds: int | None = None
+    inactivity_logout_seconds: int | None = None
+
+    def __post_init__(self):
+        _positive(self.ttl_seconds)
+        for value in (self.hard_cap_seconds, self.inactivity_logout_seconds):
+            if value is not None:
+                _positive(value)
+
+
+@dataclass(frozen=True)
 class ApiSettings:
     state: StateSettings
     storage: StorageSettings
     environment: str
     payload_limit: int
+    session: SessionSettings = SessionSettings()
 
     def __post_init__(self):
+        if type(self.session) is not SessionSettings:
+            raise _invalid()
         _state(self.state)
         _storage(self.storage)
         _text(self.environment)

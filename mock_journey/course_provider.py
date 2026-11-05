@@ -2,9 +2,10 @@
 
 from dataclasses import replace
 from functools import partial
+from typing import TypedDict
 
 from mock_journey.course_contracts import (
-    EXECUTION_KEYS, PLACEMENT_KINDS, AssignmentBinding, CourseBundle, LearnerContext,
+    PLACEMENT_KINDS, AssignmentBinding, CourseBundle, LearnerContext,
     MappingRegistry, Placement, item_type_wire, owned_json_bytes, parse_owned, sealed_bundle,
     validate_execution_definition,
 )
@@ -193,8 +194,6 @@ def map_execution(placement: Placement, *, mapping_version: str, mappings: Mappi
     try:
         body = owned_json_bytes(transform(placement))
         parsed = parse_owned(body)
-        if type(parsed) is not dict or tuple(sorted(parsed)) != tuple(sorted(EXECUTION_KEYS)):
-            raise CourseError("EXECUTION_DEFINITION_UNSUPPORTED")
         return owned_json_bytes(validate_execution_definition(parsed))
     except CourseError as error:
         if error.code == "INVALID_REQUEST":
@@ -212,6 +211,20 @@ class UnavailableCourseProvider:
         raise CourseError("CONTRACT_PENDING")
 
     def fetch_bundle(self, binding: AssignmentBinding) -> CourseBundle:
+        raise CourseError("CONTRACT_PENDING")
+
+
+class TakeCourseAssignment(TypedDict):
+    sku: str
+    title: str
+    dueDate: str | None
+    organizationId: str | None
+    organizationName: str | None
+    assignmentId: str | int
+
+
+class ArcTakeCourseProvider(UnavailableCourseProvider):
+    def fetch_assignments(self, access_token: str) -> tuple[TakeCourseAssignment, ...]:
         raise CourseError("CONTRACT_PENDING")
 
 

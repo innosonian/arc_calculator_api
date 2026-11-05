@@ -1,13 +1,7 @@
-"""계산 오케스트레이터(라이브러리 코어).
+"""ARC calculation orchestration over the hstm_v2 legacy core.
 
-원본 V1 main.py 이식(V1 패리티 보존). 운영 호출자는 Worker의
-mock_journey/internal_calculator.py(execution_context 전달)이고, 내부 회귀 helper
-lambda_handler._run_trusted_calculation과 scripts/run_local.py·viewer 스크립트도 같은 코어를
-쓴다(execution_context=None 경로). 로컬 실행 엔트리(`__main__` 블록)는 원본과 동일하게 두지 않는다.
-
-원본 대비 미이식(스펙 §4.4·D-1): run_calculator_as_action(원본 main.py:82-101) —
-action 직접 입력 경로 제거. (원본에서도 호출부가 없고 prepare_data 인자 불일치로
-호출 시 TypeError가 나는 사장 코드였다.)
+Worker calls carry an execution context for verified input, evidence and private
+chart storage. Local tools and trusted helpers use the direct diagnostic path.
 """
 
 from services.operational_logs import write_diagnostic
@@ -31,7 +25,6 @@ def run_calculator(
     *,
     execution_context: CalculationExecutionContext | None = None,
 ) -> dict:
-    # 원본 hstm_v2 main.py:10-61 (파이프라인 순서 그대로 — 임의 변경 금지)
     # initialize
     config = Config(condition)
 
@@ -58,16 +51,10 @@ def run_calculator(
         ),
     )
     # rtdata to action data list
-    # D138/D139: 어댑터 버전이 정한 계산 옵션(CalculationOptions)은 execution_context로만 전달된다.
-    # context가 없는 직접 호출(로컬 도구·회귀 helper)은 현재 규칙(각 함수의 기본값)을 쓰고 기존 호출
-    # 형태를 유지한다. 최소량 null 정책 옵션은 make_calculate_result가 같은 context에서 읽는다.
-    detection_kwargs = ({} if execution_context is None
-                        else {"eof_single_confirmation": execution_context.options.eof_single_confirmation})
     action_list, aed_part_list = make_pre_action_list(
         config,
         parsed_data,
         vp_event_list,
-        **detection_kwargs,
     )
 
     # action data에 이런저런 양념치기. 계산에 필요한 데이터 준비는 이 단계에서 마무리한다
@@ -76,6 +63,9 @@ def run_calculator(
         aed_part_list,
         config,
     )
+
+    if execution_context is not None and execution_context.options.collect_gates:
+        prepared_data["raw_aed_events"] = parsed_data["aed_data_list"]
 
     context_kwargs = {} if execution_context is None else {"execution_context": execution_context}
     result = make_calculate_result(
@@ -92,7 +82,6 @@ def run_calculator(
 
 
 def _save_raw_input(cpr_byte_data, aed_byte_data, condition, vp_event_list, organization, key_stem, org, stage):
-    # 원본 hstm_v2 main.py:64-79 (실패 삼킴·JSON 한 줄 print 로깅 패턴 현행 유지 — 스펙 R3-6/D-4)
     try:
         meta = build_raw_input_meta(condition, vp_event_list, organization)
         upload_raw_input(cpr_byte_data, aed_byte_data, meta, stage=stage, key_stem=key_stem, org=org)

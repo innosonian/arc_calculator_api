@@ -1,5 +1,4 @@
 from calculators.cycle_evaluator import CycleWithScore
-from calculators.action_timeline import timeline_totals
 from config.calculation_config import BaseCalculationConfig
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT
 from config.enums import Actor
@@ -115,6 +114,7 @@ class MetricEvaluator:
         self._sum_vent_speed = 0
         self._sum_cycle_handsoff_ms = 0
         self._handsoff_cycle_count = 0
+        self._unified = False
 
     def evaluate(self, part_with_score_list):
         for part in part_with_score_list:
@@ -127,6 +127,15 @@ class MetricEvaluator:
 
     def collect_cycle_metrics(self, cycle_with_score_list: list[CycleWithScore]) -> None:
         for cycle_with_score in cycle_with_score_list:
+            # 압박 지표(rate/hand, 압박 액션 수, 평균 압박 속도)는 압박을 채점한 사이클(can_calc_comp)의
+            # RP 압박만 센다. 압박 비채점 사이클(NOT_CALC, 구조 호흡 누락, VP:COMP, ONLY:VP)의 RP 압박은
+            # 점수에 포함되지 않으므로 지표에서도 제외한다. depth/recoil 이벤트 집계와 같은 기준이다.
+            if cycle_with_score.can_calc_comp():
+                if cycle_with_score.comp_scores is not None:
+                    self._collect_unified_comp_metrics(cycle_with_score.comp_scores["compressions"])
+                else:
+                    for action in cycle_with_score.cycle.actions:
+                        self._collect_comp_metrics(action)
             self._collect_comp_event_metrics(cycle_with_score)
 
             comp_no_score = cycle_with_score.evaluate_result_comp_no
@@ -176,12 +185,33 @@ class MetricEvaluator:
                 self._handsoff_cycle_count += 1
 
     def collect_metrics(self, action_with_score_list):
+        # 압박 지표는 사이클 순회(collect_cycle_metrics)에서 센다. 여기서는 환기·시간 지표만 센다.
         for action in action_with_score_list:
-            self._collect_comp_metrics(action)
             self._collect_vent_metrics(action)
-        elapsed, handsoff = timeline_totals([action.action_data for action in action_with_score_list])
-        self.metric["TotalEventTime"] += elapsed
-        self.metric["TotalHandsOffTime"] += handsoff
+            self._collect_time_metrics(action)
+
+    def _collect_unified_comp_metrics(self, compressions):
+        self._unified = True
+        for row in compressions:
+            self.metric["CompressionActionNumber"] += 1
+            self._sum_comp_depth += row["depth_raw"] / 2
+            self._comp_depth_count += 1
+            for item, metric, categories in (
+                ("depth", "CompressionDepth", {"low": "TooShallow", "good": "Good", "high": "TooDeep"}),
+                ("rate", "CompressionRate", {"low": "TooSlow", "good": "Good", "high": "TooFast"}),
+                ("recoil", "Recoil", {"bad": "Incomplete", "good": "Good"}),
+            ):
+                bucket = categories.get(row[item]["category"])
+                if bucket:
+                    self.metric[metric]["n_" + bucket] += 1
+            if row["rate"]["score"] is not None:
+                self._sum_comp_rate += row["rate_byte"]
+                self._comp_rate_count += 1
+            if row["score"] is not None:
+                bucket = "IncorrectStomach" if row["classification"] == "DOWN" else (
+                    "IncorrectLR" if row["direction"] in ("LEFT", "RIGHT") else "Good"
+                )
+                self.metric["HandPosition"]["n_" + bucket] += 1
 
     def _collect_comp_event_metrics(self, cycle_with_score: CycleWithScore) -> None:
         # depth/recoil 지표는 액션이 아니라 파형 이벤트 판정으로 집계한다
@@ -209,6 +239,7 @@ class MetricEvaluator:
 
     def _collect_comp_metrics(self, action):
         # depth/recoil은 액션이 아니라 사이클의 파형 이벤트 판정으로 집계한다(_collect_comp_event_metrics).
+        # 호출부(collect_cycle_metrics)가 압박 채점 사이클의 액션만 전달한다.
         if action.action_data["action_type"] == ACTION_TYPE_COMP and action.actor == Actor.REAL_PERSON:
             comp_rate = action.score["comp_rate"]["criterion"]
             hand_position = action.score["hand_position"]["criterion"]
@@ -280,6 +311,9 @@ class MetricEvaluator:
         self._calculate_vent_metrics()
         self._calculate_ccf_metrics()
         self._calculate_measured_summary()
+        if self._unified:
+            for item in ("CompressionDepth", "CompressionRate", "Recoil", "HandPosition"):
+                self._ajd_ratio_to_100(self.metric[item])
 
     def _calculate_comp_metrics(self):
         if self.metric["CompressionActionNumber"] != 0:
@@ -459,7 +493,11 @@ class MetricEvaluator:
         if need_ajd_ratio > 3:
             return values
 
-        values["%_Good"] += need_ajd_ratio
+        key = "%_Good"
+        if self._unified and values[key] + need_ajd_ratio < 0:
+            # R01: remove rounding excess from the largest bucket, keeping ratios nonnegative.
+            key = max((k for k in values if k.startswith("%")), key=values.get)
+        values[key] += need_ajd_ratio
 
         return values
 

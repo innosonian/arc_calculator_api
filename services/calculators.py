@@ -1,6 +1,6 @@
 from calculators.action_evaluator import ActionEvaluator
 from calculators.aed_evaluator import calculate_aed_score
-from calculators.cycle_evaluator import CycleMaker, CycleWithScore, Cycle, NullPolicy
+from calculators.cycle_evaluator import CycleMaker, CycleWithScore, Cycle
 from calculators.merge_calculator import calculate_part_score, calculate_total_score
 from calculators.metric_evaluator import MetricEvaluator
 from config.calculation_config import BaseCalculationConfig
@@ -13,7 +13,6 @@ from services.config import Config
 def calculate_cpr_score(
     prepared_partial_data: list[dict],
     config: Config,
-    null_policy: NullPolicy | None = None,
 ) -> (list[dict], list[CycleWithScore]):
     action_evaluator = ActionEvaluator(config)
 
@@ -29,7 +28,6 @@ def calculate_cpr_score(
             partial_data["part_num"],
             action_with_score_list,
             config,
-            null_policy,
         )
 
         part_with_score_list.append(
@@ -47,7 +45,6 @@ def calculate_cycle(
     part_num: int,
     action_with_score_list: list[ActionWithScore],
     config: Config,
-    null_policy: NullPolicy | None = None,
 ) -> dict:
     # overall 계산을 위한 weight 가져옴
     score_weight = ScoreWeightFactory.create(
@@ -73,7 +70,6 @@ def calculate_cycle(
             part_num,
             score_weight,
             config.calculation_config,
-            null_policy,
         )
         if score := cycle_with_score.make_score(config.border):
             cycle_with_score_list.append(score)
@@ -81,7 +77,7 @@ def calculate_cycle(
     return {
         "action_with_score_list": action_with_score_list,
         "cycle_with_score_list": cycle_with_score_list,
-        "score": calculate_part_score(cycle_with_score_list, part_num, config, null_policy),
+        "score": calculate_part_score(cycle_with_score_list, part_num, config),
     }
 
 
@@ -89,24 +85,15 @@ def make_cpr_metrics(part_with_score_list, calculation_config: BaseCalculationCo
     return MetricEvaluator(calculation_config).evaluate(part_with_score_list)
 
 
-def calculate_cpr(prepared_data: dict, config: Config, *, minimum_quantity_null: bool = False) -> CalculationResult:
-    # D139: ARC2020/ARC2025 CPR의 최소량 미달 null 정책(D07/D08)은 새 계산부터 적용하지 않는다.
-    # 보존 어댑터(v4·pending-v3)만 minimum_quantity_null=True로 원래 정책을 유지한다. 정책 자체
-    # (NullPolicy, 해시 고정)는 그대로이며 여기서 만들지 여부만 고른다. 최소량 자체는 없어지지 않았다:
-    # 점수는 표시하되 합격 조건으로는 평가 단계(mock_journey.worker.evaluate)가 같은 NullPolicy.create로 판정한다.
-    null_policy = (
-        NullPolicy.create(config.calculation_config, prepared_data["comp_count"], prepared_data["vent_count"])
-        if minimum_quantity_null else NullPolicy.inactive()
-    )
+def calculate_cpr(prepared_data: dict, config: Config) -> CalculationResult:
     # 파트, 사이클 점수 계산
     # 분리 할 걸...
     part_with_scores, cycle_with_score_list = calculate_cpr_score(
         prepared_data["prepared_cpr_data"],
         config,
-        null_policy,
     )
 
-    cpr_total_scores = calculate_total_score(cycle_with_score_list, config, null_policy)
+    cpr_total_scores = calculate_total_score(cycle_with_score_list, config)
     aed_score = calculate_aed_score(prepared_data["prepared_aed_data"], config.border)
     cpr_metrics = make_cpr_metrics(part_with_scores, config.calculation_config)
 
@@ -118,3 +105,7 @@ def calculate_cpr(prepared_data: dict, config: Config, *, minimum_quantity_null:
         comp_count=prepared_data["comp_count"],
         vent_count=prepared_data["vent_count"],
     )
+
+
+def calculate_action(action_list, config) -> list[ActionWithScore]:
+    return ActionEvaluator(config).evaluate_action(action_list)

@@ -10,7 +10,7 @@ import json
 from types import SimpleNamespace
 
 from mock_journey.assembly import ExecutionCatalog
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import program_targets
 from mock_journey.course_fixture import FixtureCourseProvider
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.handler import handle
@@ -27,12 +27,12 @@ CONTEXT = SimpleNamespace(aws_request_id="vcc-ddb")
 
 
 def definitions():
-    return {f"{program[0]}:{target}": {
+    return {f"{program.id}:{target}": {
         "condition": {"target": target}, "calculation_profile": {
             "Custom": {"PassThreshold": 80.0, "CertificateAdult": False}},
         "profile_version": "test-profile", "adapter_version": "test-adapter",
         "projection_version": "test-projection",
-    } for program in PROGRAMS for target in TARGETS}
+    } for program, target in program_targets()}
 
 
 def execution():

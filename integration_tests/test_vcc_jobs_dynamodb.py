@@ -2,7 +2,7 @@
 
 Attempts without course_binding are the captured /mock/v1 rows
 (tests/fixtures/legacy_mock_v1_rows, seeded by tests/legacy_rows_support.py);
-the removed create route is not used. D103 keeps finishing their calculation.
+the removed create route is not used. Stored candidates recover; old versions refuse new calculation.
 """
 
 import uuid
@@ -15,6 +15,7 @@ from mock_journey.models import AuthContext
 from mock_journey.state import DynamoStateRepository
 from tests.journey_support import JourneyStore, V2Journey, dynamodb_local_store
 from tests.legacy_rows_support import seed_legacy_rows
+from tests.v2_baseline_support import seed_legacy_candidate
 
 
 def _keys(store):
@@ -22,13 +23,14 @@ def _keys(store):
 
 
 @pytest.mark.parametrize("path", ["stored_queued_job", "v2_upload"])
-def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, path):
+def test_retained_recovery_or_new_calculation_refusal_writes_no_submission(dynamodb_client, path):
     with dynamodb_local_store(dynamodb_client) as store:
         h = V2Journey(store)
-        seeded = seed_legacy_rows(store, objects=h.objects)
-        h.advance(seeded.meta["clock_at_end"] - h.clock())
+        seed = seed_legacy_candidate if path == "stored_queued_job" else seed_legacy_rows
+        seeded = seed(store, objects=h.objects)
+        h.advance((seeded.recovery_clock if path == "stored_queued_job" else seeded.meta["clock_at_end"]) - h.clock())
         if path == "stored_queued_job":
-            label = "queued"  # accepted by /mock/v1, never relayed or processed
+            label = "queued"  # pre-port saved candidate, recovered without recalculation
             attempt_id = seeded.attempts[label]["attempt_id"]
         else:
             label = "created"  # created by /mock/v1, measurement uploaded through /api/v2 now
@@ -43,12 +45,12 @@ def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, p
         before_user = store.row(f"USER#{seeded.principal}", "STATE")
         assert before_user["slots"][program_slot]["open_attempts"] == 1
         job_id = attempt["job_id"]
-        assert h.work(job_id=job_id) is True
+        assert h.work(job_id=job_id) is (label == "queued")
         finished = store.row(f"ATTEMPT#{attempt_id}", "META")
-        assert finished["state"] == "evaluated"
-        assert store.row(f"JOB#{job_id}", "STATE")["state"] == "done"
+        assert finished["state"] == ("evaluated" if label == "queued" else "processing")
+        assert store.row(f"JOB#{job_id}", "STATE")["state"] == ("done" if label == "queued" else "running")
         user = store.row(f"USER#{seeded.principal}", "STATE")
-        assert user["slots"][program_slot]["open_attempts"] == 0
+        assert user["slots"][program_slot]["open_attempts"] == (0 if label == "queued" else 1)
         if label == "queued":
             # Compression goal: a pass completes the legacy slot (legacy finalize kept, D103).
             assert finished["evaluation"]["program_completed"] is True
@@ -56,10 +58,8 @@ def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, p
                 "applied": True, "applied_epoch": attempt["epoch"], "reason": "APPLIED"}
             assert user["slots"][program_slot]["completed_by_attempt"] == attempt_id
         else:
-            # Cycle goal: pending policy never completes the legacy slot.
-            assert finished["evaluation"]["program_completed"] is False
-            assert finished["progress_application"]["reason"] == "GOAL_POLICY_UNRESOLVED"
-            assert user["slots"][program_slot] == before_user["slots"][program_slot] | {"open_attempts": 0}
+            # No saved candidate exists: the old version cannot start a new calculation.
+            assert finished["evaluation"] is None and user == before_user
         # Finalize writes no new DynamoDB row: no SUBMISSION, no ARC outbox. The
         # only OUTBOX rows are the normal calculation dispatch, one per job.
         assert _keys(store) == before_keys
@@ -68,9 +68,8 @@ def test_finalize_without_course_binding_writes_no_submission(dynamodb_client, p
         jobs = sorted("OUTBOX#" + key[0].removeprefix("JOB#") for key in before_keys if key[0].startswith("JOB#"))
         assert outboxes == jobs
         if label == "created":
-            result = h.result(token, attempt_id)
-            assert result["calculationStatus"] == "succeeded"
-            assert result["evaluation"] == finished["evaluation"]
+            result = h.result(token, attempt_id, expected=202)
+            assert result["calculationStatus"] == "pending" and result["evaluation"] is None
 
 
 def test_sealed_job_blocks_claim(dynamodb_client, dynamodb_table):

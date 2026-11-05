@@ -3,10 +3,12 @@
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from functools import partial
+from math import isfinite
 from types import MappingProxyType
 from typing import Protocol
 import re
 
+from mock_journey.contracts import uses_round2_gates
 from mock_journey.course_errors import COURSE_ERROR_CODES, CourseError
 from mock_journey.course_primitives import (
     contains_key, fail, require_exact_bool, require_exact_int, require_natural_int,
@@ -14,6 +16,7 @@ from mock_journey.course_primitives import (
 )
 from mock_journey.course_settings import CourseSettings
 from mock_journey.models import AuthContext
+from mock_journey.projection import DEFINITION_SETTING_KEYS, GATE_IDS
 from mock_journey.typed import digest, json_bytes, parse_json
 
 
@@ -38,17 +41,20 @@ PLACEMENT_KINDS = frozenset({"video", "document", "training", "assessment"})
 EXECUTION_STATUSES = frozenset({"ready", "absent", "unsupported", "contract_pending"})
 START_ROLES = frozenset({"training", "final_assessment"})
 START_KINDS = frozenset({"content", "attempt"})
-CONTENT_EVENT_TYPES = frozenset({"video_segments", "document_displayed", "document_confirmed"})
-AVAILABILITY_STATES = frozenset({"ready", "waiting", "reconciliation_required"})
+CONTENT_EVENT_TYPES = frozenset({"video_segments", "video_skipped", "document_displayed", "document_confirmed"})
+AVAILABILITY_STATES = frozenset({"ready", "waiting", "reconciliation_required", "expired"})
+EXPIRED_REASON = "due_date_passed"
 WAITING_REASONS = frozenset({"arc_progress_unavailable", "contract_pending"})
 RECONCILIATION_REASON = "progress_reconciliation_required"
 FINAL_PHASES = frozenset({"free", "active", "recovery_required", "policy_pending", "passed"})
-COURSE_STATUSES = frozenset({"NOT_STARTED", "IN_PROGRESS", "FINISHED", "CERTIFIED"})
+COURSE_STATUSES = frozenset({"NOT_STARTED", "IN_PROGRESS", "COMPLETION_PENDING_ARC", "FINISHED", "CERTIFIED"})
 PROGRESS_APPLICATIONS = frozenset({
     "applied", "unchanged", "pending_evidence", "pending_reconciliation", "historical_only",
 })
 CALCULATION_STATUSES = frozenset({"pending", "succeeded"})
-SUBMIT_ARC_STATUSES = frozenset({"disabled", "excluded"})
+CRE_SUBMISSION_STATUSES = frozenset({"pending", "sent", "acknowledged", "failed"})
+SUBMIT_ARC_STATUSES = frozenset({"disabled", "excluded"}) | CRE_SUBMISSION_STATUSES
+PRODUCIBLE_SUBMIT_STATUSES = frozenset({"disabled", "excluded", "pending"})
 EXCLUSION_REASON_ORDER = ("dummy", "non_arc_guideline", "progress_reset_before_result")
 EXCLUSION_REASONS = frozenset(EXCLUSION_REASON_ORDER)
 ATTEMPT_STATES = frozenset({
@@ -61,6 +67,7 @@ RECOVERY_ACTIONS = frozenset({
     "resume_candidate", "retry_local_call", "wait_configuration", "wait_integrity", "close_terminal",
 })
 USAGE_VALUES = frozenset({"OWNED", "ITEM_REFERENCE", "COURSE_SNAPSHOT"})
+COURSE_TYPES = frozenset({"BLS", "CPR_AED", "PALS"})
 GOAL_KINDS = frozenset({"compressions", "ventilations", "cycles"})
 EXECUTION_KEYS = (
     "condition", "calculation_profile", "profile_version", "adapter_version",
@@ -100,7 +107,7 @@ ITEM_TYPE_WIRE = MappingProxyType({
     }),
 })
 RECEIPT_FORBIDDEN_KEYS = frozenset({
-    "resumeCredential", "resume_credential", "accessToken", "access_token", "password",
+    "resumeCredential", "resume_credential", "accessToken", "access_token", "idToken", "id_token", "password",
     "Authorization", "authorization", "cookie", "Cookie", "signedUrl", "signed_url",
     "chartUrl", "chart_url", "chart_dataset_url",
 })
@@ -124,15 +131,16 @@ COURSE_DETAIL_FIELDS = (
 )
 COURSE_ITEM_FIELDS = (
     "id", "courseItemLinkId", "step", "title", "iconType", "itemType", "contentType",
-    "description", "isCompleted", "isPassed",
+    "description", "isCompleted", "isPassed", "completionKind",
 )
 ENROLLMENT_FIELDS = (
     "id", "status", "courseTitle", "courseId", "loginAt", "finishedAt",
     "elapsedSeconds", "centerName", "enrollStatusCode",
 )
+ENROLLMENT_ADDITIONAL_FIELDS = ("sku", "dueDate", "organizationId", "organizationName")
 ENROLLMENT_NULLABLE = frozenset({
     "loginAt", "finishedAt", "elapsedSeconds", "centerName", "enrollStatusCode",
-})
+}) | frozenset(ENROLLMENT_ADDITIONAL_FIELDS)
 ITEM_DETAIL_OUTER_FIELDS = (
     "id", "title", "itemType", "displayOrder", "courseItemLinkId",
     "usage", "logicalId", "description", "detail",
@@ -146,7 +154,7 @@ CONTENT_START_VIEW_FIELDS = (
     "startId", "courseId", "enrollmentId", "courseItemLinkId", "contentVersion", "definitionHash",
 )
 PROGRESS_RECEIPT_FIELDS = (
-    "startId", "reportId", "courseItemLinkId", "isCompleted", "isPassed", "courseStatus", "application",
+    "startId", "reportId", "courseItemLinkId", "isCompleted", "isPassed", "courseStatus", "application", "completionKind",
 )
 ATTEMPT_VIEW_FIELDS = (
     "attemptId", "state", "courseId", "enrollmentId", "courseItemLinkId",
@@ -322,9 +330,30 @@ def validate_goal(value):
     return {"kind": require_member(value["kind"], GOAL_KINDS), "required": _positive_int(value["required"])}
 
 
+def validate_minimum_quantity(value):
+    if type(value) is not dict or set(value) != {"compressions", "ventilations"}:
+        _fail()
+    return {key: _natural_int(value[key]) for key in ("compressions", "ventilations")}
+
+
+def validate_assessment_policy(value):
+    if type(value) is not dict or not set(value) <= {"passRule", "gates"}:
+        _fail()
+    gates = value.get("gates", {})
+    if type(gates) is not dict or not set(gates) <= GATE_IDS:
+        _fail()
+    if any(type(threshold) not in (int, float) or (type(threshold) is float and not isfinite(threshold)) or threshold < 0
+           for threshold in gates.values()):
+        _fail()
+    return {"passRule": require_member(value.get("passRule", "composite"), {"composite", "gates"}), "gates": dict(gates)}
+
+
 def validate_execution_definition(value):
-    """Completed 7-key execution. A 5-key Catalog definition is not ready."""
-    if type(value) is not dict or tuple(sorted(value)) != tuple(sorted(EXECUTION_KEYS)):
+    """Complete execution with optional versioned policy fields."""
+    required = set(EXECUTION_KEYS)
+    if type(value) is not dict or not required <= set(value) <= required | set(DEFINITION_SETTING_KEYS):
+        _fail()
+    if uses_round2_gates(value["adapter_version"]) and "minimumQuantity" not in value:
         _fail()
     profile = value["calculation_profile"]
     if type(profile) is not dict or not set(profile) <= CALCULATION_PROFILE_KEYS:
@@ -338,6 +367,14 @@ def validate_execution_definition(value):
         "goal": validate_goal(value["goal"]),
         "catalog_version": _text(value["catalog_version"]),
     }
+    if "minimumQuantity" in value:
+        execution["minimumQuantity"] = validate_minimum_quantity(value["minimumQuantity"])
+    if "courseType" in value:
+        execution["courseType"] = require_member(value["courseType"], COURSE_TYPES)
+    if "requiresAed" in value:
+        execution["requiresAed"] = _exact_bool(value["requiresAed"])
+    if "assessment" in value:
+        execution["assessment"] = validate_assessment_policy(value["assessment"])
     return execution
 
 
@@ -349,6 +386,8 @@ def validate_availability(state, reason):
         return state, None
     if state == "waiting":
         return state, require_member(reason, WAITING_REASONS)
+    if state == "expired":
+        return state, require_member(reason, {EXPIRED_REASON})
     return state, require_member(reason, {RECONCILIATION_REASON})
 
 
@@ -381,7 +420,7 @@ class RouteSpec:
         _exact_bool(self.auth_required)
         object.__setattr__(self, "query_allowed", _owned_tuple(self.query_allowed, _text))
         require_member(self.body_kind, {
-            "none", "json_object", "login", "empty_object", "start_request",
+            "none", "json_object", "login", "empty_object", "start_request", "organization_selection", "progress_reset",
             "content_report", "reauthorize", "cancel", "measurement",
         })
         object.__setattr__(self, "success_statuses", _owned_tuple(self.success_statuses, _positive_int))
@@ -392,6 +431,9 @@ APP_ROUTES = (
     RouteSpec("session", "GET", "/api/v2/session/", True, (), "none", (200,)),
     RouteSpec("session_refresh", "POST", "/api/v2/session/refresh/", True, (), "empty_object", (200,)),
     RouteSpec("logout", "DELETE", "/api/v2/session/", True, (), "none", (204,)),
+    RouteSpec("session_organization", "POST", "/api/v2/session/organization/", True, (),
+              "organization_selection", (200,)),
+    RouteSpec("progress_reset", "POST", "/api/v2/dev/progress-reset/", True, (), "progress_reset", (204,)),
     RouteSpec("course_list", "GET", "/api/v2/courses/progress/", True, ("page", "pageSize"), "none", (200,)),
     RouteSpec("course_detail", "GET", "/api/v2/courses/{courseId}/progress/", True, ("enrollmentId",), "none", (200,)),
     RouteSpec("item_detail", "GET", "/api/v2/courses/{courseId}/items/{courseItemLinkId}/", True, ("enrollmentId",), "none", (200,)),
@@ -556,6 +598,7 @@ class ContentReport:
     event_type: str
     intervals_ms: tuple = ()
     display_report_id: str | None = None
+    position_ms: int | None = None
 
     def __post_init__(self):
         require_uuid(self.report_id)
@@ -564,6 +607,12 @@ class ContentReport:
         require_member(self.event_type, CONTENT_EVENT_TYPES)
         owned = _owned_intervals(self.intervals_ms)
         object.__setattr__(self, "intervals_ms", owned)
+        if self.event_type == "video_skipped":
+            if owned or self.display_report_id is not None or type(self.position_ms) is not int or self.position_ms < 0:
+                _fail()
+            return
+        if self.position_ms is not None:
+            _fail()
         if self.event_type == "video_segments":
             if not owned or self.display_report_id is not None:
                 _fail()
@@ -857,9 +906,13 @@ class ArcReceipt:
     verified_payload_json: bytes | None
 
     def __post_init__(self):
-        # Launch version: disabled/excluded only. Receipt and payload stay null.
+        # Acknowledgement requires a reference; payload storage awaits the CRE contract.
         require_member(self.status, SUBMIT_ARC_STATUSES)
-        if self.receipt_id is not None or self.verified_payload_json is not None:
+        if self.status == "acknowledged":
+            _text(self.receipt_id)
+        elif self.receipt_id is not None:
+            _fail()
+        if self.verified_payload_json is not None:
             _fail()
 
 
@@ -1031,6 +1084,10 @@ class SessionRecord:
     access_token: str | None = None
     learning_availability: dict | None = None
     user_name: str | None = None
+    organizations: tuple[tuple[str, str], ...] = ()
+    organization_id: str | None = None
+    inactivity_logout_seconds: int | None = None
+    hard_cap_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1075,6 +1132,8 @@ class CourseHooks:
     authenticate(token, *, allow_logout_receipt) -> AuthContext
     login(login_id, password) -> SessionRecord (auth, access_token, user_name set)
     logout(auth) -> None
+    select_organization(auth, organization_id) -> str
+    reset_dummy_progress(auth, request_id) -> None
     session_reader(auth) -> SessionRecord (learning_availability set)
     session_check(auth) -> SessionRecord (session identity only; no course reads)
     issue_resume(auth, attempt_id) -> str
@@ -1089,6 +1148,8 @@ class CourseHooks:
     authenticate: Callable
     login: Callable
     logout: Callable
+    select_organization: Callable
+    reset_dummy_progress: Callable
     session_reader: Callable
     session_check: Callable
     issue_resume: Callable
@@ -1106,8 +1167,9 @@ class CourseHooks:
 
 
 HOOK_NAMES = (
-    "authenticate", "login", "logout", "session_reader", "session_check", "issue_resume", "load_attempt",
-    "reauthorize", "cancel", "measurement_submit", "calculation_result", "chart_link",
+    "authenticate", "login", "logout", "select_organization", "reset_dummy_progress", "session_reader",
+    "session_check", "issue_resume", "load_attempt", "reauthorize", "cancel", "measurement_submit",
+    "calculation_result", "chart_link",
 )
 
 

@@ -1,5 +1,4 @@
-from calculators.waveform import CompressionEvent, drop_tap_events, segment_compressions
-from calculators.action_timeline import timeline_totals
+from calculators.waveform import CompressionEvent
 from config.borders import fall_linear_get_point, rise_linear_get_point, trapezium_get_point, BaseBorder, dart_get_point
 from config.calculation_config import BaseCalculationConfig
 from config.constants import (
@@ -20,55 +19,6 @@ from models.action import ActionWithScore
 from util.custom_math import custom_round
 
 
-class NullPolicy:
-    """CPR session minimums; the reference paths handle single-skill modes.
-
-    Adult/child compression minimum: 90; infant: 45; ventilation: 6.
-    Count source remains the complete session action counts from prepare_data.
-    Compression rate, CCF, and measured coaching signals are outside the null groups.
-
-    This exception applies only to ARC2020/ARC2025 CPR. Other guidelines,
-    including ERC initial rescue ventilation, keep the reference calculation.
-    """
-
-    MINIMUM_SESSION_COMP_COUNT = 90
-    MINIMUM_SESSION_COMP_COUNT_INFANT = 45
-    MINIMUM_SESSION_VENT_COUNT = 6
-
-    def __init__(self, chest_null: bool = False, vent_null: bool = False):
-        self.chest_null = chest_null
-        self.vent_null = vent_null
-
-    @property
-    def both_null(self) -> bool:
-        return self.chest_null and self.vent_null
-
-    @property
-    def active(self) -> bool:
-        return self.chest_null or self.vent_null
-
-    @classmethod
-    def inactive(cls) -> "NullPolicy":
-        return cls()
-
-    @classmethod
-    def create(cls, calculation_config: BaseCalculationConfig, comp_count: int, vent_count: int) -> "NullPolicy":
-        if (
-            not calculation_config.is_cpr()
-            or calculation_config.condition.get("guideline") not in ("ARC2020", "ARC2025")
-        ):
-            return cls.inactive()
-        minimum_comp_count = (
-            cls.MINIMUM_SESSION_COMP_COUNT_INFANT
-            if calculation_config.is_infant()
-            else cls.MINIMUM_SESSION_COMP_COUNT
-        )
-        return cls(
-            chest_null=comp_count < minimum_comp_count,
-            vent_null=vent_count < cls.MINIMUM_SESSION_VENT_COUNT,
-        )
-
-
 class Cycle:
     def __init__(self, actions: list[ActionWithScore], cycle_num: int, is_last_cycle: bool = False):
         self.actions = actions
@@ -77,16 +27,10 @@ class Cycle:
         self.actor_type = self._get_actor_type()
 
     def handsoff(self) -> int:
-        if any("_elapsed_interval" not in a.action_data for a in self.actions):
-            return sum(a.action_data["handsoff_ms"] for a in self.actions)
-        return timeline_totals([a.action_data for a in self.actions])[1]
+        return sum([a.action_data["handsoff_ms"] for a in self.actions])
 
     def total_action_ms(self) -> int:
-        # Historical library callers may supply only the field being queried.
-        # Reading elapsed time must not newly require a hands-off measurement.
-        if any("_elapsed_interval" not in a.action_data for a in self.actions):
-            return sum(a.action_data["total_action_ms"] for a in self.actions)
-        return timeline_totals([a.action_data for a in self.actions])[0]
+        return sum([a.action_data["total_action_ms"] for a in self.actions])
 
     def get_comp_count(self) -> int:
         return len([1 for a in self.actions if a.action_type == ACTION_TYPE_COMP])
@@ -176,13 +120,13 @@ class CycleWithScore:
         part_num: int,
         score_weight: ScoreWeight,
         calculation_config: BaseCalculationConfig,
-        null_policy: NullPolicy | None = None,
+        comp_scores: dict | None = None,
     ):
         self.cycle = cycle
         self.part_num = part_num
         self.score_weight = score_weight
         self.calculation_config = calculation_config
-        self.null_policy = null_policy or NullPolicy.inactive()
+        self.comp_scores = comp_scores
 
         self.score_comp_depth = None
         self.score_comp_rate = None
@@ -209,6 +153,9 @@ class CycleWithScore:
         self.vent_cnt = 0
         self.calc_case = self.cycle.get_calc_case()
         self.is_rescue_vent_cycle = self._is_for_rescue_vent()
+        # 제외 판정을 먼저 보존한 뒤, Peak 없는 HP 평가 대상 회차도 평균에 넣는다.
+        if comp_scores is not None and self.calc_case == CALC_CASE_ONLY_VENT and not self.is_rescue_vent_cycle:
+            self.calc_case = CALC_CASE_ONLY_COMP if calculation_config.is_cco() else CALC_CASE_CPR
         # 파형 이벤트 단위 depth/recoil 판정(2인구조). 지표(metric) 집계도 이걸 쓴다.
         self.comp_event_scores = None
 
@@ -270,7 +217,6 @@ class CycleWithScore:
                     self.score_vent_rate_measured = self.evaluate_result_vent_rate["grade"]
 
         self.score_ccf = self.calc_ccf_score(border)
-        self._apply_score_null_policy()
 
         return self
 
@@ -284,9 +230,7 @@ class CycleWithScore:
         )
 
     def _calc_rescue_vent(self, border: BaseBorder) -> dict:
-        comp_count = len(
-            [action for action in self.cycle.actions if action.action_data["action_type"] == ACTION_TYPE_COMP]
-        )
+        comp_count = self.cycle.get_comp_count()
         vent_count = len(
             [action for action in self.cycle.actions if action.action_data["action_type"] == ACTION_TYPE_VENT]
         )
@@ -327,44 +271,50 @@ class CycleWithScore:
         return "comp_cnt_302"
 
     def _get_comp_cnt(self) -> int:
-        # 마네킨 compression_count는 사이클 경계에 마커(예: 30)를 찍어 가짜 압박을
-        # 한 번 더 만든다(15회를 16회로). 깊이 파형의 peak(상승→하강)를 세면 경계 마커·하강edge
-        # 아티팩트에 영향받지 않고 실제 압박 수가 나온다. (검출·사이클 구조는 그대로 두고 카운트만 보정)
+        if self.comp_scores is not None:
+            return self.cycle.get_comp_count()
         return self._count_compression_peaks()
 
     def _count_compression_peaks(self) -> int:
-        # 분절(segment_compressions)과 같은 파형·같은 zigzag를 쓰므로
-        # 카운트 == 이벤트 수가 구조적으로 보장된다.
+        # 전체 스트림에서 확정한 RP 압박마다 이벤트가 하나씩 있다.
         return len(self._compression_events())
 
     def _compression_events(self) -> list[CompressionEvent]:
-        # 사이클의 압박 깊이 샘플을 패킷(10샘플) 단위로 묶어 압박 이벤트로 분절한다.
-        # 분절은 패킷별 max 파형 기준(인트라-패킷 진동 무시), 값은 샘플 단위.
-        # 마네킨 카운트 증가 수와 크게 어긋나면 탭(짧은 누름) 이벤트를 걸러낸다(drop_tap_events).
-        packets = []
-        counts = []
-        for action in self.cycle.actions:
-            if action.action_data["action_type"] != ACTION_TYPE_COMP:
-                continue
-            depths = action.action_data["compression_depth"]
-            for i in range(0, len(depths), 10):
-                packets.append(depths[i : i + 10])
-            action_counts = action.action_data["compression_count"]
-            counts.extend(action_counts if isinstance(action_counts, list) else [action_counts])
-        events = segment_compressions(packets)
-        increments = sum(1 for i in range(1, len(counts)) if counts[i] > counts[i - 1])
-        return drop_tap_events(packets, events, increments)
+        # RP를 고른 뒤에도 recoil은 전체 스트림의 바로 다음 정점까지 관측한 값을 보존한다.
+        return [
+            CompressionEvent(
+                peak_depth=action.action_data["depth_raw"],
+                recoil_depth=action.action_data["recoil_raw"],
+                peak_packet_index=action.action_data["peak_record"],
+                peak_sample_offset=action.action_data["peak_offset"],
+            )
+            for action in self.cycle.actions
+            if action.action_type == ACTION_TYPE_COMP and action.actor == Actor.REAL_PERSON
+        ]
 
     def _real_comp_actions(self) -> list[ActionWithScore]:
         # 압박 품질(rate/hand) 평균에 쓸 "실제 압박" 액션만 추린다.
         # 마네킨 경계 마커는 깊이≈0인 가짜 압박 액션을 만들어, 그대로 평균내면
         # 낮은 점수 + 늘어난 분모로 품질을 이중으로 끌어내린다. count(_count_compression_peaks)와
         # 같은 취지로 가짜 압박을 빼 실제 압박만으로 평균낸다.
+        # 이벤트 분절(_compression_events)과 같은 기준으로 실제 사용자(RP) 액션만 남긴다.
+        # 사이클에 VP 압박이 섞여도 파트너 점수가 사용자 rate/hand 평균에 포함되지 않는다.
         comp_actions = [a for a in self.cycle.actions if a.action_data["action_type"] == ACTION_TYPE_COMP]
-        real = [a for a in comp_actions if max(a.action_data["compression_depth"]) >= MINIMUM_COMP_DEPTH]
-        return real or comp_actions  # 전부 걸러지는 이상 케이스에선 원본 유지(분모 0 방지)
+        rp_actions = [a for a in comp_actions if a.actor == Actor.REAL_PERSON]
+        # 환기 경계나 finish로 정점이 창 밖에 있어도 확정한 압박의 품질 분모에서 빼지 않는다.
+        real = [a for a in rp_actions
+                if a.action_data.get("depth_raw", max(a.action_data["compression_depth"], default=0)) >= MINIMUM_COMP_DEPTH]
+        # 전부 걸러지는 이상 케이스에선 실제 압박 → RP 전체 → 전체 순으로 후퇴해 분모 0을 방지한다.
+        # 마지막 단계(actor 무관)는 can_calc_comp() 게이트(압박 다수 actor가 RP) 안에서는 도달하지 않는다.
+        return real or rp_actions or comp_actions
 
     def _embed_comp_score(self, border: BaseBorder | None = None) -> None:
+        if self.comp_scores is not None:
+            self.score_comp_depth = self.comp_scores["depth"]
+            self.score_comp_rate = self.comp_scores["rate"]
+            self.score_recoil = self.comp_scores["recoil"]
+            self.score_hand_position = self.comp_scores["hp"]
+            return
         sum_comp_rate_score = 0
         sum_hand_position_score = 0
 
@@ -512,11 +462,6 @@ class CycleWithScore:
                 return 0
             return None
 
-        if self.null_policy.both_null:
-            return None
-        if self.calculation_config.is_cpr() and self.null_policy.active:
-            return self._overall_with_null_policy()
-
         overall = self.score_ccf * self.score_weight.CCF if self.score_ccf else 0
         overall = self._overall_comp(overall)
         overall = self._overall_vent(overall)
@@ -528,110 +473,6 @@ class CycleWithScore:
             overall = self._adj_rescue_vent_other_cycles(overall)
 
         return custom_round(overall)
-
-    def _apply_score_null_policy(self) -> None:
-        if self.null_policy.chest_null:
-            self.score_comp_depth = None
-            self.score_comp_no = None
-            self.score_comp_count = None
-            self.score_recoil = None
-            self.score_hand_position = None
-        if self.null_policy.vent_null:
-            self.score_vent_vol = None
-            self.score_vent_rate = None
-            self.score_vent_count = None
-            self.score_vent_speed = None
-
-    def _overall_with_null_policy(self) -> int | None:
-        # 스펙 §5.3 (B-2/R3-2A) 승인 재설계 — cpr 훈련 전용.
-        # 전제: chest/vent 중 정확히 한쪽만 null (양측 null은 overall()에서 이미 None).
-        # 분자는 원본 _overall_comp/_overall_vent와 동일한 적용 조건에서 null 그룹만 제외하고,
-        # 분모는 원본 경로별 가중치 집합(일반=전체 합 1.0, VP 사이클=score_weight.get_vp_*_weight의
-        # 집합)에서 null 그룹 가중치를 제외한 잔여 합이다.
-        actor_type = self.cycle.actor_type
-        if actor_type == ActorType.ONLY_VIRTUAL_PARTNER:
-            # 원본 hstm_v2 cycle_evaluator.py:535-536과 동일(아티팩트 사이클 — 집계에서도 제외됨)
-            return 0
-
-        weight = self.score_weight
-        chest_null = self.null_policy.chest_null
-        vent_null = self.null_policy.vent_null
-
-        numerator = self.score_ccf * weight.CCF if self.score_ccf else 0
-
-        comp_applicable = actor_type.can_calc_comp() and self.calc_case in [CALC_CASE_CPR, CALC_CASE_ONLY_COMP]
-        vent_applicable = actor_type.can_calc_vent() and self.calc_case in [CALC_CASE_CPR, CALC_CASE_ONLY_VENT]
-
-        if comp_applicable:
-            # 확정 필드 매핑(스펙 §5.3)상 score_comp_rate는 chest null 그룹이 아니므로 유지된다.
-            numerator += (self.score_comp_rate or 0) * weight.COMP_RATE
-            if not chest_null:
-                numerator += (
-                    self.score_comp_depth * weight.COMP_DEPTH
-                    + self.score_recoil * weight.RECOIL
-                    + self.score_hand_position * weight.HAND_POSITION
-                    # cpr 훈련 확정 경로이므로 원본 :497-498의 is_cpr() 분기와 동일하게 항상 가산
-                    + self.score_comp_count * weight.COMP_COUNT
-                )
-
-        if vent_applicable and not vent_null:
-            # 환기 0회 사이클은 vol/rate/count가 None일 수 있어 원본과 동일하게 0 가드(:510-519).
-            numerator += (self.score_vent_vol or 0) * weight.VENT_VOL + (
-                self.score_vent_rate or 0
-            ) * weight.VENT_RATE
-            if self.calc_case == CALC_CASE_CPR:
-                numerator += (self.score_vent_count or 0) * weight.VENT_COUNT
-            if self.score_vent_speed is not None:
-                numerator += self.score_vent_speed * weight.VENT_SPEED
-
-        denominator = self._null_policy_weight_sum()
-        if not denominator:
-            return 0
-
-        return custom_round(numerator / denominator)
-
-    def _null_policy_weight_sum(self) -> float:
-        weight = self.score_weight
-        chest_null = self.null_policy.chest_null
-        vent_null = self.null_policy.vent_null
-        actor_type = self.cycle.actor_type
-
-        chest_weight = weight.COMP_DEPTH + weight.RECOIL + weight.HAND_POSITION + weight.COMP_COUNT
-
-        if actor_type == ActorType.VIRTUAL_PARTNER_COMP:
-            # 원본 score_weight.get_vp_comp_weight(include_vent_speed) 집합에서 null 그룹 제외
-            denominator = weight.CCF
-            if not vent_null:
-                denominator += weight.VENT_VOL + weight.VENT_COUNT
-                if self.score_vent_speed is not None:
-                    denominator += weight.VENT_SPEED
-            return denominator
-
-        if actor_type == ActorType.VIRTUAL_PARTNER_VENT:
-            # 원본 score_weight.get_vp_vent_weight 집합에서 null 그룹 제외
-            denominator = weight.CCF + weight.COMP_RATE
-            if not chest_null:
-                denominator += chest_weight
-            return denominator
-
-        # 일반 경로: 전체 가중치 합(cpr 가중치 클래스는 합 1.0)에서 null 그룹 제외
-        denominator = (
-            weight.CCF
-            + weight.COMP_DEPTH
-            + weight.COMP_RATE
-            + weight.RECOIL
-            + weight.HAND_POSITION
-            + weight.COMP_COUNT
-            + weight.VENT_VOL
-            + weight.VENT_COUNT
-            + weight.VENT_RATE
-            + weight.VENT_SPEED
-        )
-        if chest_null:
-            denominator -= chest_weight
-        if vent_null:
-            denominator -= weight.VENT_VOL + weight.VENT_COUNT + weight.VENT_RATE + weight.VENT_SPEED
-        return denominator
 
     def _overall_rescue_vent(self, overall: float) -> float:
         return overall + (self.score_rescue_vent * self.score_weight.RESCUE_VENT)

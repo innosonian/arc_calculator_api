@@ -32,7 +32,7 @@ from mock_journey.errors import _ERRORS, JourneyError
 from mock_journey.handler import handle
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.service import JourneyService
-from mock_journey.settings import WorkerSettings, RelaySettings
+from mock_journey.settings import WorkerSettings, RelaySettings, SessionSettings
 from tests.assembly_support import NoClientCalls, adapter, configuration, definitions, schemas
 from tests.course_hooks_support import hooks_with
 from tests.vcc_support import OLD_ROUTES, dummy_learner, event, fixture_hash, load_fixture, mapping_document
@@ -43,7 +43,7 @@ MANIFEST = json.loads((ROOT / "docs/implementation_execution/P4C_ROUTE_ROLE_MANI
 CONTEXT = SimpleNamespace(aws_request_id="vcc-wire-request")
 CLOCK = lambda: 1_800_000_000
 AUTH = SimpleNamespace(session_id="61000000-0000-4000-8000-00000000000a", principal="dummy-tester",
-                       revision=0, expires_at=1_800_086_400)
+                       revision=0, expires_at=1_800_086_400, organizations=(), organization_id=None)
 
 
 def calculation_http(calculation, read_attempt):
@@ -244,7 +244,7 @@ def test_course_v2_manifest_matches_app_routes():
 def test_course_hooks_require_every_hook_to_be_callable_at_assembly():
     given = {name: (lambda *a, **k: None) for name in HOOK_NAMES}
     assert type(CourseHooks(**given)) is CourseHooks
-    assert len(HOOK_NAMES) == 12
+    assert len(HOOK_NAMES) == 14
     for name in HOOK_NAMES:
         with pytest.raises(CourseError) as raised:
             CourseHooks(**{**given, name: None})
@@ -275,7 +275,8 @@ def test_production_wiring_returns_records_not_dicts():
     assert type(_calculation_record({"attempt_id": attempt["attempt_id"], "state": "queued"}, None)) is CalculationRecord
     journey = SimpleNamespace(
         login_command=lambda login_id, password: ({"session_id": AUTH.session_id, "expires_at": 1_800_086_400}, "tok"),
-        auth=SimpleNamespace(authenticate=lambda token: AUTH), check_session=lambda auth: None,
+        auth=SimpleNamespace(authenticate=lambda token: AUTH, settings=SessionSettings()),
+        check_session=lambda auth: None,
     )
     assert _login_hook(journey)("test@test.com", "2222") == SessionRecord(
         session_id=AUTH.session_id, expires_at="2027-01-16T08:00:00Z", auth=AUTH, access_token="tok",

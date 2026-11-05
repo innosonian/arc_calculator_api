@@ -14,7 +14,9 @@ import hmac
 import re
 from threading import Lock
 
+from calculators.gate_evaluator import collect_action_evidence
 from config.constants import (
+    AED_EVENT_NO_SHOCK_ADVISE,
     CALC_CASE_CPR,
     CALC_CASE_DID_NOT_RESCUE_VENT,
     CALC_CASE_NOT_CALC,
@@ -65,26 +67,12 @@ class AcceptedRaw:
 
 @dataclass(frozen=True, slots=True)
 class CalculationOptions:
-    """Calculation semantics that belong to an adapter version.
+    """Optional ARC gate evidence from the current calculation."""
 
-    The defaults are the current rules; a retained adapter passes its original
-    values so an attempt started under its definition keeps its meaning.
-
-    eof_single_confirmation (D138): a ventilation cut at the end of the file
-        is recognized once one packet confirmed its descent. False is the D42
-        rule (two confirmation packets, the end of the file adds nothing).
-    minimum_quantity_null (D139): False calculates ARC2020/ARC2025 CPR scores
-        like every other guideline. True is the D07/D08 policy (a group below
-        the session minimum is null). Only the null is an option here; the
-        minimum as a pass condition belongs to the evaluation
-        (mock_journey.worker.evaluate), not to the calculation.
-    """
-
-    eof_single_confirmation: bool = True
-    minimum_quantity_null: bool = False
+    collect_gates: bool = False
 
     def __post_init__(self) -> None:
-        if type(self.eof_single_confirmation) is not bool or type(self.minimum_quantity_null) is not bool:
+        if type(self.collect_gates) is not bool:
             raise CalculationContextError("Invalid calculation options")
 
 
@@ -107,6 +95,7 @@ class CalculationEvidence:
     vent_count: int
     cycle_group_count: int
     cycles: tuple[CycleEvidence, ...]
+    gate_evidence: dict | None = None
 
 
 def _count(value: object) -> int:
@@ -115,7 +104,7 @@ def _count(value: object) -> int:
     return value
 
 
-def _evidence(result: dict) -> CalculationEvidence:
+def _evidence(result: dict, prepared_data: dict | None) -> CalculationEvidence:
     """Read calculated facts without scoring methods or mutable object aliases."""
     cycles = []
     for part in result["part_with_scores"]:
@@ -137,8 +126,16 @@ def _evidence(result: dict) -> CalculationEvidence:
                 compression_action_count=_count(cycle.get_comp_count()),
                 ventilation_action_count=_count(cycle.get_vent_count()),
             ))
+    gate_evidence = None
+    if prepared_data is not None:
+        gate_evidence = collect_action_evidence(prepared_data["whole_cpr_action_list"], prepared_data["raw_aed_events"])
+        gate_evidence["ventilation_interval_score"] = result["cpr_total_scores"].get("score_vent_rate_measured")
+        gate_evidence["aed_outcomes"] = [
+            "no_shock" if part["aed_part_data"][-1]["event"] == AED_EVENT_NO_SHOCK_ADVISE else "shock"
+            for part in prepared_data["prepared_aed_data"]
+        ]
     return CalculationEvidence(_count(result["comp_count"]), _count(result["vent_count"]),
-                               len(cycles), tuple(cycles))
+                               len(cycles), tuple(cycles), gate_evidence)
 
 
 class CalculationExecutionContext:
@@ -161,8 +158,7 @@ class CalculationExecutionContext:
             raise CalculationContextError("Invalid calculation execution context")
         accepted_raw.validate()
         self._accepted_raw = accepted_raw
-        # The options of the adapter version that owns this call (D138, D139);
-        # immutable and fixed for the life of the context.
+        # Gate capture is immutable and fixed for the life of the context.
         self._options = options
         self._publisher = publish_chart
         self._observer = observe
@@ -192,10 +188,10 @@ class CalculationExecutionContext:
         self._claim("raw_claimed", "raw_verified")
         return receipt
 
-    def observe_calculation(self, result: dict) -> None:
+    def observe_calculation(self, result: dict, *, prepared_data: dict | None = None) -> None:
         self._claim("raw_verified", "observing")
         try:
-            snapshot = _evidence(result)
+            snapshot = _evidence(result, prepared_data if self.options.collect_gates else None)
             if self._observer(snapshot) is not None:
                 raise CalculationContextError("Invalid calculation observer result")
         except Exception:

@@ -1,0 +1,21 @@
+{
+  "spec": "DEPTH_V1r3",
+  "amp": 30,
+  "generation_commit": "9a36a9818399bbd17777b036dc938007f60705bf",
+  "boundary_amendment": "2026-10-28: count Record starts next action; action_end is exclusive",
+  "generator": "scripts/generate_depth_boundary_golden.py",
+  "generator_sha256": "9269e199f6c6a3386974d5ac615483f1c70a068507fc3e49e1dac250fc8c611e",
+  "source": {
+    "kind": "user-supplied hardware capture",
+    "archive": "hstm.zip",
+    "chart_sha256": "529fd74f79788bf753b3fe041b67e7fc1f7774491bfdc6779801480c73ed4020",
+    "chart_count_at_amp25": 61,
+    "expected_count_at_amp30": 61,
+    "human_chart_count_review": "pending"
+  },
+  "sha256": {
+    "raw.bin": "6a49eb05efc907abfed20aea8c4c12e3a06eda569d67b64612145581f99d09ac",
+    "input.json": "4abae66f4eff7c874ad19b5699831b1a8322649b7b7b37c6953b14ec67448525",
+    "expected.json": "6dcfb12936760bb73c9272f6266e4a944a9f3377370019826dd4e678355e24aa"
+  }
+}

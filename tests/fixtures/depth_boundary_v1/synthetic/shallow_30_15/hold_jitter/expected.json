@@ -1,0 +1,73 @@
+{
+  "spec": "DEPTH_V1r3",
+  "amp": 30,
+  "records": 11,
+  "compressions": [
+    {
+      "id": 1,
+      "count_record": 2,
+      "peak_record": 1,
+      "peak_offset": 0,
+      "depth_raw": 60,
+      "recoil_raw": 30,
+      "rate": null,
+      "action_start": 0,
+      "action_end": 2,
+      "hp_window": [],
+      "hp": "center"
+    },
+    {
+      "id": 2,
+      "count_record": 4,
+      "peak_record": 3,
+      "peak_offset": 0,
+      "depth_raw": 60,
+      "recoil_raw": 30,
+      "rate": 600,
+      "action_start": 2,
+      "action_end": 4,
+      "hp_window": [],
+      "hp": "center"
+    },
+    {
+      "id": 3,
+      "count_record": 6,
+      "peak_record": 5,
+      "peak_offset": 0,
+      "depth_raw": 60,
+      "recoil_raw": 30,
+      "rate": 600,
+      "action_start": 4,
+      "action_end": 6,
+      "hp_window": [],
+      "hp": "center"
+    },
+    {
+      "id": 4,
+      "count_record": 8,
+      "peak_record": 7,
+      "peak_offset": 0,
+      "depth_raw": 60,
+      "recoil_raw": 30,
+      "rate": 600,
+      "action_start": 6,
+      "action_end": 8,
+      "hp_window": [],
+      "hp": "center"
+    },
+    {
+      "id": 5,
+      "count_record": 10,
+      "peak_record": 9,
+      "peak_offset": 0,
+      "depth_raw": 60,
+      "recoil_raw": 0,
+      "rate": 600,
+      "action_start": 8,
+      "action_end": 10,
+      "hp_window": [],
+      "hp": "center"
+    }
+  ],
+  "count": 5
+}

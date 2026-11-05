@@ -1,4 +1,3 @@
-# 원본: hstm_v2 tests/test_cycle.py (동일 이식 — 가이드라인 비의존)
 from unittest import TestCase
 
 from calculators.cycle_evaluator import Cycle, CycleMaker

@@ -3,7 +3,7 @@
 An observed cycle is a cycle the calculator classified as ``cpr`` (compressions
 followed by ventilations, closed): the last unfinished group and the
 compression-only / ventilation-only / not-calculated groups are excluded. The
-count follows the device's ``cycle_cnt`` grouping; compression/ventilation
+count follows ``CountMarker`` grouping recalculated within each CPR part; compression/ventilation
 counts inside a cycle are judged by the score, not here. Cycles of every actor
 count (a virtual partner's cycles too); AED actions do not take part.
 """

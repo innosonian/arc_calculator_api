@@ -21,10 +21,9 @@ from integration_tests.worker_journey_support import (  # noqa: F401 (store fixt
     attempt_row, calculation, job_row, seeded_legacy, store, user_row,
 )
 from mock_journey import typed
-from mock_journey.catalog import Catalog
-from mock_journey.contracts import PENDING_GOAL_PROFILE_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION
-from mock_journey.execution_definitions import execution_catalog
-from mock_journey.internal_calculator import InternalCalculator
+from tests.legacy_dummy_catalog import LegacyCatalog, legacy_execution_catalog
+from mock_journey.assembly import internal_calculator
+from mock_journey.contracts import RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION
 from mock_journey.projection import ProjectedInput, typed_identity
 from mock_journey.worker import call_binding
 from tests.journey_support import encode_item
@@ -75,35 +74,34 @@ def old_worker(h, adapter):
 
 
 @pytest.mark.parametrize("row", CASES, ids=lambda row: row["id"])
-@pytest.mark.parametrize("phase", ["queued", "started", "candidate_saved", "done"])
-def test_old_job_recovery_preserves_meaning_without_new_core(store, row, phase, monkeypatch):
+@pytest.mark.parametrize("old,phase", [
+    (RETAINED_PENDING_GOAL_ADAPTER_VERSION, phase) for phase in ("queued", "started", "candidate_saved", "done")
+] + [
+    (version, phase) for version in RETAINED_ADAPTER_VERSIONS
+    if version != RETAINED_PENDING_GOAL_ADAPTER_VERSION for phase in ("queued", "started")
+])
+def test_old_job_recovery_preserves_meaning_without_new_core(store, row, old, phase, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("Historical job invoked the current calculator.")
     monkeypatch.setattr("main.run_calculator", forbidden)
-    old = RETAINED_PENDING_GOAL_ADAPTER_VERSION
     projection = row["binding"]["projection_version"]
-    current = execution_catalog()
-
-    class OldDefinitions:
-        def get_definition(self, program, target):
-            value = current.get_definition(program, target)
-            # The retained v2 definitions carry the pending profile (D136 keeps them as stored).
-            value.update(adapter_version=old, profile_version=PENDING_GOAL_PROFILE_VERSION,
-                         projection_version=projection)
-            return value
+    current = legacy_execution_catalog(old)
 
     h, seeded, token = seeded_legacy(store)
     # The legacy create stored exactly this catalog definition text.
-    definition_json = Catalog(OldDefinitions()).definition(row["id"], TARGET)
+    definition = json.loads(LegacyCatalog(current).definition(row["id"], TARGET))
+    definition["projection_version"] = projection
+    definition_json = json.dumps(definition)
     projected = ProjectedInput(base64.b64decode(row["cpr_base64"]), b"", deepcopy(row["payload"]))
+    if old != RETAINED_PENDING_GOAL_ADAPTER_VERSION:
+        projected.payload["definition"] = deepcopy(definition)
     # Keep the historical input payload; only this test's owner/job envelope is
     # rebound. No score, chart, count or candidate policy is regenerated.
     assert typed.canonical_bytes(json.loads(definition_json)) == typed.canonical_bytes(projected.payload["definition"])
     actual = legacy_created_attempt(h, seeded, row["id"], definition_json)
     assert actual.get("course_binding") is None and actual["state"] == "created"
     auth = h.api.auth.authenticate(token)
-    adapter = InternalCalculator(version=old, projection_version=projection, stage="development",
-                                 allow_pending_cycle_goal=True)
+    adapter = internal_calculator(old, projection=projection, stage="development")
     worker = old_worker(h, adapter)
     jobs, storage = worker.jobs, worker.storage
     binding = {"attempt_id": actual["attempt_id"], "epoch": actual["epoch"], "input_digest": typed_identity(projected),
@@ -138,7 +136,12 @@ def test_old_job_recovery_preserves_meaning_without_new_core(store, row, phase, 
         after = job_row(h, job_id)
         assert after["call_id"] == original_call
         assert after.get("final_ref") is None and after.get("candidate_ref") is None
-        assert attempt_row(h, actual["attempt_id"])["evaluation"] is None
+        assert after["state"] == "running"
+        assert after["call_phase"] == before["call_phase"]
+        assert after["lease_until"] > h.clock()
+        attempt = attempt_row(h, actual["attempt_id"])
+        assert attempt["state"] == "processing"
+        assert attempt["evaluation"] is None and attempt.get("progress_application") is None
     else:
         assert worker.process(job_id) is True
         after = job_row(h, job_id)

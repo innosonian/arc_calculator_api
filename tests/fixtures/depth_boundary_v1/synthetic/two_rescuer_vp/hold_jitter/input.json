@@ -1,0 +1,20 @@
+{
+  "condition": {
+    "mode": "training",
+    "target": "adult",
+    "training_type": "compression_only",
+    "guideline": "AHA2020",
+    "cpr_cycle_type": "302",
+    "is_2rescuers": true
+  },
+  "vp_event_list": [
+    {
+      "event": 0,
+      "timestamp": 1700000000099
+    },
+    {
+      "event": 1,
+      "timestamp": 1700000000201
+    }
+  ]
+}

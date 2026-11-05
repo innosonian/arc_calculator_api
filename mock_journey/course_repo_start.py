@@ -6,9 +6,11 @@ same rows.
 """
 
 from copy import deepcopy
+from dataclasses import replace
 
+from mock_journey.auth import session_is_dummy, session_organization
 from mock_journey.course_contracts import (
-    POLICY_VERSION, START_KINDS, EXECUTION_KEYS,
+    EXPIRED_REASON, POLICY_VERSION, START_KINDS, EXECUTION_KEYS,
     AttemptTemplate, CourseBinding, CourseView, PublicIds, StartCommand, StartReceipt,
     require_member, require_uuid,
 )
@@ -18,12 +20,23 @@ from mock_journey.course_records import (
     _json_field, _parse_field, _rfc3339, _unavailable, scope_identity_list, start_request_digest,
 )
 from mock_journey.course_repo_core import SCHEMA_VERSION, CourseRepositoryCore, _check, _merge_final, _put
+from mock_journey.course_schema import due_date_timestamp, validate_course_metadata
 from mock_journey.storage_keys import (
     attempt_key, course_final_key, course_head_key, course_item_key, course_start_key, create_receipt_key,
     learner_head_key, principal_locator_key, start_locator_key,
 )
 from mock_journey.models import AuthContext
+from mock_journey.projection import DEFINITION_SETTING_KEYS
 from mock_journey.typed import digest, json_bytes, parse_json
+
+
+def _enrollment(bundle):
+    return validate_course_metadata(parse_json(bundle.course_json), bundle.public_ids)
+
+
+def _assignment_expired(enrollment, clock):
+    due = enrollment.get("dueDate")
+    return due is not None and due_date_timestamp(due) <= clock()
 
 
 class StartOps(CourseRepositoryCore):
@@ -40,10 +53,11 @@ class StartOps(CourseRepositoryCore):
         session, user, now = self._session_user(auth)
         view, _, _ = self._load_snapshot(
             auth, user, course_id=command.course_id, enrollment_id=command.enrollment_id,
+            start_session=session,
         )
         return view
 
-    def _load_snapshot(self, auth, user, *, course_id=None, enrollment_id=None, view=None):
+    def _load_snapshot(self, auth, user, *, course_id=None, enrollment_id=None, view=None, start_session=None):
         """Read PRINCIPAL, LEARNER, HEAD, FINAL and the bundle blob, in that order, into a CourseView.
 
         Without ``view`` (load_view/load_start_view) the course is located by
@@ -93,11 +107,20 @@ class StartOps(CourseRepositoryCore):
             _unavailable()
         bundle = self._load_bundle(head)
         if bundle is None:
-            if view is None:
+            if view is None or (start_session is not None and not session_is_dummy(start_session)):
                 raise CourseError("ARC_PROGRESS_UNAVAILABLE")
             bundle = view.bundle
         progress = _merge_final(_parse_field(head["progress_json"]), final)
         gate = self._gate_from_head(scope_key_value, epoch, head)
+        enrollment = _enrollment(bundle)
+        if _assignment_expired(enrollment, self.clock):
+            gate = replace(gate, state="expired", reason=EXPIRED_REASON)
+        elif start_session is not None and not session_is_dummy(start_session):
+            _, selected = session_organization(start_session)
+            if selected is None:
+                raise CourseError("ORGANIZATION_REQUIRED")
+            if enrollment.get("organizationId") not in (None, selected):
+                raise CourseError("NOT_FOUND")
         view_scope_key = scope_key(bundle.scope) if view is None else view.scope_key
         return CourseView(view_scope_key, public_ids, bundle, json_bytes(progress), gate, inventory), head, final
 
@@ -146,7 +169,7 @@ class StartOps(CourseRepositoryCore):
                 if replay is not None:
                     return replay
             session, user, now = self._session_user(auth)
-            fresh, head, final = self._load_snapshot(auth, user, view=view)
+            fresh, head, final = self._load_snapshot(auth, user, view=view, start_session=session)
             self.policy.can_start(fresh, command, role)
             placement = next(item for item in fresh.bundle.placements if item.public_link_id == command.placement_id)
             current_role = "final_assessment" if placement == fresh.bundle.placements[-1] else "training"
@@ -183,7 +206,8 @@ class StartOps(CourseRepositoryCore):
                 frozen = _parse_field(frozen)
             if type(frozen) is not dict or not set(EXECUTION_KEYS) <= set(frozen):
                 raise CourseError("DEFINITION_CHANGED")
-            if digest({key: frozen[key] for key in EXECUTION_KEYS}) != digest(parse_json(placement.execution_json)):
+            execution = {key: frozen[key] for key in EXECUTION_KEYS + DEFINITION_SETTING_KEYS if key in frozen}
+            if digest(execution) != digest(parse_json(placement.execution_json)):
                 raise CourseError("DEFINITION_CHANGED")
             attempt_id = require_uuid(payload.get("attempt_id") or str(self.uuid_factory()))
             if placement.execution_json is not None:
@@ -337,6 +361,8 @@ class StartOps(CourseRepositoryCore):
             "response_json": _json_field(response),
         }
         actions.append(_put(create_row, if_not_exists=True))
+        if _assignment_expired(_enrollment(view.bundle), self.clock):
+            raise CourseError("ASSIGNMENT_EXPIRED")
         if not self._commit(actions):
             return None
         return StartReceipt(

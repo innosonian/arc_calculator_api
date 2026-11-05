@@ -46,11 +46,8 @@ def test_real_role_assembly_creates_only_role_clients_and_no_initial_requests(ro
     if role == "worker":
         registry = runtime.target.adapters
         assert registry.resolve(CURRENT_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
-        # D136: the retained pending-v3 adapter still calculates in-flight attempts.
-        assert registry.resolve(PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
-        # D138: the retained v4 adapter also keeps calculating its in-flight attempts.
-        assert registry.resolve("arc-internal-detection-v4", PROJECTION_VERSION).can_calculate
-        assert not registry.resolve(RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION).can_calculate
+        for version in RETAINED_ADAPTER_VERSIONS:
+            assert not registry.resolve(version, PROJECTION_VERSION).can_calculate
 
 
 @pytest.mark.parametrize("change", ["missing", "unknown", "boolean", "nan", "role", "duplicate", "key",
@@ -370,7 +367,7 @@ def test_composed_private_storage_and_real_core_share_the_injected_s3_only():
     # The execution definition the AWS API actually serves for this Dummy course.
     definition = typed.parse_json(json.dumps(next(
         row["execution"] for row in api.provider.mapping_document["mappings"].values()
-        if (row["program_id"], row["target"]) == ("mock-compression-only", "adult"))))
+        if (row["program_id"], row["target"]) == ("bls-compressions-60", "adult"))))
     body = {"condition": definition["condition"], "vp_event_list": [], "aed_b64_data": b"",
             "cpr_b64_data": (Path(__file__).parent / "dataset/cco_1.bin").read_bytes()}
     projected = project_input(body, definition, api.calculation.schemas[PROJECTION_VERSION])

@@ -15,6 +15,7 @@ from services.calculation_context import CalculationOptions
 
 
 CONDITION = {"guideline": "ARC2020", "target": "adult"}
+PROMPT_BOOK = {"loaded": True}
 PREPARED = {
     "prepared_cpr_data": [1, 2], "prepared_aed_data": [3], "whole_cpr_action_list": [4, 5, 6],
     "comp_count": 7, "vent_count": 8,
@@ -30,11 +31,10 @@ class Config:
 class Context:
     def __init__(self, calls, fail=None, options=None):
         self.calls, self.fail = calls, fail
-        # D139: the step reads the owning adapter's minimum-quantity option here.
         self.options = options if options is not None else CalculationOptions()
 
-    def observe_calculation(self, result):
-        self.calls.append(("observe", result))
+    def observe_calculation(self, result, **kwargs):
+        self.calls.append(("observe", result, kwargs))
         if self.fail:
             raise self.fail
 
@@ -53,6 +53,7 @@ def harness(monkeypatch):
         return run
 
     monkeypatch.setattr(module, "time", type("Clock", (), {"time": staticmethod(lambda: next(clock))}))
+    monkeypatch.setattr(module, "load_prompt_book", lambda guideline, region: PROMPT_BOOK)
     monkeypatch.setattr(module, "calculate_cpr", step("calculate_cpr", {"calculated": True}))
     monkeypatch.setattr(module, "serialize_result", step("serialize_result", {"serialized": True}))
     monkeypatch.setattr(module, "add_chart_data", step("add_chart_data", {"charted": True}))
@@ -73,10 +74,9 @@ def test_success_sequence_fields_and_elapsed_windows(harness):
                                           execution_context=context)
     assert result == {"charted": True}
     assert calls == [
-        # D139: a context call names its adapter's minimum-quantity option (current: False).
-        ("calculate_cpr", (PREPARED, config), {"minimum_quantity_null": False}),
-        ("observe", {"calculated": True}),
-        ("serialize_result", ({"calculated": True},), {"condition": CONDITION, "usage": {"u": 1}}),
+        ("calculate_cpr", (PREPARED, config), {}),
+        ("observe", {"calculated": True}, {}),
+        ("serialize_result", ({"calculated": True}, CONDITION, {"u": 1}, PROMPT_BOOK), {}),
         ("add_chart_data", ({"serialized": True}, PREPARED, {"calculated": True}, "test"),
          {"key_stem": "k", "org": "o", "execution_context": context}),
     ]
@@ -89,20 +89,33 @@ def test_success_sequence_fields_and_elapsed_windows(harness):
     ]
 
 
-def test_retained_context_passes_its_minimum_quantity_option(harness):
+def test_gate_context_collects_evidence_without_changing_calculator_signature(harness):
     calls, _, _ = harness
-    retained = CalculationOptions(eof_single_confirmation=False, minimum_quantity_null=True)
-    module.make_calculate_result(Config(), PREPARED, "test", execution_context=Context(calls, options=retained))
-    assert calls[0] == ("calculate_cpr", (PREPARED, calls[0][1][1]), {"minimum_quantity_null": True})
+    config = Config()
+    context = Context(calls, options=CalculationOptions(collect_gates=True))
+    module.make_calculate_result(config, PREPARED, "test", execution_context=context)
+    assert calls[0] == ("calculate_cpr", (PREPARED, config), {})
+    assert calls[1] == ("observe", {"calculated": True}, {"prepared_data": PREPARED})
+
+
+@pytest.mark.parametrize("book,expected", [(PROMPT_BOOK, PROMPT_BOOK), (None, {})])
+def test_prompt_book_uses_guideline_and_explicit_region(harness, monkeypatch, book, expected):
+    calls, _, _ = harness
+    selected = []
+    monkeypatch.setattr(module, "load_prompt_book", lambda guideline, region: selected.append((guideline, region)) or book)
+    usage = {"Regional_Option": "usa"}
+    module.make_calculate_result(Config(), PREPARED, "test", usage=usage)
+    assert selected == [("ARC2020", "usa")]
+    assert calls[1] == ("serialize_result", ({"calculated": True}, CONDITION, usage, expected), {})
 
 
 def test_without_context_chart_call_has_no_context_keyword(harness):
     calls, _, _ = harness
     module.make_calculate_result(Config(), PREPARED, "test")
     assert [name for name, *_ in calls] == ["calculate_cpr", "serialize_result", "add_chart_data"]
-    # The context-free call keeps the two-argument form (the current rule is calculate_cpr's default).
+    # The context-free call keeps the two-argument calculator form.
     assert calls[0][2] == {}
-    assert calls[1][2] == {"condition": CONDITION, "usage": None}
+    assert calls[1][1:] == (({"calculated": True}, CONDITION, None, PROMPT_BOOK), {})
     assert calls[2][2] == {"key_stem": None, "org": None}
 
 

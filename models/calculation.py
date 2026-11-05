@@ -1,4 +1,3 @@
-# 원본 hstm_v2 models/calculation.py (V1 패리티 보존)
 from typing import TypedDict
 
 

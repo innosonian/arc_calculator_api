@@ -763,25 +763,27 @@ def _tracing_calculator(sink, harness, version):
 
 def _memory_harness(guard=None, legacy=False):
     from mock_journey.contracts import CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION
-    from tests.journey_support import JourneyStore, V2Journey, with_registry_adapters
+    from tests.journey_support import JourneyStore, V2Journey, seed_current_legacy_job, with_registry_adapters
 
     sink = _Sink()
     store = JourneyStore.memory()
     sink.client = store.client
     objects = _tracing_s3(sink)
     holder = [None]
-    # The legacy fixture job is bound to the retained pending-v3 adapter (D136, 3A);
-    # course attempts use the current adapter. The other registry versions are
-    # registered as plain bundled calculators (they take no call in these runs).
-    adapter = _tracing_calculator(sink, holder, PENDING_GOAL_ADAPTER_VERSION if legacy else CURRENT_ADAPTER_VERSION)
+    # Historical queued scenarios validate a pre-port candidate. Failure/restart scenarios
+    # use a fresh v6 calculation with the legacy row layout.
+    version = PENDING_GOAL_ADAPTER_VERSION if legacy == "recovery" else CURRENT_ADAPTER_VERSION
+    adapter = _tracing_calculator(sink, holder, version)
     options = {}
     seeded = None
-    if legacy:
-        from tests.legacy_rows_support import seed_legacy_rows
-        seeded = seed_legacy_rows(store, objects)
-        options["start"] = seeded.meta["capture_clock"] + 60
+    if legacy == "recovery":
+        from tests.v2_baseline_support import seed_legacy_candidate
+        seeded = seed_legacy_candidate(store, objects)
+        options["start"] = seeded.recovery_clock
     h = V2Journey(store, objects=objects, events=_tracing_events(sink), adapters=[adapter], **options)
     holder[0] = h
+    legacy_job = (seeded.attempts["queued"]["job_id"] if seeded is not None
+                  else seed_current_legacy_job(h) if legacy == "v6" else None)
     if guard is not None:
         from mock_journey.assembly import build_worker
         if guard == "aws":
@@ -797,7 +799,7 @@ def _memory_harness(guard=None, legacy=False):
                                 adapters=with_registry_adapters([adapter], stage=h.composition.stage),
                                 required_bindings=h.execution.required_bindings, clock=h.clock,
                                 operations=h._operations("worker"), lease_guard_factory=factory)
-    return SimpleNamespace(h=h, sink=sink, adapter=adapter, seeded=seeded, runs=[])
+    return SimpleNamespace(h=h, sink=sink, adapter=adapter, seeded=seeded, legacy_job=legacy_job, runs=[])
 
 
 def _process(env, label, job_id):
@@ -851,22 +853,22 @@ def memory_course_ventilation_no_chart():
 
 
 def memory_legacy_queued():
-    env = _memory_harness(legacy=True)
-    _process(env, "queued", env.seeded.attempts["queued"]["job_id"])
-    _process(env, "queued_again", env.seeded.attempts["queued"]["job_id"])
+    env = _memory_harness(legacy="recovery")
+    _process(env, "queued", env.legacy_job)
+    _process(env, "queued_again", env.legacy_job)
     return env.runs
 
 
 def memory_legacy_queued_local_guard():
-    env = _memory_harness(guard="local", legacy=True)
-    _process(env, "queued", env.seeded.attempts["queued"]["job_id"])
+    env = _memory_harness(guard="local", legacy="recovery")
+    _process(env, "queued", env.legacy_job)
     return env.runs
 
 
 def memory_legacy_calculation_failed():
-    env = _memory_harness(legacy=True)
+    env = _memory_harness(legacy="v6")
     env.adapter.mode = ("journey", "CALCULATION_FAILED")
-    _process(env, "queued", env.seeded.attempts["queued"]["job_id"])
+    _process(env, "queued", env.legacy_job)
     return env.runs
 
 
@@ -930,8 +932,8 @@ def memory_course_restart_limit_killed():
 
 
 def memory_legacy_restart_limit():
-    env = _memory_harness(legacy=True)
-    _restart_runs(env, env.seeded.attempts["queued"]["job_id"], "error")
+    env = _memory_harness(legacy="v6")
+    _restart_runs(env, env.legacy_job, "error")
     return env.runs
 
 

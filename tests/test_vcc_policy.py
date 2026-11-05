@@ -225,6 +225,23 @@ class TestV11FinalAndOnly:
 
 
 class TestV15VideoUnion:
+    def test_skip_requires_current_video_evidence_and_preserves_watched(self):
+        evidence = {
+            "start_id": START, "public_link_id": 1001, "kind": "video",
+            "content_version": "video-v1", "duration_ms": 20000,
+        }
+        report = ContentReport(REPORT_B, START, "video-v1", "video_skipped", position_ms=20000)
+        skipped = parse_json(policy().evaluate_content(json_bytes(evidence), report))
+        assert skipped["isCompleted"] is True and skipped["completionKind"] == "skipped"
+        for fields, completed, application in (
+            ({"item_watched": True}, True, "applied"),
+            ({"current_content_version": "video-v2"}, False, "pending_reconciliation"),
+            ({"historical_only": True}, None, "historical_only"),
+        ):
+            receipt = parse_json(policy().evaluate_content(json_bytes({**evidence, **fields}), report))
+            assert receipt["isCompleted"] is completed and receipt["application"] == application
+            assert "completionKind" not in receipt
+
     def test_full_coverage_without_button(self):
         evidence = {
             "start_id": START, "public_link_id": 1001, "kind": "video",

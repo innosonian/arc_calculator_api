@@ -16,6 +16,9 @@ only normalized value ("<table>"). Other run-dependent values use the
 placeholders of tests/v2_baseline_support.py with one-to-one bindings over one
 flow. On the in-memory table the key order of every object is compared as
 well (except decoded GSI cursors, whose order comes from the query response).
+
+Round 2 C5/C6 apply an explicit expectation delta for new-session metadata and
+the reset-then-logout split. No observed writes are dropped or reconstructed.
 """
 
 from contextlib import contextmanager
@@ -24,15 +27,14 @@ import json
 from types import SimpleNamespace
 import uuid
 
-from mock_journey.contracts import CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION
+from mock_journey.contracts import CURRENT_ADAPTER_VERSION
 from tests.calculator_doubles import InterruptedCalculation, ProcessKilled, TrackedCalculator  # noqa: F401
 from tests.dynamodb_doubles import RecordingClient  # noqa: F401 (re-export)
 from tests.journey_support import (
-    EventLog, HARNESS_QUEUE_URL, HARNESS_STAGE, JourneyStore, V2Journey, dummy_course,
+    EventLog, HARNESS_QUEUE_URL, HARNESS_STAGE, JourneyStore, V2Journey, dummy_course, seed_current_legacy_job,
 )
-from tests.legacy_rows_support import seed_legacy_rows
 from tests.v2_baseline_support import (
-    GOLDEN, _Bindings, _match, golden_flow, legacy_active_session, legacy_new_session,
+    GOLDEN, _Bindings, _match, golden_flow, legacy_active_session, legacy_new_session, seed_legacy_candidate,
 )
 
 
@@ -46,6 +48,8 @@ RELAY_SCOPE = {"environment": "journey-harness", "partition": "aws", "account_id
 
 def load_write_baseline():
     return json.loads((GOLDEN / WRITE_BASELINE).read_text())
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +106,7 @@ def _excluded_seeding(recorder):
     """
     def seeding(store, objects=None):
         with recorder.excluded_calls():
-            seeded = seed_legacy_rows(store, objects)
+            seeded = seed_legacy_candidate(store, objects)
         issue = seeded.issue_session_token
 
         def issue_session_token():
@@ -164,14 +168,11 @@ def flow_legacy_new_session(store, recorder):
 
 
 def flow_legacy_restart_limit(store, recorder):
-    """The queued legacy fixture job: six interrupted calls, Relay wake, restart-limit failure."""
+    """A synthetic v6 legacy-layout job: six interrupted calls, Relay wake, restart-limit failure."""
+    adapter = _interrupting_adapter()
+    h = V2Journey(store, events=EventLog(), adapters=[adapter])
     with recorder.excluded_calls():
-        seeded = seed_legacy_rows(store)
-    # The legacy fixture job is bound to the retained pending-v3 adapter (D136, 3A).
-    adapter = _interrupting_adapter(version=PENDING_GOAL_ADAPTER_VERSION)
-    h = V2Journey(store, objects=seeded.objects, start=seeded.meta["capture_clock"] + 60,
-                  events=EventLog(), adapters=[adapter])
-    job_id = seeded.attempts["queued"]["job_id"]
+        job_id = seed_current_legacy_job(h)
     _interrupted_runs(h, adapter, job_id, "error")
     assert set(h.relay()) == {job_id}
     assert h.deliver() == {"batchItemFailures": []}

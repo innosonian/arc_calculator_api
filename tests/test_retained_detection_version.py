@@ -11,9 +11,11 @@ import pytest
 from mock_journey import typed
 from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-    RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION,
+    adapter_features, expected_profile_version,
 )
 from mock_journey.errors import JourneyError
+from mock_journey.assembly import internal_calculator
 from mock_journey.execution_definitions import execution_catalog
 from mock_journey.internal_calculator import InternalCalculator
 from mock_journey.jobs import DynamoJobRepository
@@ -84,11 +86,50 @@ def test_new_definitions_select_new_detection_version():
     execution = execution_catalog()
     assert len({CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
                 RETAINED_PENDING_GOAL_ADAPTER_VERSION}) == 4
-    # D138: new definitions select v5; v4 is no longer written into a new definition.
-    assert CURRENT_ADAPTER_VERSION == EOF_VENT_ADAPTER_VERSION == "arc-internal-detection-v5"
+    assert CURRENT_ADAPTER_VERSION == ROUND2_ADAPTER_VERSION == "arc-internal-detection-v6"
+    assert EOF_VENT_ADAPTER_VERSION in RETAINED_ADAPTER_VERSIONS
     assert all(pair[0] == CURRENT_ADAPTER_VERSION for pair in execution.required_bindings)
-    # D136: the retained pending-v3 adapter still calculates its own attempts;
-    # only the v2 adapter above is verify-only.
-    assert InternalCalculator(version=PENDING_GOAL_ADAPTER_VERSION,
-                              projection_version="test-projection", stage="test-stage",
-                              allow_pending_cycle_goal=True).can_calculate is True
+    assert internal_calculator(CURRENT_ADAPTER_VERSION, projection="test-projection",
+                               stage="test-stage").can_calculate is True
+
+
+@pytest.mark.parametrize("version", RETAINED_ADAPTER_VERSIONS)
+def test_every_retained_adapter_refuses_new_calculation_before_input_or_heartbeat(version, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("A retained adapter began new calculation work.")
+
+    monkeypatch.setattr("main.run_calculator", forbidden)
+    adapter = internal_calculator(version, projection="test-projection", stage="test-stage")
+    assert adapter.can_calculate is False
+    assert adapter.calculation_options.collect_gates is False
+    with pytest.raises(JourneyError) as rejected:
+        adapter.calculate(None, None, forbidden)
+    assert rejected.value.code == "TEMPORARILY_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("version", RETAINED_ADAPTER_VERSIONS)
+def test_retained_readers_preserve_payloads_and_reject_cross_version_bindings(version, monkeypatch):
+    monkeypatch.setattr("main.run_calculator", lambda *a, **k: pytest.fail("Stored candidate reader ran the core."))
+    row = next(row for row in FIXTURE["cases"] if row["id"] == "mock-compression-only")
+    projected, raw, _ = historical(row)
+    # Synthetic version envelopes exercise reader schemas; captured score/count/chart
+    # bytes are unchanged. This is not a newly captured calculation of these versions.
+    projected.payload["definition"].update(adapter_version=version, profile_version=expected_profile_version(version))
+    binding = {**row["binding"], "adapter_version": version, "input_digest": typed_identity(projected)}
+    candidate = typed.parse_json(raw)
+    candidate.update(schema=adapter_features(version).candidate_schema, binding=binding)
+    raw = typed.json_bytes(candidate)
+    adapter = internal_calculator(version, projection=binding["projection_version"], stage="local-validation")
+    verified = adapter.validate_response(raw, projected, binding)
+    chart = adapter.get_chart(verified, binding, lambda: None)
+    assert typed.canonical_bytes(verified.core_result) == typed.canonical_bytes(candidate["core_result"])
+    assert verified.observed == candidate["counts"]["comp"] == 2
+    assert typed.canonical_bytes(chart.data) == typed.canonical_bytes(candidate["chart"]["data"])
+    assert chart.source_sha256 == candidate["chart"]["sha256"]
+    for other_version in RETAINED_ADAPTER_VERSIONS:
+        if other_version == version:
+            continue
+        other = internal_calculator(other_version, projection=binding["projection_version"], stage="local-validation")
+        with pytest.raises(JourneyError) as rejected:
+            other.validate_response(raw, projected, binding)
+        assert rejected.value.code == "CALCULATOR_CONTRACT_MISMATCH"

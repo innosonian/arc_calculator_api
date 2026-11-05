@@ -3,7 +3,7 @@
 # | rawHexBPfile 누락·빈 바이트     | 400 client_error, 정제 메시지
 # | CPR 길이 오류·파싱 오류         | 400, 내부 예외 traceback성 메시지 비노출
 # | 미지 target/training_type      | 400 client_error
-# | 헤더 매직바이트 불일치           | 200 전부 0점 (현행 유지)
+# | 헤더 매직바이트 불일치           | 400 client_error, 정제 메시지
 # | 내부 예외                       | 500 {"type":"server_error"} (현행 유지)
 # | Content-Type 비 multipart      | 레거시 base64 폼 해석; JSON API는 아님
 # 검토 반영 2026-09-05: O8 타입 불일치 400 케이스(TestTypeMismatch)와 isBase64Encoded=false 바이너리
@@ -128,26 +128,21 @@ class TestInternalError:
 
 
 class TestMagicByteMismatch:
-    def test_wrong_magic_returns_200_with_zero_scores(self):
-        # 스펙 §5.7: 헤더 매직바이트(0xA8) 불일치는 현행 유지 — 200에 "전부 0점".
-        # overall만이 아니라 total_score의 모든 점수 필드가 0이어야 한다(§5.7 문언 고정).
-        bad = b"\x00" + b"\x00" * 27  # 길이는 유효(28), 매직만 불일치
+    def test_wrong_magic_is_400_with_sanitized_error(self):
+        # hstm 92f56dc 원본의 INVALID_RAW_HEADER 거절을 신뢰 경계에서 정제한다.
+        bad = b"\x00" * 28
         status, body = _post({"rawHexBPfile": bad, "condition": condition_json()})
-        assert status == 200
-        total = body["cpr_score"]["total_score"]
-        for key, value in total.items():
-            if key == "judg_result":
-                assert value == "N/A"
-            else:
-                assert value == 0, (key, value)
-        assert total["overall"] == 0
+        _assert_clean_client_error(status, body)
+        assert body == {"type": "client_error", "message": legacy_request._MSG_SANITIZED_CLIENT_ERROR}
 
-    def test_wrong_magic_certification_is_fail(self):
-        # 전부 0점(overall 0) → 폴백 80 미만 → Fail.
-        bad = b"\x00" + b"\x00" * 27
-        status, body = _post({"rawHexBPfile": bad, "condition": condition_json()})
-        assert status == 200
-        assert body["certification"] == {"Target": "N/A"}
+    def test_wrong_magic_never_builds_certification(self, monkeypatch):
+        def forbidden(*args, **kwargs):
+            raise AssertionError("Rejected raw input reached legacy response assembly.")
+
+        monkeypatch.setattr(lambda_handler, "finalize_legacy_response", forbidden)
+        status, body = _post({"rawHexBPfile": b"\x00" * 28, "condition": condition_json()})
+        _assert_clean_client_error(status, body)
+        assert "certification" not in body and "cpr_score" not in body
 
 
 class TestWireFormat:

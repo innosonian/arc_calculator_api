@@ -21,6 +21,7 @@ from tests.mock_state_support import ScriptedClient, item, snapshot  # noqa: F40
 SESSION = {
     "PK": "SESSION#session-a", "SK": "AUTH", "session_id": "session-a", "principal": "dummy",
     "token_hash": "hash-only", "issued_at": 10, "expires_at": 86410, "status": "active", "revision": 0,
+    "is_dummy": True,
 }
 AUTH = AuthContext("session-a", "dummy", 0, 86410)
 # A stored legacy (pre-D103) USER row with slots.
@@ -111,7 +112,7 @@ def test_session_user_ignores_a_malformed_legacy_slots_value(slots):
     """R1: a slots value is neither required nor validated outside the legacy paths.
 
     Before D103 such a row was 503 here. The legacy paths that use slots still
-    refuse it: logout (test_logout_refuses_a_malformed_legacy_slots_value_without_writing),
+    refuse it: reset (test_reset_refuses_a_malformed_legacy_slots_value_without_writing),
     legacy cancel and legacy finalize/failure (_slot, tests/test_job_restart_limit.py).
     """
     user = {**NEW_USER, "slots": slots}
@@ -179,9 +180,21 @@ def test_logout_receipt_replay_does_not_reset_later_progress():
     assert [operation for operation, _ in client.calls] == ["read"]
 
 
-def test_logout_of_a_row_without_slots_never_adds_slots():
-    repo, client = repository([("read", snapshot(SESSION, NEW_USER)), ("write", {})])
+@pytest.mark.parametrize("is_dummy", [False, True])
+def test_logout_revokes_only_the_session_and_preserves_progress(is_dummy):
+    repo, client = repository([("read", snapshot({**SESSION, "is_dummy": is_dummy}, USER)), ("write", {})])
     repo.logout(AUTH)
+    actions = client.calls[-1][1]["TransactItems"]
+    assert len(actions) == 1
+    session = _decode(actions[0]["Put"]["Item"])
+    assert session["status"] == "revoked"
+    assert session["logout_receipt"] is True
+    assert "logout_epoch" not in session
+
+
+def test_reset_of_a_row_without_slots_never_adds_slots():
+    repo, client = repository([("read", snapshot(SESSION, NEW_USER, None)), ("write", {})])
+    repo.reset_dummy_progress(AUTH, "reset-request")
     user = written_user(client)
     assert "slots" not in user
     assert user["epoch"] != NEW_USER["epoch"] and user["revision"] == NEW_USER["revision"] + 1
@@ -190,15 +203,15 @@ def test_logout_of_a_row_without_slots_never_adds_slots():
     assert set(user) == set(NEW_USER) | {"updated_at"}
 
 
-def test_logout_of_a_legacy_row_resets_its_slots_as_before():
+def test_reset_of_a_legacy_row_resets_its_slots_as_before():
     legacy = deepcopy(USER)
     legacy["slots"]["mock-cpr:adult"] = {"completed": True, "completed_by_attempt": "attempt-a",
                                         "completed_at": 15, "open_attempts": 2}
     legacy["slots"]["mock-cpr:child"] = {"completed": False, "completed_by_attempt": None,
                                         "completed_at": None, "open_attempts": 1}
     legacy["legacy_field"] = "kept"
-    repo, client = repository([("read", snapshot(SESSION, legacy)), ("write", {})])
-    repo.logout(AUTH)
+    repo, client = repository([("read", snapshot(SESSION, legacy, None)), ("write", {})])
+    repo.reset_dummy_progress(AUTH, "reset-request")
     user = written_user(client)
     reset = {"completed": False, "completed_by_attempt": None, "completed_at": None, "open_attempts": 0}
     assert user["slots"] == {"mock-cpr:adult": reset, "mock-cpr:child": reset}
@@ -206,9 +219,9 @@ def test_logout_of_a_legacy_row_resets_its_slots_as_before():
 
 
 @pytest.mark.parametrize("slots", [None, [], "slots"], ids=["null", "list", "string"])
-def test_logout_refuses_a_malformed_legacy_slots_value_without_writing(slots):
-    repo, client = repository([("read", snapshot(SESSION, {**NEW_USER, "slots": slots}))])
-    assert_code("TEMPORARILY_UNAVAILABLE", lambda: repo.logout(AUTH))
+def test_reset_refuses_a_malformed_legacy_slots_value_without_writing(slots):
+    repo, client = repository([("read", snapshot(SESSION, {**NEW_USER, "slots": slots}, None))])
+    assert_code("TEMPORARILY_UNAVAILABLE", lambda: repo.reset_dummy_progress(AUTH, "reset-request"))
     assert [operation for operation, _ in client.calls] == ["read"]
 
 

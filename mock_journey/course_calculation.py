@@ -5,7 +5,7 @@ write storage, or refetch a provider. W5 merges optional course_binding.
 """
 
 from mock_journey.course_contracts import (
-    CONDITION_KEYS, EXECUTION_KEYS, POLICY_VERSION, AttemptTemplate, AuthContext,
+    CONDITION_KEYS, POLICY_VERSION, AttemptTemplate, AuthContext,
     CourseBinding, CourseView, StartCommand, definition_digest, parse_owned,
     validate_condition, validate_execution_definition,
 )
@@ -74,7 +74,7 @@ class CourseCalculationBridge:
         if scope_key != view.scope_key:
             _fail("DEFINITION_CHANGED")
         placement_key = _placement_key(scope_key, item.source_id)
-        template = {key: execution[key] for key in EXECUTION_KEYS}
+        template = dict(execution)
         template["condition"] = {key: execution["condition"][key] for key in CONDITION_KEYS}
         template["mapping_version"] = view.bundle.mapping_version
         binding = CourseBinding(

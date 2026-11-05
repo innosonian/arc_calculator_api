@@ -1,9 +1,11 @@
 {
-  "scope": "main.run_calculator plus legacy conversion only; no HTTP handler, certification, or submission execution",
+  "scope": "main.run_calculator, captured chart JSON, legacy conversion, and ordered serialized bytes; no HTTP handler, certification, or submission execution",
   "approved_exclusions": [],
   "guard_check_only": true,
-  "approved_exception_case_count": 0,
-  "approved_exception_arithmetic": {},
+  "compatibility_probe": null,
+  "allowed_difference_count": 0,
+  "core_difference_count": 0,
+  "compatibility_difference_count": 0,
   "source_stable_during_run": {
     "reference": true,
     "current": true,

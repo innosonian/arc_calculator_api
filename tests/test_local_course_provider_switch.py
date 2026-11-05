@@ -5,17 +5,20 @@ with a dummy learner binding; the default local server now assembles
 DummyDevCourseProvider without one, like AWS Dev. Rows written for the former
 learner are never deleted or cleaned automatically, and a refresh cannot make
 the new catalog ready in that epoch. The documented recovery is one Dummy
-logout, which moves the shared epoch. In-memory store.
+reset, which moves the shared epoch. In-memory store.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from mock_journey.auth import PRINCIPAL
 from mock_journey.course_contracts import LearnerContext
 from mock_journey.course_fixture import FixtureCourseProvider
 from mock_journey.course_settings import fixture_course_settings
+from mock_journey.dev_course import DummyDevCourseProvider
+from mock_journey.execution_definitions import execution_catalog
 from mock_journey.typed import parse_json
-from tests.journey_support import JourneyStore, V2Journey, dummy_course
+from tests.journey_support import JourneyStore, V2Journey
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "vcc_contract" / "v1"
@@ -47,7 +50,7 @@ def keys(store):
     return {(row["PK"], row["SK"]) for row in store.rows()}
 
 
-def test_former_course_v2_rows_are_kept_and_one_dummy_logout_recovers_the_dummy_dev_courses():
+def test_former_course_v2_rows_are_kept_and_one_dummy_reset_recovers_the_dummy_dev_courses():
     store = JourneyStore.memory()
     former = FormerCourseV2Journey(store)
     former_session = former.login()
@@ -55,7 +58,10 @@ def test_former_course_v2_rows_are_kept_and_one_dummy_logout_recovers_the_dummy_
     former_rows = {key for key in keys(store) if key[0].startswith("COURSE_LEARNER#")}
     assert former_rows, "The former learner inventory must exist to reproduce R7."
 
-    current = V2Journey(store, objects=former.objects, start=former.now[0] + 10)
+    execution = execution_catalog()
+    source = DummyDevCourseProvider(settings=fixture_course_settings(), execution=execution)
+    current = V2Journey(store, objects=former.objects, start=former.now[0] + 10,
+                        execution=execution, provider=source)
     session = current.login()
     # The shared epoch still holds the former learner's inventory: waiting,
     # and an explicit refresh does not rewrite or clean it.
@@ -64,13 +70,13 @@ def test_former_course_v2_rows_are_kept_and_one_dummy_logout_recovers_the_dummy_
     assert current.courses(session.token, expected=503)["code"] == "ARC_PROGRESS_UNAVAILABLE"
     assert former_rows <= keys(store)
 
-    # Documented recovery: one Dummy logout moves the epoch; the next login is ready.
-    current.logout(session.token)
+    # Documented recovery: one Dummy reset moves the epoch; the next login is ready.
+    current.reset(session.token)
     fresh = current.login()
     assert fresh.data["learningAvailability"] == {"state": "ready", "reason": None}
-    assert current.courses(fresh.token)["count"] == 15
-    course = dummy_course("mock-compression-only", "adult")
-    started = current.start(fresh.token, course, course.practice_link_id)
+    assert current.courses(fresh.token)["count"] == 4
+    course = SimpleNamespace(course_id=911001, enrollment_id=921001)
+    started = current.start(fresh.token, course, 950011)
     current.upload(fresh.token, started["attemptId"], started["condition"])
     assert current.work(started["attemptId"]) is True
     assert current.result(fresh.token, started["attemptId"])["evaluation"]["program_completed"] is True

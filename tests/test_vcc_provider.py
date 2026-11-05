@@ -9,7 +9,7 @@ import threading
 
 import pytest
 
-from mock_journey.catalog import PROGRAMS
+from mock_journey.catalog import LEGACY_PROGRAM_IDS
 from mock_journey.course_contracts import (
     CONTRACT_VERSION, EXECUTION_KEYS, FIXTURE_CATALOG_VERSION, FIXTURE_MAPPING_VERSION,
     ITEM_TYPE_WIRE, LearnerContext, MappingRegistry, AssignmentBinding, CourseScope, PublicIds,
@@ -376,7 +376,7 @@ class TestMapExecution:
             assert parsed == row["execution"]
             assert tuple(sorted(parsed)) == tuple(sorted(EXECUTION_KEYS))
             assert "program_id" not in parsed
-            assert row["program_id"] in {item[0] for item in PROGRAMS}
+            assert row["program_id"] in LEGACY_PROGRAM_IDS
             assert row["program_id"] not in {placement.source_id, "src-course-101", 101, 1003, 1004, 1005}
             assert row["target"] == parsed["condition"]["target"]
             assert parsed["catalog_version"] == FIXTURE_CATALOG_VERSION

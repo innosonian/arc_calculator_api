@@ -17,7 +17,7 @@ only, so a deployment has nothing to align in ARC_JOURNEY_CONFIG.
   with the ZIP's own digest (exit 4, CODE_SHA_MISMATCH). The first failure
   stops the run; functions already updated stay in the report.
 * ``smoke``: public Dummy login and course list through the deployed API. The
-  Dummy logout is never called (it resets the shared Dummy progress). Only HTTP
+  Dummy logout is never called; smoke only reads courses after login. Only HTTP
   statuses, counts and fixed error codes are printed, never a token or a body.
 * ``summary``: Markdown for $GITHUB_STEP_SUMMARY from the report files.
 
@@ -325,7 +325,7 @@ def smoke(args):
     if not ((type(count) is int and count >= 1) or (isinstance(results, list) and results)):
         smoke_failure("progress", status, "COURSE_LIST_EMPTY", args.report, report)
     emit(step="progress", status=status, count=entry["count"])
-    # No logout on purpose: DELETE /api/v2/session/ resets the shared Dummy progress.
+    # Smoke only reads courses after login; it does not reset progress or revoke sessions.
     report["status"] = "completed"
     write_report(args.report, report)
     del token

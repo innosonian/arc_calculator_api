@@ -21,7 +21,7 @@ def cpr_course_journey(store):
     token = h.login().token
     detail = h.course(token, course)
     assert json.loads(h.store.row(f"ATTEMPT#{_first_attempt(h, token, course, detail)}", "META")["definition_json"]) \
-        ["adapter_version"] == CURRENT_ADAPTER_VERSION == "arc-internal-detection-v5"
+        ["adapter_version"] == CURRENT_ADAPTER_VERSION == "arc-internal-detection-v6"
 
     def run(link_id, data):
         attempt = h.start(token, course, link_id)

@@ -27,10 +27,9 @@ from botocore.exceptions import ReadTimeoutError
 import pytest
 
 from mock_journey.assembly import ExecutionCatalog
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import program_targets
 from mock_journey.course_settings import fixture_course_settings
-from mock_journey.dev_course import DummyDevCourseProvider
-from mock_journey.execution_definitions import execution_catalog
+from tests.legacy_dummy_catalog import LegacyDummyCourseProvider, legacy_execution_catalog
 from tests.journey_support import JourneyStore, V2Journey, dummy_course, dynamodb_local_store, encode_item
 from tests.legacy_rows_support import legacy_resume_credential, seed_legacy_rows
 
@@ -377,33 +376,34 @@ def test_conflict_retry_checks_a_fresh_clock_instead_of_reusing_the_initial_auth
 # -- logout ----------------------------------------------------------------------
 
 def assert_legacy_slots_reset_once(race, kind, before_user):
-    """Legacy USER rows carry slots; the first logout resets them for the new epoch (R3)."""
+    """Legacy USER rows carry slots; the explicit reset API resets them for the new epoch (R3)."""
     if kind == "legacy":
         assert before_user["slots"][LEGACY_SLOT]["open_attempts"] == 1
         assert race.row(USER)["slots"][LEGACY_SLOT]["open_attempts"] == 0
 
 
 @pytest.mark.parametrize("kind", ["v2", "legacy"])
-def test_logout_replay_does_not_reset_other_session_new_progress(store, kind):
+def test_reset_replay_does_not_reset_other_session_new_progress(store, kind):
     race = Race(store, legacy=kind == "legacy")
     old, surviving = race.h.login(), race.h.login()
     initial = race.row(USER)
     initial_epoch = initial["epoch"]
-    race.h.logout(old.token)
+    request_id = str(uuid.uuid4())
+    race.h.reset(old.token, request_id=request_id)
     reset_epoch = race.row(USER)["epoch"]
     assert reset_epoch != initial_epoch
     assert_legacy_slots_reset_once(race, kind, initial)
     race.h.refresh(surviving.token)
     attempt_id, _ = v2_attempt(race, surviving)
     before = race.rows()
-    race.h.logout(old.token)  # Replayed logout: a stored receipt, not a second reset.
+    race.h.reset(old.token, request_id=request_id)  # Replayed receipt must not reset again.
     assert race.rows() == before
     assert race.row(USER)["epoch"] == reset_epoch == race.attempt(attempt_id)["epoch"]
     assert race.h.session(surviving.token)["sessionId"] == surviving.session_id
     assert race.h.attempt(surviving.token, attempt_id)["state"] == "created"
 
 
-def test_two_different_concurrent_logouts_each_reset_once_and_keep_third_session_active(store):
+def test_two_concurrent_logouts_preserve_progress_and_keep_third_session_active(store):
     race = Race(store)
     first, second, survivor = race.h.login(), race.h.login(), race.h.login()
     initial = race.row(USER)
@@ -415,40 +415,39 @@ def test_two_different_concurrent_logouts_each_reset_once_and_keep_third_session
     assert [reply.status for reply in replies] == [204, 204]
     sessions = [race.row((f"SESSION#{session.session_id}", "AUTH")) for session in (first, second)]
     assert [row["status"] for row in sessions] == ["revoked", "revoked"]
-    assert sessions[0]["logout_epoch"] != sessions[1]["logout_epoch"]
-    current = race.row(USER)
-    assert current["revision"] == initial["revision"] + 2
-    assert current["epoch"] in {row["logout_epoch"] for row in sessions}
+    assert all(row["logout_receipt"] is True and "logout_epoch" not in row for row in sessions)
+    assert race.row(USER) == initial
     assert race.h.session(survivor.token)["sessionId"] == survivor.session_id
     assert race.row((f"SESSION#{survivor.session_id}", "AUTH"))["status"] == "active"
 
 
-@pytest.mark.parametrize("order", ["logout_commits_first", "start_commits_first", "barrier"])
-def test_start_racing_logout_never_mixes_attempt_epoch_and_current_epoch(store, order):
+@pytest.mark.parametrize("order", ["reset_commits_first", "start_commits_first", "barrier"])
+def test_start_racing_reset_never_mixes_attempt_epoch_and_current_epoch(store, order):
     race = Race(store)
-    logout_session, creator = race.h.login(), race.h.login()
+    reset_session, creator = race.h.login(), race.h.login()
     old_epoch = race.row(USER)["epoch"]
     body = start_body(COURSE, COURSE.practice_link_id, race.h.course(creator.token, COURSE)["definitionHash"])
     starter, logger = race.twin(), race.twin()
-    logout_call = lambda: logger.call("DELETE", "/api/v2/session/", token=logout_session.token)
+    reset_call = lambda: logger.call("POST", "/api/v2/dev/progress-reset/", token=reset_session.token,
+                                      body={"clientRequestId": str(uuid.uuid4())})
     start_call = lambda: start(starter, creator.token, body)
-    if order == "logout_commits_first":
+    if order == "reset_commits_first":
         outcome = {}
-        starter.store.client.arm(before=lambda: outcome.setdefault("logout", logout_call()))
+        starter.store.client.arm(before=lambda: outcome.setdefault("reset", reset_call()))
         started = start_call()
-        logged_out = outcome["logout"]
+        reset_reply = outcome["reset"]
     elif order == "start_commits_first":
         outcome = {}
         logger.store.client.arm(before=lambda: outcome.setdefault("start", start_call()))
-        logged_out = logout_call()
+        reset_reply = reset_call()
         started = outcome["start"]
     else:
         barrier = Barrier(2)
         starter.store.client.arm(before=meet_at(barrier))
         logger.store.client.arm(before=meet_at(barrier))
-        started, logged_out = parallel(start_call, logout_call)
-    assert logged_out.status == 204
-    assert race.row((f"SESSION#{logout_session.session_id}", "AUTH"))["status"] == "revoked"
+        started, reset_reply = parallel(start_call, reset_call)
+    assert reset_reply.status == 204
+    assert race.row((f"SESSION#{reset_session.session_id}", "AUTH"))["status"] == "active"
     current_epoch = race.row(USER)["epoch"]
     assert current_epoch != old_epoch
     new_epoch_rows = [row for row in race.rows() if f"EPOCH#{current_epoch}#" in row["SK"]]
@@ -467,20 +466,22 @@ def test_start_racing_logout_never_mixes_attempt_epoch_and_current_epoch(store, 
 
 
 @pytest.mark.parametrize("kind", ["v2", "legacy"])
-def test_logout_commit_response_loss_does_not_erase_progress_on_retry(store, kind):
+def test_reset_commit_response_loss_does_not_erase_progress_on_retry(store, kind):
     race = Race(store, legacy=kind == "legacy")
-    logout_session, creator = race.h.login(), race.h.login()
+    reset_session, creator = race.h.login(), race.h.login()
     initial = race.row(USER)
     race.h.store.client.arm(lose_response=True)
-    lost = race.h.call("DELETE", "/api/v2/session/", token=logout_session.token)
+    request_id = str(uuid.uuid4())
+    lost = race.h.call("POST", "/api/v2/dev/progress-reset/", token=reset_session.token,
+                       body={"clientRequestId": request_id})
     assert code(lost) == (503, "TEMPORARILY_UNAVAILABLE")
-    assert race.row((f"SESSION#{logout_session.session_id}", "AUTH"))["status"] == "revoked"
+    assert race.row((f"SESSION#{reset_session.session_id}", "AUTH"))["status"] == "active"
     assert race.row(USER)["epoch"] != initial["epoch"]
     assert_legacy_slots_reset_once(race, kind, initial)
     race.h.refresh(creator.token)
     attempt_id, _ = v2_attempt(race, creator)
     before_retry = deepcopy(race.rows())
-    race.h.logout(logout_session.token)
+    race.h.reset(reset_session.token, request_id=request_id)
     assert race.rows() == before_retry
     assert race.h.attempt(creator.token, attempt_id)["state"] == "created"
 
@@ -511,7 +512,7 @@ def test_old_epoch_legacy_cancel_does_not_decrement_new_epoch_count(store):
     token = race.seeded.issue_session_token()
     attempt_id, _ = race.legacy("created")
     other = race.h.login()
-    race.h.logout(other.token)  # New epoch; the legacy slots are reset (R3).
+    race.h.reset(other.token)  # New epoch; the legacy slots are reset (R3).
     user = race.row(USER)
     assert user["epoch"] != race.attempt(attempt_id)["epoch"]
     assert user["slots"][LEGACY_SLOT]["open_attempts"] == 0
@@ -615,16 +616,15 @@ def test_two_new_sessions_cannot_both_take_over_the_same_expired_attempt(store, 
 
 def typed_catalog():
     """The approved 15 definitions with a calculation_profile holding null/bool/int/float/str leaves."""
-    base = execution_catalog()
+    base = legacy_execution_catalog()
     definitions = {}
-    for program, *_ in PROGRAMS:
-        for target in TARGETS:
-            definition = base.get_definition(program, target)
-            definition["calculation_profile"] = {"Custom": {
-                "PassThreshold": 80.0, "PassThresholdChild": 80, "CertificateAdult": False,
-                "CertificateChild": None, "CertificateInfant": "80",
-            }}
-            definitions[f"{program}:{target}"] = definition
+    for program, target in program_targets():
+        definition = base.get_definition(program.id, target)
+        definition["calculation_profile"] = {"Custom": {
+            "PassThreshold": 80.0, "PassThresholdChild": 80, "CertificateAdult": False,
+            "CertificateChild": None, "CertificateInfant": "80",
+        }}
+        definitions[f"{program.id}:{target}"] = definition
     return ExecutionCatalog(definitions, base.schemas)
 
 
@@ -637,7 +637,7 @@ def leaf_types(value):
 
 
 def test_definition_json_string_preserves_null_bool_integer_float_and_string(store):
-    provider = DummyDevCourseProvider(settings=fixture_course_settings(), execution=typed_catalog())
+    provider = LegacyDummyCourseProvider(settings=fixture_course_settings(), execution=typed_catalog())
     race = Race(store, provider=provider)
     creator = race.h.login()
     attempt_id, credential = v2_attempt(race, creator)
@@ -672,3 +672,66 @@ def test_legacy_definition_json_is_kept_byte_for_byte_through_reauthorize_and_ca
     race.h.cancel(new.token, race.seeded.attempts["created"]["attempt_id"])
     assert {label: race.attempt(race.seeded.attempts[label]["attempt_id"])["definition_json"]
             for label in captured} == captured
+
+
+def test_organization_selection_and_explicit_dummy_reset_use_same_live_session(store):
+    race = Race(store)
+    login = race.h.login()
+    stored_session = race.row((f"SESSION#{login.session_id}", "AUTH"))
+    assert stored_session["is_dummy"] is True and stored_session["organizations"] == []
+    token = login.token
+    path = "/api/v2/session/organization/"
+    assert code(race.h.call("POST", path, body={"organizationId": "demo-org"})) == (401, "SESSION_REQUIRED")
+    selection = race.h.call("POST", path, token=token, body={"organizationId": "demo-org"})
+    assert selection.status == 200 and selection.data == {"organizationId": "demo-org"}
+    assert race.h.session(token)["organizationId"] == "demo-org"
+    assert race.h.refresh(token)["organizationId"] == "demo-org"
+    initial = race.row(USER)
+    reset_path = "/api/v2/dev/progress-reset/"
+    first_request = {"clientRequestId": str(uuid.uuid4())}
+    assert code(race.h.call("POST", reset_path, token=token, body={})) == (400, "INVALID_REQUEST")
+    assert code(race.h.call("POST", reset_path, token=token, body=first_request)) == (204, None)
+    reset = race.row(USER)
+    assert reset["epoch"] != initial["epoch"]
+    assert reset["revision"] == initial["revision"] + 1
+    assert code(race.h.call("POST", reset_path, token=token,
+                            body={"clientRequestId": str(uuid.uuid4())})) == (204, None)
+    race.h.refresh(token)
+    attempt_id, _ = v2_attempt(race, login)
+    current = race.row(USER)
+    assert current["epoch"] != reset["epoch"]
+    assert code(race.h.call("POST", reset_path, token=token, body=first_request)) == (204, None)
+    assert race.row(USER) == current
+    assert race.attempt(attempt_id)["epoch"] == current["epoch"]
+    assert race.h.session(token)["sessionId"] == login.session_id
+    assert race.h.session(token)["organizationId"] == "demo-org"
+    assert race.row((f"SESSION#{login.session_id}", "AUTH"))["status"] == "active"
+
+
+def test_non_dummy_logout_revokes_only_session_and_progress_reset_is_hidden(store):
+    from tests.vcc_runtime_support import seed_session
+    import secrets
+
+    race = Race(store)
+    principal = "session-fixture@example.test"
+    session_id = str(uuid.uuid4())
+    token = f"s1.{session_id}.{secrets.token_urlsafe(32)}"
+    now = race.h.clock()
+    seed_session(store.client, store.table, session_id=session_id, principal=principal,
+                 token=token, now=now, expires_at=now + 86400)
+    race.mutate((f"SESSION#{session_id}", "AUTH"),
+                organizations=[{"id": "a", "name": "Organization A"}, {"id": "b", "name": "Organization B"}])
+    user_key = ("USER#" + principal, "STATE")
+    before = race.row(user_key)
+    assert race.h.session(token)["organizationId"] is None
+    assert code(race.h.call("POST", "/api/v2/dev/progress-reset/", token=token,
+                            body={"clientRequestId": str(uuid.uuid4())})) == (404, "NOT_FOUND")
+    assert code(race.h.call("POST", "/api/v2/session/organization/", token=token,
+                            body={"organizationId": "unassigned"})) == (404, "NOT_FOUND")
+    assert code(race.h.call("POST", "/api/v2/session/organization/", token=token,
+                            body={"organizationId": "b"})) == (200, None)
+    assert race.h.session(token)["organizationId"] == "b"
+    assert code(race.h.call("DELETE", "/api/v2/session/", token=token)) == (204, None)
+    assert code(race.h.call("DELETE", "/api/v2/session/", token=token)) == (204, None)
+    assert race.row(user_key) == before
+    assert code(race.h.call("GET", "/api/v2/session/", token=token)) == (403, "SESSION_REVOKED")

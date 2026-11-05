@@ -510,7 +510,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -570,7 +570,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -597,7 +597,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -664,7 +664,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -691,7 +691,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -725,7 +725,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -758,7 +758,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -803,7 +803,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -869,7 +869,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -896,7 +896,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {
@@ -1011,7 +1011,105 @@
       "decision": "pass"
      },
      "program_completed": true,
-     "reason_codes": []
+     "reason_codes": [],
+     "gates": [
+      {
+       "id": "repetitions",
+       "applicable": true,
+       "value": 60,
+       "threshold": 60,
+       "unit": "count",
+       "passed": true
+      },
+      {
+       "id": "compression_depth_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compression_rate_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "recoil_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "hand_position_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compressions_per_cycle_tolerance",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "ventilation_volume_in_range_pct",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "%",
+       "passed": null
+      },
+      {
+       "id": "ventilation_interval_score",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "score",
+       "passed": null
+      },
+      {
+       "id": "aed_pads_attached",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_no_contact_during_analysis",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_shock_delivered",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_arrival_to_power_on",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "seconds",
+       "passed": null
+      }
+     ]
     },
     "progressApplication": {
      "applied": true,
@@ -1073,7 +1171,105 @@
       "decision": "pass"
      },
      "program_completed": true,
-     "reason_codes": []
+     "reason_codes": [],
+     "gates": [
+      {
+       "id": "repetitions",
+       "applicable": true,
+       "value": 60,
+       "threshold": 60,
+       "unit": "count",
+       "passed": true
+      },
+      {
+       "id": "compression_depth_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compression_rate_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "recoil_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "hand_position_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compressions_per_cycle_tolerance",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "ventilation_volume_in_range_pct",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "%",
+       "passed": null
+      },
+      {
+       "id": "ventilation_interval_score",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "score",
+       "passed": null
+      },
+      {
+       "id": "aed_pads_attached",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_no_contact_during_analysis",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_shock_delivered",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_arrival_to_power_on",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "seconds",
+       "passed": null
+      }
+     ]
     },
     "progressApplication": {
      "applied": true,
@@ -1162,7 +1358,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -1189,7 +1385,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940042,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:04Z",
     "role": "final_assessment",
     "condition": {
@@ -1276,7 +1472,105 @@
       "decision": "pass"
      },
      "program_completed": true,
-     "reason_codes": []
+     "reason_codes": [],
+     "gates": [
+      {
+       "id": "repetitions",
+       "applicable": true,
+       "value": 60,
+       "threshold": 60,
+       "unit": "count",
+       "passed": true
+      },
+      {
+       "id": "compression_depth_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compression_rate_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "recoil_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "hand_position_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compressions_per_cycle_tolerance",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "ventilation_volume_in_range_pct",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "%",
+       "passed": null
+      },
+      {
+       "id": "ventilation_interval_score",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "score",
+       "passed": null
+      },
+      {
+       "id": "aed_pads_attached",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_no_contact_during_analysis",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_shock_delivered",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_arrival_to_power_on",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "seconds",
+       "passed": null
+      }
+     ]
     },
     "progressApplication": {
      "applied": true,
@@ -1346,7 +1640,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -1792,13 +2086,24 @@
   }
  },
  {
+  "method": "POST",
+  "path": "/api/v2/dev/progress-reset/",
+  "status": 204,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:34>"
+  },
+  "body": null
+ },
+ {
   "method": "DELETE",
   "path": "/api/v2/session/",
   "status": 204,
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:34>"
+   "X-Request-Id": "<uuid:35>"
   },
   "body": null
  },
@@ -1809,7 +2114,7 @@
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:35>"
+   "X-Request-Id": "<uuid:36>"
   },
   "body": {
    "success": false,
@@ -1828,18 +2133,18 @@
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:36>"
+   "X-Request-Id": "<uuid:37>"
   },
   "body": {
    "success": true,
    "data": {
-    "sessionId": "<uuid:37>",
+    "sessionId": "<uuid:38>",
     "expiresAt": "2027-01-16T08:00:06Z",
     "learningAvailability": {
      "state": "ready",
      "reason": null
     },
-    "accessToken": "s1.<uuid:37>.<secret>",
+    "accessToken": "s1.<uuid:38>.<secret>",
     "tokenType": "Bearer",
     "userName": "Test User"
    },
@@ -1854,7 +2159,7 @@
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:38>"
+   "X-Request-Id": "<uuid:39>"
   },
   "body": {
    "success": false,
@@ -1873,7 +2178,7 @@
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:39>"
+   "X-Request-Id": "<uuid:40>"
   },
   "body": {
    "success": true,
@@ -1883,7 +2188,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "17b26714bffb5aa8ba0779306ebe4fa1af89bc064c45add48e5d52d77db73c3e",
+    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {
@@ -1907,7 +2212,7 @@
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:40>"
+   "X-Request-Id": "<uuid:41>"
   },
   "body": {
    "success": true,
@@ -1942,7 +2247,105 @@
       "decision": "pass"
      },
      "program_completed": true,
-     "reason_codes": []
+     "reason_codes": [],
+     "gates": [
+      {
+       "id": "repetitions",
+       "applicable": true,
+       "value": 60,
+       "threshold": 60,
+       "unit": "count",
+       "passed": true
+      },
+      {
+       "id": "compression_depth_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compression_rate_in_range_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 70,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "recoil_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "hand_position_pct",
+       "applicable": true,
+       "value": 100,
+       "threshold": 80,
+       "unit": "%",
+       "passed": true
+      },
+      {
+       "id": "compressions_per_cycle_tolerance",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "ventilation_volume_in_range_pct",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "%",
+       "passed": null
+      },
+      {
+       "id": "ventilation_interval_score",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "score",
+       "passed": null
+      },
+      {
+       "id": "aed_pads_attached",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_no_contact_during_analysis",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_shock_delivered",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "count",
+       "passed": null
+      },
+      {
+       "id": "aed_arrival_to_power_on",
+       "applicable": false,
+       "value": null,
+       "threshold": null,
+       "unit": "seconds",
+       "passed": null
+      }
+     ]
     },
     "progressApplication": {
      "applied": true,
@@ -1963,13 +2366,24 @@
   }
  },
  {
+  "method": "POST",
+  "path": "/api/v2/dev/progress-reset/",
+  "status": 204,
+  "headers": {
+   "Content-Type": "application/json",
+   "Cache-Control": "no-store",
+   "X-Request-Id": "<uuid:42>"
+  },
+  "body": null
+ },
+ {
   "method": "DELETE",
   "path": "/api/v2/session/",
   "status": 204,
   "headers": {
    "Content-Type": "application/json",
    "Cache-Control": "no-store",
-   "X-Request-Id": "<uuid:41>"
+   "X-Request-Id": "<uuid:43>"
   },
   "body": null
  }

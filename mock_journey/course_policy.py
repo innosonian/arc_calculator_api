@@ -1,7 +1,7 @@
 """Pure VCC course start, content, and aggregate policy. No SDK, files, sockets, or env."""
 
 from mock_journey.course_contracts import (
-    CONTRACT_VERSION, COURSE_STATUSES, EXCLUSION_REASON_ORDER, POLICY_VERSION, START_ROLES,
+    CONTRACT_VERSION, COURSE_STATUSES, CRE_SUBMISSION_STATUSES, EXCLUSION_REASON_ORDER, POLICY_VERSION, START_ROLES,
     ContentReport, CourseBinding, CourseBundle, CourseView, Placement, StartCommand,
     owned_json_bytes, parse_owned, require_hash, require_member, require_public_id,
     require_uuid, scope_identity, learner_identity, validate_availability,
@@ -262,6 +262,8 @@ def _availability_error(state, reason):
         return None
     if state == "reconciliation_required":
         return "PROGRESS_RECONCILIATION_REQUIRED"
+    if state == "expired":
+        return "ASSIGNMENT_EXPIRED"
     if reason == "contract_pending":
         return "CONTRACT_PENDING"
     return "ARC_PROGRESS_UNAVAILABLE"
@@ -389,7 +391,7 @@ class CoursePolicy:
         report_count = evidence.get("report_count")
         if type(report_count) is int and report_count >= self.settings.max_reports_per_start:
             raise CourseError("PROGRESS_CAPACITY_EXCEEDED")
-        if report.event_type == "video_segments":
+        if report.event_type in {"video_segments", "video_skipped"}:
             if kind not in (None, "video"):
                 _fail()
             receipt = self._evaluate_video(
@@ -412,30 +414,37 @@ class CoursePolicy:
         duration_ms = evidence.get("duration_ms")
         if type(duration_ms) is not int or duration_ms <= 0:
             _fail()
-        if len(report.intervals_ms) > self.settings.max_intervals_per_report:
-            raise CourseError("PAYLOAD_TOO_LARGE")
-        for start, end in report.intervals_ms:
-            if start < 0 or end > duration_ms or start >= end:
+        skipped = report.event_type == "video_skipped"
+        covered = False
+        if skipped:
+            if report.position_ms > duration_ms:
                 _fail()
-        previous = evidence.get("merged_intervals_ms") or []
-        if type(previous) not in (list, tuple):
-            _fail()
-        merged = merge_intervals(list(previous) + [list(pair) for pair in report.intervals_ms])
-        if len(merged) > self.settings.max_merged_intervals_per_start:
-            raise CourseError("PROGRESS_CAPACITY_EXCEEDED")
-        covered = video_fully_covered(merged, duration_ms)
-        if version_unmapped:
-            return progress_receipt(
-                start_id=report.start_id, report_id=report.report_id, course_item_link_id=link_id,
-                is_completed=True if already else False, is_passed=None, course_status=course_status,
-                application="pending_reconciliation",
-            )
-        completed = True if already else covered
-        return progress_receipt(
+        else:
+            if len(report.intervals_ms) > self.settings.max_intervals_per_report:
+                raise CourseError("PAYLOAD_TOO_LARGE")
+            for start, end in report.intervals_ms:
+                if start < 0 or end > duration_ms or start >= end:
+                    _fail()
+            previous = evidence.get("merged_intervals_ms") or []
+            if type(previous) not in (list, tuple):
+                _fail()
+            merged = merge_intervals(list(previous) + [list(pair) for pair in report.intervals_ms])
+            if len(merged) > self.settings.max_merged_intervals_per_start:
+                raise CourseError("PROGRESS_CAPACITY_EXCEEDED")
+            covered = video_fully_covered(merged, duration_ms)
+        completed = already or (not version_unmapped and (covered or skipped))
+        receipt = progress_receipt(
             start_id=report.start_id, report_id=report.report_id, course_item_link_id=link_id,
             is_completed=completed, is_passed=None, course_status=course_status,
-            application="applied",
+            application="pending_reconciliation" if version_unmapped else "applied",
         )
+        # Older completed video evidence already means watched. Store only the new kind.
+        previously_skipped = evidence.get("completion_kind") == "skipped"
+        watched = ((already and not previously_skipped)
+                   or (not version_unmapped and evidence.get("item_watched") is True))
+        if completed and (previously_skipped or skipped) and not (watched or (covered and not version_unmapped)):
+            receipt["completionKind"] = "skipped"
+        return receipt
 
     def _evaluate_document(self, evidence, report, link_id, course_status, already, version_unmapped):
         displayed = _displayed_ids(evidence, evidence.get("content_version"))
@@ -510,6 +519,8 @@ class CoursePolicy:
                 "passed": passed if item.kind in {"training", "assessment"} else None,
             }
             if done:
+                if item.kind == "video" and record.get("completion_kind") == "skipped":
+                    items[key]["completion_kind"] = "skipped"
                 any_complete = True
             else:
                 all_complete = False
@@ -578,8 +589,11 @@ class CoursePolicy:
             status = "NOT_STARTED"
         if any_complete and not finished:
             status = "IN_PROGRESS"
+        submission = progress.get("arc_submission_status")
+        if submission is not None:
+            require_member(submission, CRE_SUBMISSION_STATUSES)
         if finished:
-            status = "FINISHED"
+            status = "COMPLETION_PENDING_ARC" if submission in {"pending", "sent", "failed"} else "FINISHED"
         # CERTIFIED is never invented.
         if status == "CERTIFIED":
             status = "FINISHED"
@@ -604,6 +618,8 @@ class CoursePolicy:
                 ) if key in final},
             },
         }
+        if submission is not None:
+            payload["arc_submission_status"] = submission
         return json_bytes(payload)
 
     def classify_submission(
