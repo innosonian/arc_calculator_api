@@ -6,12 +6,13 @@ import a test module; test_vcc_submission re-exports the same objects.
 
 from mock_journey.course_calculation import CourseCalculationBridge
 from mock_journey.course_contracts import (
-    AssignmentBinding, CourseView, GateView, InventoryView, StartCommand, sealed_bundle, scope_identity,
+    AssignmentBinding, CourseView, GateView, InventoryView, StartCommand, learner_identity, sealed_bundle,
+    scope_identity,
 )
 from mock_journey.models import AuthContext
 from mock_journey.course_policy import empty_progress, placement_key
 from mock_journey.typed import digest, parse_json, json_bytes
-from tests.vcc_contract_support import BUNDLE_DOC, baseline_bundle
+from tests.vcc_contract_support import baseline_bundle
 from tests.vcc_support import EPOCH
 
 
@@ -22,19 +23,21 @@ ATTEMPT = "50000000-0000-4000-8000-000000000001"
 INPUT_DIGEST = "a" * 64
 
 
-def _view():
-    owned = sealed_bundle(baseline_bundle())
+def _view(bundle=None):
+    owned = sealed_bundle(baseline_bundle() if bundle is None else bundle)
     scope_key = digest(scope_identity(owned.scope))
     assignment = AssignmentBinding(owned.scope, owned.public_ids)
-    inventory = InventoryView(BUNDLE_DOC["learner_key"], EPOCH, 1, 1, "ready", None, (assignment,))
+    learner_key = digest(learner_identity(owned.scope.learner))
+    inventory = InventoryView(learner_key, EPOCH, 1, 1, "ready", None, (assignment,))
     gate = GateView(scope_key, EPOCH, "ready", None, 1, owned.definition_hash)
     return CourseView(scope_key, owned.public_ids, owned, {"items": []}, gate, inventory)
 
 
-def _template(placement_id=1003):
-    view = _view()
+def _template(placement_id=1003, *, bundle=None):
+    view = _view(bundle)
     auth = AuthContext(SESSION, view.bundle.scope.learner.principal, 1, 4102444800)
-    command = StartCommand(REQUEST, 501, 101, placement_id, view.bundle.definition_hash)
+    ids = view.public_ids
+    command = StartCommand(REQUEST, ids.enrollment_id, ids.course_id, placement_id, view.bundle.definition_hash)
     return CourseCalculationBridge().prepare(auth, command, view)
 
 
@@ -55,7 +58,9 @@ def _evaluation(*, observed=60, met=True, completed=True, status="evaluated", ki
 
 
 def _rows(template, *, is_dummy=False, epoch=EPOCH, user_epoch=None, already=False,
-          guideline="ARC2025", active_counted=True, submit_arc=None):
+          guideline="ARC2025", active_counted=True, submit_arc=None, bundle=None):
+    if bundle is None:
+        bundle = _view().bundle
     frozen = parse_json(template.existing_template_json)
     condition = dict(frozen["condition"])
     condition["guideline"] = guideline
@@ -64,7 +69,7 @@ def _rows(template, *, is_dummy=False, epoch=EPOCH, user_epoch=None, already=Fal
         "state": "evaluated" if already else "processing", "active_counted": active_counted,
         "input_digest": INPUT_DIGEST, "course_binding": template.binding,
         "definition_json": {**frozen, "condition": condition},
-        "is_dummy": is_dummy, "principal": "fixture-learner@example.test",
+        "is_dummy": is_dummy, "principal": bundle.scope.learner.principal,
         "submit_arc": submit_arc,
     }
     job = {
@@ -76,7 +81,6 @@ def _rows(template, *, is_dummy=False, epoch=EPOCH, user_epoch=None, already=Fal
         "principal": attempt["principal"], "epoch": user_epoch or epoch, "revision": 4,
         "is_dummy": is_dummy,
     }
-    bundle = _view().bundle
     selected = next(p for p in bundle.placements
                     if placement_key(template.binding.scope_key, p.source_id) == template.binding.placement_key)
     attempt["content_identity_hash"] = digest(parse_json(selected.content_identity_json))

@@ -20,7 +20,8 @@ from tests.journey_support import HARNESS_STAGE, V2Journey, dummy_course
 COURSE = dummy_course("mock-compression-only", "adult")
 ALREADY_COMPLETED = {"applied": False, "applied_epoch": None, "reason": "ALREADY_COMPLETED"}
 LOGIN_FIELDS = ["sessionId", "expiresAt", "learningAvailability", "accessToken", "tokenType", "userName"]
-SESSION_FIELDS = ["sessionId", "expiresAt", "learningAvailability"]
+SESSION_FIELDS = ["sessionId", "expiresAt", "learningAvailability", "organizations", "organizationId",
+                  "inactivityLogoutSeconds", "hardCapSeconds"]
 
 
 class LocalFailureCalculator(InternalCalculator):

@@ -32,8 +32,8 @@ from local_server.execution import LocalJobRunner
 from local_server.http import make_application, create_server
 from local_server.runtime import local_course_settings
 from mock_journey import typed
-from mock_journey.dev_course import validate_dummy_catalog
-from mock_journey.execution_definitions import execution_catalog
+from mock_journey.contracts import CURRENT_ADAPTER_VERSION
+from tests.legacy_dummy_catalog import LegacyDummyCourseProvider, legacy_execution_catalog
 from tests._synth import multipart_event
 from tests.calculator_doubles import TrackedCalculator
 from tests.journey_support import (
@@ -67,10 +67,9 @@ def world(client, table, files, allowed, *, now=None, calls=None):
     """API and Worker on the ``HARNESS_LOCAL_*`` values (tests/journey_support.compose) over a file store."""
     now = now if now is not None else [int(time.time())]
     calls = calls if calls is not None else []
-    execution = execution_catalog()
+    execution = legacy_execution_catalog()
     course_settings = local_course_settings()
-    provider = validate_dummy_catalog(course_settings, execution=execution,
-                                      artifact_bytes=HARNESS_LIMITS.artifact_bytes)
+    provider = LegacyDummyCourseProvider(settings=course_settings, execution=execution)
     objects = FileObjects(files)
     clock = lambda: now[0]  # noqa: E731
     composition = compose(
@@ -79,7 +78,7 @@ def world(client, table, files, allowed, *, now=None, calls=None):
         execution=execution, course_settings=course_settings, mapping_document=provider.mapping_document,
         clock=clock,
     )
-    adapter = TrackedCalculator(stage=composition.stage,
+    adapter = TrackedCalculator(stage=composition.stage, version=CURRENT_ADAPTER_VERSION,
                                 before_calculate=lambda loaded, binding: calls.append(deepcopy(binding)))
     service = composition.build_api()
     worker = composition.build_worker([adapter])
@@ -245,7 +244,8 @@ def test_pending_http_job_survives_new_api_worker_instances_and_keeps_old_epoch_
         token, peer = login(port), login(port)
         attempt = start(port, token)
         assert upload(port, token, attempt)[0] == 202
-        assert request(port, "DELETE", "/api/v2/session/", token=peer)[0] == 204
+        assert request(port, "POST", "/api/v2/dev/progress-reset/", token=peer,
+                       body={"clientRequestId": str(uuid.uuid4())})[0] == 204
     restored = world(journey.client, journey.table, journey.files, journey.allowed, now=journey.now, calls=journey.calls)
     with gateway(restored) as port:
         result = finish(restored, port, token, attempt)

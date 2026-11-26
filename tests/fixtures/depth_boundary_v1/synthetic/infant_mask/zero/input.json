@@ -1,0 +1,11 @@
+{
+  "condition": {
+    "mode": "training",
+    "target": "infant",
+    "training_type": "compression_only",
+    "guideline": "AHA2020",
+    "cpr_cycle_type": "302",
+    "is_2rescuers": false
+  },
+  "vp_event_list": []
+}

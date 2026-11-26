@@ -1,28 +1,39 @@
-# 원본 hstm_v2 data_handlers/data_parser.py (V1 패리티 보존)
-# 스펙 §4.5(I-1): 원본의 레거시 액션 분절기 generate_action_rtdata_list(원본 81-109행)는 미이식
-# (프로덕션 호출 0건 grep 재확인 — 실사용 분절기는 ActionDataPrepare.generate_action_rtdata_list).
-# 해당 제거로 ACTION_TYPE_COMP/ACTION_TYPE_VENT import도 정리.
 from config.enums import Actor
 from models.packet import CPRRTData, AEDTData
 from services.config import Config
+from config.constants import MAX_RAW_BYTES
+
+
+class RawInputRejected(ValueError):
+    def __init__(self, category, reason, status):
+        super().__init__(reason)
+        self.category = category
+        self.reason = reason
+        self.status = status
 
 
 class DataParser:
     CPR_PARSING_BYTES = 28
     AED_PARSING_BYTES = 10
 
+    def validate_cpr_bytes(self, cpr_byte_data: bytes) -> None:
+        if len(cpr_byte_data) > MAX_RAW_BYTES:
+            raise RawInputRejected("PAYLOAD_TOO_LARGE", "RAW_TOO_LARGE", 413)
+        if not cpr_byte_data:
+            raise RawInputRejected("INVALID_REQUEST", "EMPTY_RAW", 400)
+        if not self._validate_data_length(cpr_byte_data):
+            raise RawInputRejected("INVALID_REQUEST", "INVALID_RAW_LENGTH", 400)
+        if cpr_byte_data[0] != 0xA8:
+            raise RawInputRejected("INVALID_REQUEST", "INVALID_RAW_HEADER", 400)
+        if len(cpr_byte_data) % self.CPR_PARSING_BYTES == 20 and any(cpr_byte_data[-20:]):
+            raise RawInputRejected("INVALID_REQUEST", "NONZERO_RAW_TRAILER", 400)
+
     def parse_cpr_bytes(self, cpr_byte_data: bytes, config: Config) -> list[dict | CPRRTData]:
         rtdata_list = []
         # now = int(datetime.now(tz=pytz.UTC).timestamp() * 1000)
         # self.CPR_PARSING_BYTES = 20
 
-        if not self._validate_data_length(cpr_byte_data):
-            raise ValueError("Data length error")
-
-        try:
-            self._validate(cpr_byte_data[0], "cpr")
-        except ValueError:
-            return rtdata_list
+        self.validate_cpr_bytes(cpr_byte_data)
 
         vent_vol_compensation = config.calculation_config.get_vent_vol_compensation()
         chunks = [
@@ -38,12 +49,10 @@ class DataParser:
                     compression_depth=list(chunk[1:11]),
                     compression_rate=chunk[11],
                     compression_count=chunk[12],
-                    # F-5: hand_position 원바이트 도메인(값 의미) — 기기 스펙 확인 대기.
                     hand_position=chunk[13],
                     ventilation_volume=[c * vent_vol_compensation for c in chunk[14:16]],
                     ventilation_speed=self._translate_vent_speed(chunk[16]),
                     ventilation_count=chunk[17],
-                    # F-9: packet_sequence_num 미사용(파싱만) — 기기 스펙 확인 대기.
                     packet_sequence_num=chunk[18],
                     cycle_num=chunk[19],
                     timestamp=int.from_bytes(chunk[20:], "big"),
@@ -57,8 +66,6 @@ class DataParser:
         return rtdata_list
 
     def _validate_data_length(self, cpr_byte_data: bytes):
-        # F-4: 20바이트 꼬리 허용(len % 28 in [0, 20]) 근거 — 기기 스펙 확인 대기.
-        # 20바이트 꼬리 청크는 파싱 루프의 길이 검사에서 조용히 버려진다.
         return len(cpr_byte_data) % self.CPR_PARSING_BYTES in [0, 20]
 
     def parse_aed_bytes(self, aed_byte_data: bytes) -> list[dict | AEDTData]:
@@ -91,5 +98,4 @@ class DataParser:
             raise ValueError
 
     def _translate_vent_speed(self, value: int) -> int:
-        # F-3: 상위 1비트(0x80)를 버리는 마스킹 — 상위 비트 의미는 기기 스펙 확인 대기.
         return value & 127

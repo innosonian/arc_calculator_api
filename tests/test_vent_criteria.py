@@ -1,11 +1,10 @@
-# 원본: hstm_v2 tests/test_vent_criteria.py (ARC 각색 이식 — guideline ARC 계열로 교체.
-# 문서 조립(_build_result_by_criteria)·레거시 변환(_convert_result_to_legacy) 테스트는 §4 제거
-# 대상이라 미이식. ERC2020 child 케이스는 ARC2020 child로 각색(동일 계약: infant 외 None).)
-"""환기 판정 분포(VentilationRate·VentilationSpeed) 회귀 테스트.
+"""HSTM 문서 ResultByCriteria 환기 판정 분포(VentilationRate·VentilationSpeed) 회귀 테스트.
 
 CPR의 VentilationRate criteria는 V1 계산기와 동일하게 사이클 단위 분당 환기율
 판정으로 집계한다. VentilationSpeed는 infant 마네킨만 측정 가능하므로 infant 전
-훈련에서만 채우고, 그 외 조건(child CPR 포함)은 None으로 남긴다.
+훈련에서만 채우고, 그 외 조건(ERC2020 child CPR 포함)은 빈 키를 유지한다.
+V1이 ERC2020 child CPR에서 이 criteria를 채우던 것은 마네킨이 보고하지 않는
+필드(항상 0)를 판정한 무의미한 분포(100% TooFast)라 의도적으로 따르지 않는다.
 """
 
 from unittest import TestCase
@@ -15,13 +14,15 @@ from calculators.metric_evaluator import MetricEvaluator
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT
 from config.enums import Actor
 from config.score_weight import ScoreWeightFactory
+from services.legacy_document import _build_result_by_criteria
+from services.legacy_response import _convert_result_to_legacy
 from models.action import ActionWithScore
 from services.config import Config
 
 GOOD = {"grade": 100, "criterion": "good"}
 
 
-def _condition(training_type="cpr", target="adult", guideline="ARC2020"):
+def _condition(training_type="cpr", target="adult", guideline="AHA2020"):
     return {
         "mode": "training",
         "target": target,
@@ -68,7 +69,8 @@ def _vent_action(speed_criterion=None, actor=Actor.REAL_PERSON):
 
 
 def _cycle(actions, config, cycle_num=2, vent_rate_criterion=None):
-    # cycle_num 기본 2: 원본 테스트 구조 보존(원본은 ERC rescue vent 첫 사이클 회피 목적).
+    # cycle_num 기본 2: ERC2020 child/infant CPR의 첫 사이클은 rescue vent 판정이
+    # 걸리므로 본 사이클 기준으로 테스트한다.
     sw = ScoreWeightFactory.create(
         config.condition["target"], config.condition["training_type"], config.condition["guideline"]
     )
@@ -143,7 +145,7 @@ class TestCprVentRateCriteria(TestCase):
         self.assertEqual(100, metric["VentilationRate"]["%_InFrequently"])
 
     def test_unjudged_cycles_not_bucketed(self):
-        # 판정이 세팅되지 않은 사이클(VP 등)은 분포에 들어가지 않는다.
+        # 판정이 세팅되지 않은 사이클(rescue vent, VP 등)은 분포에 들어가지 않는다.
         config = Config(_condition())
         cycles = [_cycle([_comp_action()], config)]
         metric = _evaluate(config, [], cycles)
@@ -165,14 +167,14 @@ class TestVentSpeedInfantOnly(TestCase):
         ]
         metric = _evaluate(config, actions, [])
 
-        # 주의: 값이 지속시간(ms)이라 criterion "low"(짧음)→n_TooFast, "high"(김)→n_TooSlow로 매핑된다.
         self.assertEqual(1, metric["VentilationSpeed"]["n_Good"])
         self.assertEqual(1, metric["VentilationSpeed"]["n_TooFast"])
         self.assertEqual(1, metric["VentilationSpeed"]["n_TooSlow"])
 
-    def test_child_cpr_stays_none(self):
-        # child 마네킨은 환기 속도를 보고하지 않으므로 분포를 채우지 않는다.
-        config = Config(_condition(target="child"))
+    def test_erc2020_child_cpr_stays_none(self):
+        # V1은 ERC2020 child CPR에서 이 분포를 채우지만, child 마네킨이 보고하지
+        # 않는 필드의 0 판정(100% TooFast)이라 따르지 않는다.
+        config = Config(_condition(target="child", guideline="ERC2020"))
         metric = _evaluate(config, [_vent_action()], [])
         self.assertIsNone(metric["VentilationSpeed"])
 
@@ -180,3 +182,34 @@ class TestVentSpeedInfantOnly(TestCase):
         config = Config(_condition())
         metric = _evaluate(config, [_vent_action()], [])
         self.assertIsNone(metric["VentilationSpeed"])
+
+
+class TestResultByCriteriaVentSpeedKey(TestCase):
+    def test_dict_metric_mapped(self):
+        speed = {"n_Good": 3, "n_TooFast": 1, "n_TooSlow": 0}
+        result = {"metrics": {"VentilationSpeed": speed}}
+        criteria = _build_result_by_criteria({}, result)
+        self.assertEqual(speed, criteria["VentilationSpeed"])
+
+    def test_none_metric_keeps_empty_key(self):
+        # 사용자 승인 편차: ARC의 명시적 null 계약을 유지한다(hstm은 빈 객체).
+        result = {"metrics": {"VentilationSpeed": None}}
+        criteria = _build_result_by_criteria({}, result)
+        self.assertIsNone(criteria["VentilationSpeed"])
+
+
+class TestLegacyConversionVentSpeed(TestCase):
+    def _result(self):
+        return {"metrics": {"VentilationSpeed": {"n_Good": 1}}}
+
+    def test_adult_cpr_forced_none(self):
+        legacy = _convert_result_to_legacy(self._result(), _condition())
+        self.assertIsNone(legacy["metrics"]["VentilationSpeed"])
+
+    def test_erc2020_child_cpr_forced_none(self):
+        legacy = _convert_result_to_legacy(self._result(), _condition(target="child", guideline="ERC2020"))
+        self.assertIsNone(legacy["metrics"]["VentilationSpeed"])
+
+    def test_infant_cpr_preserved(self):
+        legacy = _convert_result_to_legacy(self._result(), _condition(target="infant"))
+        self.assertEqual({"n_Good": 1}, legacy["metrics"]["VentilationSpeed"])

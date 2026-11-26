@@ -1,7 +1,3 @@
-# 이식 출처: 원본 hstm_v2 services/calculate_cpr.py (97줄) — 동작 동일 이식.
-# 단계별 try/except·로그 블록은 _step 문맥 관리자 하나로 모았다(로그 이름·필드·순서·예외 전파
-# 동일). 예외는 make_calculate_result 프레임에서 잡히므로 저장 진단의 stacktrace 첫 프레임도
-# 원본과 같이 make_calculate_result 다(내부 함수·헬퍼 프레임이 끼지 않는다).
 import time
 
 from services.operational_logs import write_diagnostic
@@ -10,6 +6,7 @@ from data_handlers.chart_data import add_chart_data
 from services.calculators import calculate_cpr
 from services.calculation_context import CalculationExecutionContext
 from services.config import Config
+from services.guide_prompts import load_prompt_book
 from services.serializers import serialize_result
 
 
@@ -23,6 +20,7 @@ def make_calculate_result(
     *,
     execution_context: CalculationExecutionContext | None = None,
 ) -> dict:
+    prompt_book = load_prompt_book(config.condition.get("guideline"), (usage or {}).get("Regional_Option")) or {}
     start_time = time.time()
     _log(
         "info",
@@ -37,16 +35,13 @@ def make_calculate_result(
 
     # Observer failures stay inside the calculate_cpr step (existing diagnostic contract).
     with _step("calculate_cpr", "calc_complete"):
-        # D139: the owning adapter version's minimum-quantity option; a call
-        # without a context keeps the existing two-argument form (current rule).
-        policy_kwargs = ({} if execution_context is None
-                         else {"minimum_quantity_null": execution_context.options.minimum_quantity_null})
-        calculation_result = calculate_cpr(prepared_data, config, **policy_kwargs)
+        calculation_result = calculate_cpr(prepared_data, config)
         if execution_context is not None:
-            execution_context.observe_calculation(calculation_result)
+            evidence_kwargs = {"prepared_data": prepared_data} if execution_context.options.collect_gates else {}
+            execution_context.observe_calculation(calculation_result, **evidence_kwargs)
 
     with _step("serialize_result", "serialize_complete"):
-        response = serialize_result(calculation_result, condition=config.condition, usage=usage)
+        response = serialize_result(calculation_result, config.condition, usage, prompt_book)
 
     with _step("add_chart_data", "chart_complete"):
         context_kwargs = {} if execution_context is None else {"execution_context": execution_context}

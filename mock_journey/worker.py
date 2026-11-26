@@ -13,10 +13,10 @@ import time
 import uuid
 
 from mock_journey.contracts import (
-    MINIMUM_QUANTITY_REASON, VerifiedCalculation, VerifiedChart,
+    GATE_REASON, MINIMUM_QUANTITY_REASON, VerifiedCalculation, VerifiedChart,
     # input_binding/call_binding are defined in contracts and re-exported here.
     call_binding, expected_goal_status, expected_profile_version, gates_pass_on_minimum_quantity, input_binding,
-    is_versioned_goal, minimum_quantity_policy,
+    is_versioned_goal, minimum_quantity_policy, uses_round2_gates,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.course_errors import CourseError
@@ -54,22 +54,28 @@ class _RunContext:
 
 
 def _minimum_quantity_met(definition, verified):
-    """D139: whether the session meets the ARC minimum quantity (D07), for the adapters that gate the pass on it.
+    """Evaluate the adapter's quantity rule against the verified count source.
 
-    The counts are the core result's whole-session action_count and the rule
-    is the score policy's own predicate (contracts.minimum_quantity_policy):
-    ARC2020/ARC2025 CPR only, both groups at or above their minimum. Adapters
-    without the gate (their null policy already fails such a session) and
-    conditions outside the policy are always met. A core without valid
-    counts cannot be judged and is a contract error, never a pass.
+    v5 uses the whole-session D07 policy. v6 uses the saved definition, and
+    counts only learner actions in a two-rescuer program.
     """
     if not gates_pass_on_minimum_quantity(definition.get("adapter_version")):
         return True
     core = verified.core_result
-    counts = core.get("action_count") if type(core) is dict else None
+    round2 = uses_round2_gates(definition.get("adapter_version"))
+    if round2 and definition["condition"]["is_2rescuers"]:
+        counts = verified.learner_counts
+    else:
+        counts = core.get("action_count") if type(core) is dict else None
     if (type(counts) is not dict or set(counts) != {"comp", "vent"}
             or any(type(value) is not int or value < 0 for value in counts.values())):
         raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
+    if round2:
+        minimum = definition.get("minimumQuantity")
+        if (type(minimum) is not dict or set(minimum) != {"compressions", "ventilations"}
+                or any(type(value) is not int or value < 0 for value in minimum.values())):
+            raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
+        return counts["comp"] >= minimum["compressions"] and counts["vent"] >= minimum["ventilations"]
     return not minimum_quantity_policy(definition["condition"], counts["comp"], counts["vent"]).active
 
 
@@ -89,21 +95,32 @@ def evaluate(result, definition, verified):
     # The unchanged tester rule on the score, and (D139) the ARC minimum
     # quantity as a separate pass condition: a session below the minimum does
     # not pass even when its displayed overall meets the threshold.
-    score_passed = bool(_is_pass(result, None, None, None, definition["condition"]["target"]))
+    round2 = uses_round2_gates(adapter_version)
+    if round2 and verified.gates is None:
+        raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
+    if round2 and definition.get("assessment", {}).get("passRule") == "gates":
+        score_passed = not any(gate["passed"] is False for gate in verified.gates)
+        score_reason = GATE_REASON
+    else:
+        score_passed = bool(_is_pass(result, None, None, None, definition["condition"]["target"]))
+        score_reason = "SCORE_NOT_PASS"
     minimum_met = _minimum_quantity_met(definition, verified)
     passed = score_passed and minimum_met
     assessed_goal = {**goal, "observed": verified.observed, "met": met}
     if versioned_goal:
         assessed_goal["status"] = verified.goal_status
-    return {
+    evaluation = {
         "goal": assessed_goal,
         "score": {"decision": "pass" if passed else "fail"},
         "program_completed": False if pending else met and passed,
-        # Fixed order: goal reason, minimum quantity (D139), score.
+        # Fixed order: goal reason, minimum quantity, selected pass-rule failure.
         "reason_codes": (["GOAL_POLICY_UNRESOLVED"] if pending else [] if met else ["GOAL_NOT_MET"])
                         + ([] if minimum_met else [MINIMUM_QUANTITY_REASON])
-                        + ([] if score_passed else ["SCORE_NOT_PASS"]),
+                        + ([] if score_passed else [score_reason]),
     }
+    if round2:
+        evaluation["gates"] = verified.gates
+    return evaluation
 
 
 class JourneyWorker:

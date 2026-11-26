@@ -14,7 +14,7 @@ import time
 
 from mock_journey.auth import AuthManager
 from mock_journey.calculation import CalculationService
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_key, definition_keys
+from mock_journey.catalog import Catalog, definition_key, definition_keys, program_targets
 from mock_journey.contracts import CalculatorRegistry
 from mock_journey.dispatch import OutboxRelay, QueueSender
 from mock_journey.jobs import DynamoJobRepository
@@ -52,7 +52,7 @@ _DEFINITION_SCHEMA = definition_core_schema()
 
 
 class ExecutionCatalog:
-    """Snapshot all 15 supplied definitions and explicit projection schemas.
+    """Snapshot all supplied definitions and explicit projection schemas.
 
     No definition, metric field, score, input mapping or old version is filled
     in automatically. Caller-owned dictionaries cannot change accepted input
@@ -87,12 +87,11 @@ class ExecutionCatalog:
             self._definitions = MappingProxyType(definition_bytes)
             catalog = Catalog(self)
             bindings = set()
-            for program, *_ in PROGRAMS:
-                for target in TARGETS:
-                    definition = typed.parse_json(catalog.definition(program, target))
-                    if definition["projection_version"] not in schema_bytes:
-                        raise _invalid()
-                    bindings.add((definition["adapter_version"], definition["projection_version"]))
+            for program, target in program_targets():
+                definition = typed.parse_json(catalog.definition(program.id, target))
+                if definition["projection_version"] not in schema_bytes:
+                    raise _invalid()
+                bindings.add((definition["adapter_version"], definition["projection_version"]))
             self._schema_bytes = MappingProxyType(schema_bytes)
             self._required_bindings = tuple(sorted(bindings))
         except Exception:
@@ -147,7 +146,8 @@ def _build_core(settings, *, dynamodb_client, s3_client, legacy_bindings, resume
     # Every failure below surfaces as the same sanitized _invalid(), so
     # building the state before the key-validating AuthManager is not observable.
     state = _state(settings.state, dynamodb_client, clock)
-    auth = AuthManager(state, settings.environment, resume_keys, current_key_version, clock=clock)
+    auth = AuthManager(state, settings.environment, resume_keys, current_key_version,
+                       clock=clock, settings=settings.session)
     storage = _storage(settings.storage, s3_client, legacy_bindings)
     jobs = DynamoJobRepository(state, course_blobs=blob_store if blob_store is not None else CourseBlobStore(storage))
     calculation = CalculationService(state, jobs, storage, execution.schemas,
@@ -159,7 +159,7 @@ def build_course_application(settings, *, dynamodb_client, s3_client, legacy_bin
                              current_key_version, execution, provider, course_settings,
                              clock=time.time, operations=None, uuid_factory=None,
                              mapping_document=None, dummy_learner=None, blob_store=None):
-    """API role: the /api/v2 course application over the approved 15-definition catalog."""
+    """API role: the /api/v2 course application over the explicit execution catalog."""
     import uuid as uuid_module
     try:
         journey = _build_core(

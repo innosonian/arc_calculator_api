@@ -17,11 +17,11 @@ def largest_bundle_bytes(settings):
                for binding in provider.list_assignments(provider.learner))
 
 
-def test_valid_limits_return_the_full_fifteen_course_provider():
+def test_valid_limits_return_the_full_four_course_provider():
     provider = validate_dummy_catalog(fixture_course_settings(), execution=execution_catalog(), artifact_bytes=8_000_000)
     assert type(provider) is DummyDevCourseProvider
     assignments = provider.list_assignments(provider.learner)
-    assert [binding.public_ids.course_id for binding in assignments] == list(range(910001, 910016))
+    assert [binding.public_ids.course_id for binding in assignments] == list(range(911001, 911005))
 
 
 def test_transaction_action_floor_is_the_final_assessment_write_set():
@@ -47,8 +47,8 @@ def test_every_serialized_bundle_must_fit_the_artifact_quota_exactly():
     (None, 8_000_000), ({"max_course_items": 64}, 8_000_000),
     (fixture_course_settings(), 0), (fixture_course_settings(), -1),
     (fixture_course_settings(), True), (fixture_course_settings(), 8_000_000.0),
-    (replace(fixture_course_settings(), max_course_items=1), 8_000_000),
-    (replace(fixture_course_settings(), max_assignments=14), 8_000_000),
+    (replace(fixture_course_settings(), max_course_items=5), 8_000_000),
+    (replace(fixture_course_settings(), max_assignments=3), 8_000_000),
     (replace(fixture_course_settings(), max_bundle_bytes=100), 8_000_000),
 ])
 def test_untyped_or_too_small_limits_fail_with_one_fixed_message(settings, artifact_bytes):

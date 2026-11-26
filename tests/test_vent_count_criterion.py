@@ -25,6 +25,7 @@ def _comp():
     data = {
         "action_type": ACTION_TYPE_COMP, "compression_count": 1, "ventilation_count": 0,
         "handsoff_ms": 0, "total_action_ms": 400, "compression_depth": [50] * 10,
+        "depth_raw": 100, "recoil_raw": 0, "peak_record": 1, "peak_offset": 3,
     }
     return ActionWithScore(
         ACTION_TYPE_COMP, data, {k: GOOD for k in ("comp_depth", "comp_rate", "recoil", "hand_position")},

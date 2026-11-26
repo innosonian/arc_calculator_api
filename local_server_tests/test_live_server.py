@@ -3,7 +3,7 @@
 This file deliberately lives outside tests/: the unit suite's AWS monkeypatch
 must not be the reason the executable is safe. No application/test store is
 injected. Every request in these tests crosses a real loopback TCP connection
-to the default local server, which serves only /api/v2 with the 15 temporary
+to the default local server, which serves only /api/v2 with four temporary
 Dummy Dev courses. The prerequisites must be installed beforehand; tests never
 download software.
 
@@ -13,7 +13,7 @@ can load this file on its own (tests/test_local_validation_runner.py).
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import http.client
 import json
@@ -40,16 +40,22 @@ MARKER = "PRIVATE-LOCAL-ACCEPTANCE-MARKER"
 DUMMY_LOGIN = {"loginId": "test@test.com", "password": "2222"}
 COURSES_PATH = "/api/v2/courses/progress/?page=1&pageSize=100"
 MULTIPART_BOUNDARY = "arc-live-acceptance-boundary"
-# Independent expectations for the Dummy Dev catalog (mock_journey/dev_course.py
-# numbering): program order, display name and approved goal.
-PROGRAMS = (
-    ("mock-cpr", "CPR Training", "cycles", 3),
-    ("mock-compression-only", "Chest Compression Only", "compressions", 60),
-    ("mock-ventilation-only", "Ventilation Only", "ventilations", 8),
-    ("mock-two-rescuer-cpr", "2-Rescuer CPR", "cycles", 8),
-    ("mock-two-rescuer-aed", "2-Rescuer CPR with AED-T", "cycles", 10),
-)
-TARGETS = ("adult", "child", "infant")
+# Independent expectations for the Round 2 Dummy catalog and skill order.
+SKILLS = {
+    "BLS": (
+        ("bls-compressions-60", "compressions", 60),
+        ("bls-ventilations-12", "ventilations", 12),
+        ("bls-cpr-3", "cycles", 3),
+        ("bls-2r-cpr-8", "cycles", 8),
+        ("bls-2r-cpr-aed-8", "cycles", 8),
+    ),
+    "CPR_AED": (
+        ("lay-compressions-30", "compressions", 30),
+        ("lay-breaths-5x2", "ventilations", 10),
+        ("lay-cpr-3", "cycles", 3),
+        ("lay-aed-cpr-1", "cycles", 1),
+    ),
+}
 HEALTH_KEYS = ["service", "mode", "calculator_available", "login_path", "programs_path",
                "calculation_transport_configured", "program_target_combinations", "completion_policy",
                "operational_logs"]
@@ -76,12 +82,26 @@ def free_port():
 
 @dataclass(frozen=True)
 class DummyCourse:
-    program: str
-    name: str
-    kind: str
-    required: int
+    course_type: str
     target: str
     number: int
+    practice: int = 1
+
+    @property
+    def skills(self):
+        return SKILLS[self.course_type]
+
+    @property
+    def program(self):
+        return self.skills[self.practice - 1][0]
+
+    @property
+    def kind(self):
+        return self.skills[self.practice - 1][1]
+
+    @property
+    def required(self):
+        return self.skills[self.practice - 1][2]
 
     @property
     def course_id(self):
@@ -97,25 +117,30 @@ class DummyCourse:
 
     @property
     def practice_link_id(self):
-        return 940000 + self.number * 10 + 1
+        return 940000 + self.number * 10 + self.practice
 
     @property
     def final_link_id(self):
-        return 940000 + self.number * 10 + 2
+        return 940000 + self.number * 10 + len(self.skills) + 1
 
     @property
     def title(self):
-        return f"[Dummy Dev] {self.name} ({self.target})"
+        return f"[Dummy Dev] {self.course_type.replace('_', '-')} ({self.target})"
 
 
 def dummy_courses():
-    return [DummyCourse(program, name, kind, required, target, index * len(TARGETS) + position + 1)
-            for index, (program, name, kind, required) in enumerate(PROGRAMS)
-            for position, target in enumerate(TARGETS)]
+    return [DummyCourse(course_type, target, number)
+            for number, (course_type, target) in enumerate(
+                (("BLS", "adult"), ("BLS", "infant"), ("CPR_AED", "adult"), ("CPR_AED", "infant")), 1001)]
 
 
-def dummy_course(program="mock-compression-only", target="adult"):
-    matches = [course for course in dummy_courses() if (course.program, course.target) == (program, target)]
+def dummy_skills():
+    return [replace(course, practice=position) for course in dummy_courses()
+            for position in range(1, len(course.skills) + 1)]
+
+
+def dummy_course(program="bls-compressions-60", target="adult"):
+    matches = [course for course in dummy_skills() if (course.program, course.target) == (program, target)]
     require(len(matches) == 1, "Unknown Dummy Dev course requested by the test.")
     return matches[0]
 
@@ -428,7 +453,7 @@ def test_health_and_root_describe_the_v2_course_api_without_user_state(live):
                 and value["calculator_available"] is True and value["calculation_transport_configured"] is True
                 and value["login_path"] == "/api/v2/sessions/"
                 and value["programs_path"] == "/api/v2/courses/progress/"
-                and value["program_target_combinations"] == 15, "Status must disclose the supported v2 scope.")
+                and value["program_target_combinations"] == 18, "Status must disclose the supported v2 scope.")
         require(value["completion_policy"] == {"cycles": "evaluated", "compressions": "evaluated",
                                                "ventilations": "evaluated"},
                 "CPR completion follows the D136 cycle rule; every goal kind is evaluated.")
@@ -443,6 +468,7 @@ def test_health_and_root_describe_the_v2_course_api_without_user_state(live):
     ({"loginId": "test@test.com", "password": ""}, 400, "INVALID_REQUEST"),
     # Only the Dummy login exists locally; other IDs wait for the ARC contract.
     ({"loginId": "TEST@test.com", "password": "2222"}, 503, "CONTRACT_PENDING"),
+    ({"grant": "arc_oidc", "idToken": MARKER, "accessToken": MARKER}, 503, "CONTRACT_PENDING"),
     ({"loginId": "test@test.com", "password": "2222", "extra": MARKER}, 400, "INVALID_REQUEST"),
     ({"login_id": "test@test.com", "password": "2222"}, 400, "INVALID_REQUEST"),
     (b'{"loginId":"test@test.com","password":"2222","password":"2222"}', 400, "INVALID_REQUEST"),
@@ -468,28 +494,33 @@ def test_real_login_contract_and_exact_catalog_types(live):
     expiry = datetime.fromisoformat(first["expiresAt"].replace("Z", "+00:00"))
     require(86395 <= (expiry - before).total_seconds() <= 86405, "Real session expiry differs from 24 hours.")
     session = live.request("GET", "/api/v2/session/", token=first["accessToken"]).data()
-    require(session == {key: first[key] for key in ("sessionId", "expiresAt", "learningAvailability")},
-            "Session view differs from the login response.")
+    expected_session = {key: first[key] for key in ("sessionId", "expiresAt", "learningAvailability")}
+    expected_session.update(organizations=[], organizationId=None, inactivityLogoutSeconds=None, hardCapSeconds=None)
+    require(session == expected_session, "Session view must add only the default Round 2 metadata.")
     reply = live.request("GET", COURSES_PATH, token=first["accessToken"])
     require(reply.headers.get("Cache-Control") == "no-store", "Course response became cacheable.")
     value = reply.data()
-    require(value["count"] == 15 and value["next"] is None and value["previous"] is None,
-            "Dummy login must list exactly the 15 temporary courses.")
+    require(value["count"] == 4 and value["next"] is None and value["previous"] is None,
+            "Dummy login must list exactly four temporary courses.")
     expected = dummy_courses()
     require([row["courseId"] for row in value["results"]] == [course.course_id for course in expected],
             "Dummy Dev course IDs or order changed.")
     for row, course in zip(value["results"], expected):
-        require(row["courseName"] == course.title and row["enrollmentId"] == course.enrollment_id
+        require(row["courseName"] == course.title and row["courseType"] == course.course_type
+                and row["enrollmentId"] == course.enrollment_id
                 and row["progressId"] == course.progress_id and row["certificationType"] is None,
                 "Dummy Dev course identity changed.")
         require([(item["id"], item["itemType"], item["displayOrder"]) for item in row["summary"]]
-                == [(950000 + course.number * 10 + 1, "training", 1), (950000 + course.number * 10 + 2, "assessment", 2)],
-                "Each temporary course must be practice then final assessment.")
+                == [(950000 + course.number * 10 + position,
+                     "training" if position <= len(course.skills) else "assessment", position)
+                    for position in range(1, len(course.skills) + 2)],
+                "Each temporary course must list its practices then one final assessment.")
         require(type(row["learningAvailability"]) is dict, "Course availability must be an object.")
     require(live.courses(second["accessToken"]) == value, "Concurrent sessions do not observe the same courses.")
     detail = live.course(first["accessToken"], dummy_course())
     require([item["courseItemLinkId"] for item in detail["courseItems"]]
-            == [dummy_course().practice_link_id, dummy_course().final_link_id], "Course item links changed.")
+            == list(range(dummy_course().practice_link_id, dummy_course().final_link_id + 1)),
+            "Course item links changed.")
     require(type(detail["definitionHash"]) is str and len(detail["definitionHash"]) == 64,
             "Course detail must expose the pinned definition hash.")
 
@@ -506,29 +537,51 @@ def test_concurrent_logins_do_not_reset_shared_progress_or_share_tokens(live):
             "Concurrent login reset the shared progress epoch.")
 
 
-def test_logout_resets_once_preserves_other_session_and_survives_process_restart(live):
+def test_logout_preserves_shared_progress_and_survives_process_restart(live):
+    course = dummy_course()
+    token_a, token_b = live.token(), live.token()
+    live.complete_practice(token_b, course)
+    before = live.course(token_b, course)
+    require(live.item(token_b, course)["isCompleted"] is True, "Precondition: completed practice.")
+    for _ in range(2):
+        require(live.request("DELETE", "/api/v2/session/", token=token_a).status == 204,
+                "Logout and receipt replay must succeed.")
+        error(live.request("GET", "/api/v2/session/", token=token_a), 403, "SESSION_REVOKED")
+        require(live.course(token_b, course) == before, "Logout must preserve shared completion.")
+    live.stop()
+    live.start()
+    require(live.course(token_b, course) == before, "Restart must preserve completion after logout.")
+    error(live.request("GET", "/api/v2/session/", token=token_a), 403, "SESSION_REVOKED")
+
+
+def test_explicit_reset_preserves_other_session_and_survives_process_restart(live):
     course = dummy_course()
     token_a, token_b = live.token(), live.token()
     live.complete_practice(token_b, course)
     require(live.item(token_b, course)["isCompleted"] is True, "Precondition: completed practice.")
+    reset_request = {"clientRequestId": str(uuid.uuid4())}
+    require(live.request("POST", "/api/v2/dev/progress-reset/", token=token_b,
+                         body=reset_request).status == 204, "Explicit reset must succeed.")
     reply = live.request("DELETE", "/api/v2/session/", token=token_a)
     require(reply.status == 204 and reply.body == b"", "Logout must return an empty 204.")
     error(live.request("GET", "/api/v2/session/", token=token_a), 403, "SESSION_REVOKED")
     # The surviving session sees the new epoch as waiting until it refreshes.
     waiting = live.request("GET", "/api/v2/session/", token=token_b).data()
     require(waiting["learningAvailability"] == {"state": "waiting", "reason": "arc_progress_unavailable"},
-            "Logout did not reset the shared epoch.")
+            "Explicit reset did not change the shared epoch.")
     error(live.request("GET", COURSES_PATH, token=token_b), 503, "ARC_PROGRESS_UNAVAILABLE")
     refreshed = live.refresh(token_b)
     require(refreshed["learningAvailability"] == {"state": "ready", "reason": None}, "Refresh did not recover.")
     after = live.course(token_b, course)
-    require([item["isCompleted"] for item in after["courseItems"]] == [False, False],
+    require(all(item["isCompleted"] is False for item in after["courseItems"]),
             "The new epoch must not keep the previous completion.")
     require(live.request("DELETE", "/api/v2/session/", token=token_a).status == 204, "Logout replay failed.")
+    require(live.request("POST", "/api/v2/dev/progress-reset/", token=token_b,
+                         body=reset_request).status == 204, "Reset replay failed.")
     # A second reset would put the surviving session back into waiting (503).
     require(live.request("GET", "/api/v2/session/", token=token_b).data() == refreshed,
-            "Logout replay reset the shared epoch again.")
-    require(live.course(token_b, course) == after, "Logout replay reset progress again.")
+            "Receipt replay reset the shared epoch again.")
+    require(live.course(token_b, course) == after, "Receipt replay reset progress again.")
     live.stop()
     live.start()
     require(live.request("GET", "/api/v2/session/", token=token_b).status == 200,

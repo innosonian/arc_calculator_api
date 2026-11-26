@@ -10,13 +10,14 @@ import uuid
 
 import pytest
 
+from mock_journey.auth import PRINCIPAL as DUMMY_PRINCIPAL
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.state import DynamoStateRepository
 from tests.journey_support import create_journey_table, decode_item, encode_item
 from tests.legacy_attempt_seeds import Clock, seed_legacy_attempt, seed_legacy_session
 
 
-PRINCIPAL = "local-dummy-principal"
+PRINCIPAL = DUMMY_PRINCIPAL
 SLOT = "mock-cpr:adult"
 # Synthetic interface fixture, not a configured runtime definition.
 DEFINITION_JSON = json.dumps({

@@ -1,4 +1,3 @@
-# 원본: hstm_v2 tests/test_action_actor.py (ARC 각색 이식 — guideline만 ARC2025로 교체)
 from unittest import TestCase
 
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT
@@ -21,7 +20,7 @@ class TestActionActor(TestCase):
     def setUp(self):
         self.prep = ActionDataPrepare(Config({
             "mode": "training", "target": "adult", "training_type": "cpr",
-            "guideline": "ARC2025", "cpr_cycle_type": "302", "is_2rescuers": True,
+            "guideline": "AHA2020", "cpr_cycle_type": "302", "is_2rescuers": True,
         }))
 
     def test_comp_actor_is_signal_owner_not_idle(self):

@@ -1,0 +1,24 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "records": 2074,
+  "ventilations": [],
+  "cycles": [
+    {
+      "part": 1,
+      "cycle": 1,
+      "comp": 120,
+      "vent": 0,
+      "calc_case": "only_comp",
+      "actor_type": "ONLY:RP"
+    }
+  ],
+  "closed_cycles": 0,
+  "learner_counts": {
+    "comp": 120,
+    "vent": 0
+  },
+  "action_count": {
+    "comp": 120,
+    "vent": 0
+  }
+}

@@ -1,4 +1,4 @@
-from calculators.cycle_evaluator import CycleWithScore, NullPolicy
+from calculators.cycle_evaluator import CycleWithScore
 from config.borders import rise_linear_get_point
 from config.calculation_config import BaseCalculationConfig
 from config.constants import (
@@ -17,9 +17,9 @@ from util.custom_math import custom_round
 def calculate_total_score(
     cycle_with_score_list: list[CycleWithScore],
     config: Config,
-    null_policy: NullPolicy | None = None,
+    *,
+    allow_zero_duration: bool = False,
 ) -> dict:
-    null_policy = null_policy or NullPolicy.inactive()
     sum_score_ccf = 0
     sum_score_comp_depth = 0
     sum_score_comp_no = 0
@@ -96,16 +96,12 @@ def calculate_total_score(
             sum_score_ccf += cycle_with_score.score_ccf
 
         if cycle_with_score.can_calc_comp():
-            if not null_policy.chest_null:
-                sum_score_comp_depth += cycle_with_score.score_comp_depth
+            sum_score_comp_depth += cycle_with_score.score_comp_depth
             if calculation_config.is_cpr():
-                if not null_policy.chest_null:
-                    sum_score_comp_no += cycle_with_score.score_comp_no
+                sum_score_comp_no += cycle_with_score.score_comp_no
             sum_score_comp_rate += cycle_with_score.score_comp_rate
-            if not null_policy.chest_null:
-                sum_score_hand_position += cycle_with_score.score_hand_position
-            if not null_policy.chest_null:
-                sum_score_recoil += cycle_with_score.score_recoil
+            sum_score_hand_position += cycle_with_score.score_hand_position
+            sum_score_recoil += cycle_with_score.score_recoil
 
         if cycle_with_score.can_calc_vent():
             # 환기 0회 사이클(압박만 있고 환기 없는 중간 CPR 사이클)은 vol/rate가 None일 수 있다.
@@ -121,8 +117,7 @@ def calculate_total_score(
             if cycle_with_score.score_vent_count is not None:
                 sum_score_vent_count += cycle_with_score.score_vent_count
 
-        if not null_policy.both_null:
-            sum_overall += cycle_with_score.overall()
+        sum_overall += cycle_with_score.overall()
 
         if config.calculation_config.is_infant() and cycle_with_score.score_vent_speed is not None:
             sum_score_vent_speed += cycle_with_score.score_vent_speed
@@ -158,7 +153,8 @@ def calculate_total_score(
     if calculation_config.is_cpr():
         score_ccf = sum_score_ccf / total_cycle_count if total_cycle_count else score_ccf
     elif calculation_config.is_cco():
-        ccf = int(((sum_total_ms - sum_total_handsoff) / sum_total_ms) * 100)
+        # Only R1 accepts zero elapsed time; preserve the legacy calculation failure.
+        ccf = 0 if allow_zero_duration and not sum_total_ms else int(((sum_total_ms - sum_total_handsoff) / sum_total_ms) * 100)
         score_ccf = rise_linear_get_point(config.border, "ccf_comp", ccf)["grade"]
 
     # 환기 지표(vol/count/speed)는 환기 사이클 수로 나눈다 — comp(comp_cycle_count)·vent_rate와
@@ -224,16 +220,14 @@ def calculate_total_score(
 
     _adj_custom_round(result)
 
-    return _apply_null_policy(calculation_config, null_policy, result)
+    return result
 
 
 def calculate_part_score(
     cycle_with_score_list: list[CycleWithScore],
     part_num: int,
     config: Config,
-    null_policy: NullPolicy | None = None,
 ) -> dict:
-    null_policy = null_policy or NullPolicy.inactive()
     sum_score_ccf = 0
     sum_score_comp_depth = 0
     sum_score_comp_no = 0
@@ -250,7 +244,7 @@ def calculate_part_score(
     comp_cycle_count = len([1 for c in cycle_with_score_list if c.can_calc_comp()])
     vent_cycle_count = len([1 for c in cycle_with_score_list if c.can_calc_vent()])
 
-    if not comp_cycle_count and vent_cycle_count and not null_policy.active:
+    if not comp_cycle_count and vent_cycle_count:
         return {
             "score_comp_depth": 0,
             "score_comp_rate": 0,
@@ -276,8 +270,7 @@ def calculate_part_score(
             sum_score_vent_rate = cycle_with_score.score_vent_rate
             sum_score_vent_speed = cycle_with_score.score_vent_speed
             sum_score_vent_vol = cycle_with_score.score_vent_vol
-            if not null_policy.both_null:
-                sum_overall += cycle_with_score.overall()
+            sum_overall += cycle_with_score.overall()
             continue
         elif cycle_with_score.did_rescue_vent is False:
             score_rescue_vent = 0
@@ -289,16 +282,12 @@ def calculate_part_score(
             and cycle_with_score.calculation_config.is_contain_comp()
             and cycle_with_score.calc_case in [CALC_CASE_CPR, CALC_CASE_ONLY_COMP]
         ):
-            if not null_policy.chest_null:
-                sum_score_comp_depth += cycle_with_score.score_comp_depth
+            sum_score_comp_depth += cycle_with_score.score_comp_depth
             if cycle_with_score.calc_case == CALC_CASE_CPR:  # 임시 조치 2025/03/11  Author: David INNO-617
-                if not null_policy.chest_null:
-                    sum_score_comp_no += cycle_with_score.score_comp_no
+                sum_score_comp_no += cycle_with_score.score_comp_no
             sum_score_comp_rate += cycle_with_score.score_comp_rate
-            if not null_policy.chest_null:
-                sum_score_hand_position += cycle_with_score.score_hand_position
-            if not null_policy.chest_null:
-                sum_score_recoil += cycle_with_score.score_recoil
+            sum_score_hand_position += cycle_with_score.score_hand_position
+            sum_score_recoil += cycle_with_score.score_recoil
 
         if cycle_with_score.can_calc_vent() and cycle_with_score.calc_case in [
             CALC_CASE_CPR,
@@ -313,8 +302,7 @@ def calculate_part_score(
             if cycle_with_score.score_vent_vol is not None:
                 sum_score_vent_vol += cycle_with_score.score_vent_vol
 
-        if not null_policy.both_null:
-            sum_overall += cycle_with_score.overall()
+        sum_overall += cycle_with_score.overall()
 
         if config.calculation_config.is_infant() and cycle_with_score.score_vent_speed is not None:
             sum_score_vent_speed += cycle_with_score.score_vent_speed
@@ -361,8 +349,7 @@ def calculate_part_score(
         "overall": custom_round(sum_overall / total_cycle_count) if total_cycle_count else None,
     }
 
-    result = _adj_field_value(config.calculation_config, result)
-    return _apply_null_policy(config.calculation_config, null_policy, result)
+    return _adj_field_value(config.calculation_config, result)
 
 
 def _adj_field_value(calculation_config: BaseCalculationConfig, data: dict) -> dict:
@@ -380,24 +367,6 @@ def _adj_field_value(calculation_config: BaseCalculationConfig, data: dict) -> d
         ):
             result[k] = None
 
-    return result
-
-
-def _apply_null_policy(calculation_config: BaseCalculationConfig, null_policy: NullPolicy, data: dict) -> dict:
-    """Null only the approved CPR groups; reference zero/null branches stay intact."""
-    if not calculation_config.is_cpr() or not null_policy.active:
-        return data
-    result = dict(data)
-    if null_policy.chest_null:
-        for key in ("score_comp_depth", "score_comp_no", "score_comp_count", "score_recoil", "score_hand_position"):
-            if key in result:
-                result[key] = None
-    if null_policy.vent_null:
-        for key in ("score_vent_vol", "score_vent_rate", "score_vent_count", "score_vent_speed"):
-            if key in result:
-                result[key] = None
-    if null_policy.both_null and "overall" in result:
-        result["overall"] = None
     return result
 
 

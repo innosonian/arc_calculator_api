@@ -233,6 +233,8 @@ class CourseService:
             raise CourseError("TEMPORARILY_UNAVAILABLE")
         if view.inventory.state != "ready":
             raise CourseError("ARC_PROGRESS_UNAVAILABLE")
+        if view.gate.state == "expired":
+            raise CourseError("ASSIGNMENT_EXPIRED")
         if view.gate.state == "reconciliation_required":
             raise CourseError("PROGRESS_RECONCILIATION_REQUIRED")
         if view.gate.state != "ready":

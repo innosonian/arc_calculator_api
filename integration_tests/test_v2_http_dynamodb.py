@@ -46,11 +46,10 @@ class SwitchableProvider:
 @pytest.fixture
 def journey(dynamodb_client):
     from mock_journey.course_settings import fixture_course_settings
-    from mock_journey.dev_course import DummyDevCourseProvider
-    from mock_journey.execution_definitions import execution_catalog
+    from tests.legacy_dummy_catalog import LegacyDummyCourseProvider, legacy_execution_catalog
 
-    provider = SwitchableProvider(DummyDevCourseProvider(settings=fixture_course_settings(),
-                                                         execution=execution_catalog()))
+    provider = SwitchableProvider(LegacyDummyCourseProvider(settings=fixture_course_settings(),
+                                                         execution=legacy_execution_catalog()))
     with dynamodb_local_store(dynamodb_client) as store:
         yield V2Journey(store, provider=provider)
 
@@ -66,7 +65,7 @@ def status(h, method, path, token=None, body=None):
     return reply.status, (reply.body if reply.status != 204 else None)
 
 
-def test_real_http_replay_logout_receipt_shared_epoch_and_cross_session_privacy(journey):
+def test_real_http_replay_reset_logout_receipt_and_cross_session_privacy(journey):
     h = journey
     a, b = h.login(), h.login()
     definition_hash = h.course(a.token, COURSE)["definitionHash"]
@@ -89,12 +88,15 @@ def test_real_http_replay_logout_receipt_shared_epoch_and_cross_session_privacy(
     assert status(h, "GET", path, b.token)[0] == 404
     before = h.store.row(*USER)
     assert h.store.row(f"ATTEMPT#{attempt['attemptId']}", "META")["epoch"] == before["epoch"]
-    assert status(h, "DELETE", "/api/v2/session/", a.token)[0] == 204
+    assert status(h, "POST", "/api/v2/dev/progress-reset/", a.token,
+                  {"clientRequestId": str(uuid.uuid4())})[0] == 204
     after = h.store.row(*USER)
     assert after["epoch"] != before["epoch"] and after["revision"] == before["revision"] + 1
+    assert status(h, "DELETE", "/api/v2/session/", a.token)[0] == 204
+    assert h.store.row(*USER) == after  # Logout only revokes the calling session.
     assert status(h, "GET", "/api/v2/session/", b.token)[0] == 200  # The shared epoch moved; b stays signed in.
     rows = h.store.rows()
-    assert status(h, "DELETE", "/api/v2/session/", a.token)[0] == 204  # Logout receipt, no second reset.
+    assert status(h, "DELETE", "/api/v2/session/", a.token)[0] == 204  # Replayed logout receipt.
     assert h.store.rows() == rows
     revoked_status, revoked = status(h, "GET", "/api/v2/session/", a.token)
     assert revoked_status == 403 and revoked["error"]["code"] == "SESSION_REVOKED"

@@ -1,0 +1,15 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "decision": "D142 S4 (user-approved 2026-11-26)",
+  "generation_commit": "81252de2605a0b4df5f8fc69bd9934c3e5deadba",
+  "generator": "tests/test_action_vectors.py replay()",
+  "source": {
+    "raw": "tests/dataset/cpr_eof_truncated_vent_1.bin",
+    "aed": null
+  },
+  "sha256": {
+    "raw.bin": "f6b57655674d47757872e27586048b842af3dbf6fa82e31f967925b385951b86",
+    "input.json": "b6c52bdeda062a01c4f09f6a44f62ae945ffd1844d321eb46cb0e827e3be521c",
+    "expected.json": "d17a9726a5ca1dbce9bf0655de866b5e9317e230f7b3adc2381961b0721f267d"
+  }
+}

@@ -40,13 +40,13 @@ _STATUS_BODY = {
     "login_path": "/api/v2/sessions/", "programs_path": "/api/v2/courses/progress/",
 }
 # Diagnostic facts of a supervised local journey, derived from the catalog
-# (5 programs x 3 targets = 15) and the current adapter's goal status per
+# (9 programs x 2 targets = 18) and the current adapter's goal status per
 # goal kind (every kind evaluated under the D136 cycle rule; the D138 adapter
 # does not change it). The goal kinds are listed in the order the catalog
-# first names them: cycles, compressions, ventilations.
+# first names them: compressions, ventilations, cycles.
 _PROGRAM_TARGET_COMBINATIONS = len(definition_keys())
 _COMPLETION_POLICY = tuple((kind, expected_goal_status(kind, CURRENT_ADAPTER_VERSION))
-                           for kind in dict.fromkeys(program[2] for program in PROGRAMS))
+                           for kind in dict.fromkeys(program.kind for program in PROGRAMS))
 # Local listener sizing only; not a deployment or AWS setting.
 _WAITRESS_THREADS = 4
 _CONNECTION_LIMIT = 32

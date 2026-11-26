@@ -241,6 +241,9 @@ def _parse_multipart_body(request_body: str, headers: dict, is_base64_encoded: b
                     result["vp_event_list"] = json.loads(payload.decode(part.get_content_charset("utf-8")))
                 except Exception:
                     result["vp_event_list"] = []
+            elif name == "hand_position_board":
+                # D143: any value is kept as text; mock_journey.projection maps unknown ones to "unknown".
+                result["hand_position_board"] = payload.decode("utf-8", "replace")
             elif name in _HSTM_TOP_LEVEL_KEYS:
                 try:
                     result[name] = json.loads(payload.decode(part.get_content_charset("utf-8")))

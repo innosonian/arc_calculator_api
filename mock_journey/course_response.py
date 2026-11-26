@@ -12,8 +12,8 @@ pass that code explicitly. A succeeded calculation missing a stored component is
 from mock_journey.course_contracts import (
     APP_ROUTES, ATTEMPT_STATES, ATTEMPT_VIEW_FIELDS, AVAILABILITY_FIELDS, CALCULATION_STATUSES,
     CALCULATION_VIEW_FIELDS, CHART_LINK_FIELDS, CONDITION_KEYS, CONTENT_START_VIEW_FIELDS,
-    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS, COURSE_STATUSES,
-    ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE, EXCLUSION_REASON_ORDER, FILE_DETAIL_FIELDS,
+    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_ITEM_SKILL_FIELDS, COURSE_LIST_ROW_FIELDS, COURSE_STATUSES,
+    ENROLLMENT_ADDITIONAL_FIELDS, ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE, EXCLUSION_REASON_ORDER, FILE_DETAIL_FIELDS,
     FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS, LOGIN_EXTRA_FIELDS, PAGE_DEFAULT,
     PROGRESS_APPLICATIONS, PROGRESS_RECEIPT_FIELDS, RECEIPT_FORBIDDEN_KEYS, SESSION_VIEW_FIELDS,
     START_ROLES, SUBMIT_ARC_FIELDS, SUBMIT_ARC_STATUSES, SUMMARY_ITEM_FIELDS, SUCCESS_MESSAGE,
@@ -138,7 +138,7 @@ def aggregate_availability(refresh: RefreshResult):
     return availability_data("ready", None)
 
 
-def session_data(*, session_id, expires_at, learning_availability, access_token=None, user_name=None):
+def session_data(*, session_id, expires_at, learning_availability, access_token=None, user_name=None, metadata=None):
     require_uuid(session_id, code=_CONTRACT)
     payload = {
         "sessionId": session_id,
@@ -146,6 +146,13 @@ def session_data(*, session_id, expires_at, learning_availability, access_token=
         "learningAvailability": _ordered(AVAILABILITY_FIELDS, learning_availability, nullable=("reason",)),
     }
     data = _ordered(SESSION_VIEW_FIELDS, payload, nullable=())
+    if metadata is not None:
+        data.update(
+            organizations=[{"id": key, "name": name} for key, name in metadata.organizations],
+            organizationId=metadata.organization_id,
+            inactivityLogoutSeconds=metadata.inactivity_logout_seconds,
+            hardCapSeconds=metadata.hard_cap_seconds,
+        )
     if access_token is None:
         return data
     # D129: the display name travels only with the login token, never with GET/refresh.
@@ -155,16 +162,16 @@ def session_data(*, session_id, expires_at, learning_availability, access_token=
 
 def submit_arc_data(*, status, exclusion_reasons=()):
     require_member(status, SUBMIT_ARC_STATUSES, code=_CONTRACT)
-    if status == "disabled":
+    if status != "excluded":
         if exclusion_reasons:
             _fail()
         payload = {
-            "status": "disabled",
-            "ok": False,
-            "error": "arc_contract_pending",
+            "status": status,
+            "ok": status == "acknowledged",
+            "error": "arc_contract_pending" if status == "disabled" else None,
             "exclusionReasons": [],
         }
-        return _ordered(SUBMIT_ARC_FIELDS, payload, nullable=())
+        return _ordered(SUBMIT_ARC_FIELDS, payload, nullable=("error",))
     ordered = []
     seen = set()
     for reason in EXCLUSION_REASON_ORDER:
@@ -212,7 +219,12 @@ def _progress_map(progress, bundle):
             _fail()
         if placement.kind in ("video", "document") and passed is not None:
             _fail()
-        projected[str(placement.public_link_id)] = {"isCompleted": completed, "isPassed": passed}
+        completion_kind = None
+        if completed and placement.kind == "video":
+            completion_kind = "skipped" if row.get("completion_kind") == "skipped" else "watched"
+        projected[str(placement.public_link_id)] = {
+            "isCompleted": completed, "isPassed": passed, "completionKind": completion_kind,
+        }
     return parsed, projected
 
 
@@ -228,7 +240,7 @@ def _item_progress(items, link_id):
         _fail()
     if passed is not None and type(passed) is not bool:
         _fail()
-    return completed, passed
+    return completed, passed, row.get("completionKind")
 
 
 def _course_status(progress):
@@ -257,13 +269,33 @@ def summary_item(placement):
     })
 
 
+def _skill(placement):
+    """Video/document items and executions that are not ready have no skill (null)."""
+    if placement.kind not in ("training", "assessment") or placement.execution_status != "ready":
+        return None
+    definition = parse_owned(placement.execution_json)
+    condition = definition["condition"] if type(definition) is dict else None
+    if type(condition) is not dict:
+        _fail()
+    skill = {
+        "trainingType": condition.get("training_type"), "isTwoRescuers": condition.get("is_2rescuers"),
+        # Definitions before Round 2 carry no requiresAed and no AED part.
+        "requiresAed": definition.get("requiresAed", False), "manikinType": condition.get("target"),
+    }
+    if (skill["trainingType"] not in ("cpr", "compression_only", "ventilation_only")
+            or any(type(skill[key]) is not bool for key in ("isTwoRescuers", "requiresAed"))
+            or type(skill["manikinType"]) is not str):
+        _fail()
+    return _ordered(COURSE_ITEM_SKILL_FIELDS, skill)
+
+
 def course_item(placement, progress_items):
     mapping = item_type_wire(placement.kind)
     title, icon, detail = _title_and_icon(placement)
     description = detail.get("description")
     if description is not None and type(description) is not str:
         _fail()
-    completed, passed = _item_progress(progress_items, placement.public_link_id)
+    completed, passed, completion_kind = _item_progress(progress_items, placement.public_link_id)
     return _ordered(COURSE_ITEM_FIELDS, {
         "id": require_public_id(placement.public_item_id, code=_CONTRACT),
         "courseItemLinkId": require_public_id(placement.public_link_id, code=_CONTRACT),
@@ -275,7 +307,9 @@ def course_item(placement, progress_items):
         "description": description,
         "isCompleted": completed,
         "isPassed": passed,
-    }, nullable=("contentType", "description", "isPassed"))
+        "completionKind": completion_kind,
+        "skill": _skill(placement),
+    }, nullable=("contentType", "description", "isPassed", "completionKind", "skill"))
 
 
 def enrollment_data(course_json, enrollment_id, *, course_id=None):
@@ -289,7 +323,8 @@ def enrollment_data(course_json, enrollment_id, *, course_id=None):
     if type(row) is not dict:
         _fail()
     validate_enrollment(row, enrollment_id=enrollment_id, course_id=parsed.get("courseId") if course_id is None else course_id)
-    return _ordered(ENROLLMENT_FIELDS, row, nullable=tuple(ENROLLMENT_NULLABLE))
+    data = {**row, **{key: row.get(key) for key in ENROLLMENT_ADDITIONAL_FIELDS}}
+    return _ordered(ENROLLMENT_FIELDS + ENROLLMENT_ADDITIONAL_FIELDS, data, nullable=tuple(ENROLLMENT_NULLABLE))
 
 
 def course_list_row(view: CourseView):
@@ -312,7 +347,11 @@ def course_list_row(view: CourseView):
     }
     if row["certificationType"] is not None and type(row["certificationType"]) is not str:
         _fail()
-    return _ordered(COURSE_LIST_ROW_FIELDS, row, nullable=("certificationType",))
+    fields = COURSE_LIST_ROW_FIELDS
+    if "courseType" in course:
+        fields += ("courseType",)
+        row["courseType"] = course["courseType"]
+    return _ordered(fields, row, nullable=("certificationType",))
 
 
 def course_list_data(views, *, count, page, page_size, path=_COURSE_LIST_PATH):
@@ -345,7 +384,8 @@ def course_detail_data(view: CourseView):
     _, items = _progress_map(view.progress_json, view.bundle)
     placements = view.bundle.placements
     validate_placement_order(placements)
-    validate_course_metadata(parse_owned(view.bundle.course_json), view.public_ids)
+    course = parse_owned(view.bundle.course_json)
+    validate_course_metadata(course, view.public_ids)
     data = {
         "courseItems": [course_item(item, items) for item in placements],
         "enrollment": enrollment_data(view.bundle.course_json, view.public_ids.enrollment_id,
@@ -354,7 +394,11 @@ def course_detail_data(view: CourseView):
         "definitionHash": require_hash(view.bundle.definition_hash, code=_CONTRACT),
         "learningAvailability": availability_data(view.gate.state, view.gate.reason),
     }
-    return _ordered(COURSE_DETAIL_FIELDS, data)
+    fields = COURSE_DETAIL_FIELDS
+    if "courseType" in course:
+        fields += ("courseType",)
+        data["courseType"] = course["courseType"]
+    return _ordered(fields, data)
 
 
 def _file_detail(detail):
@@ -440,10 +484,11 @@ def progress_receipt_data(
         "isPassed": is_passed,
         "courseStatus": course_status,
         "application": application,
+        "completionKind": None,
     }
     return _ordered(
         PROGRESS_RECEIPT_FIELDS, data,
-        nullable=("isCompleted", "isPassed", "courseStatus"),
+        nullable=("isCompleted", "isPassed", "courseStatus", "completionKind"),
     )
 
 
@@ -507,7 +552,7 @@ def calculation_view_data(
             submit_arc = submit_arc_data(status="disabled")
         if type(submit_arc) is not dict:
             _fail()
-        if submit_arc.get("ok") is True:
+        if submit_arc.get("ok") is not (submit_arc.get("status") == "acknowledged"):
             _fail()
         require_member(submit_arc.get("status"), SUBMIT_ARC_STATUSES, code=_CONTRACT)
         submit_arc = _ordered(SUBMIT_ARC_FIELDS, submit_arc, nullable=("error",))

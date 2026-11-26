@@ -26,6 +26,7 @@ from mock_journey.course_storage import CourseBlobStore
 from mock_journey.course_submission import CourseCompletionPlan, DisabledArcGateway
 from mock_journey.legacy_bridge import MeasurementInputError
 from mock_journey.state import DynamoCourseStore
+from mock_journey.projection import DEFINITION_SETTING_KEYS
 from mock_journey.typed import json_bytes, parse_json
 
 
@@ -67,7 +68,7 @@ class DummyLearnerBinding:
 
 
 class AuthBoundCalculationBridge:
-    """Add resume secrets, definition_json, and program/target without changing the 7-key snapshot."""
+    """Add resume secrets, definition_json, and program/target without changing the execution snapshot."""
 
     def __init__(self, inner, auth_manager, uuid_factory, mapping_rows):
         self._inner = inner
@@ -78,7 +79,7 @@ class AuthBoundCalculationBridge:
     def prepare(self, auth, command, view):
         template = self._inner.prepare(auth, command, view)
         payload = parse_json(template.existing_template_json)
-        execution = {key: payload[key] for key in EXECUTION_KEYS}
+        execution = {key: payload[key] for key in EXECUTION_KEYS + DEFINITION_SETTING_KEYS if key in payload}
         execution["condition"] = {key: execution["condition"][key] for key in CONDITION_KEYS}
         placement = None
         for item in view.bundle.placements:
@@ -138,15 +139,21 @@ def _login_hook(journey):
     return login
 
 
+def _checked_session_record(journey, auth, *, availability=None):
+    settings = journey.auth.settings
+    return SessionRecord(
+        session_id=auth.session_id, expires_at=_rfc3339(auth.expires_at),
+        learning_availability=availability, organizations=auth.organizations, organization_id=auth.organization_id,
+        inactivity_logout_seconds=settings.inactivity_logout_seconds, hard_cap_seconds=settings.hard_cap_seconds,
+    )
+
+
 def _session_reader(journey, service):
     def read(auth):
         journey.check_session(auth)
         # The session read never fails on an unexpected availability error (it waits).
         availability = availability_or_waiting(service.stored_refresh, auth, absorb_unexpected=True)
-        return SessionRecord(
-            session_id=auth.session_id, expires_at=_rfc3339(auth.expires_at),
-            learning_availability=availability,
-        )
+        return _checked_session_record(journey, auth, availability=availability)
     return read
 
 
@@ -154,7 +161,7 @@ def _session_check(journey):
     # POST /session/refresh/: the session is checked, nothing stored is read.
     def check(auth):
         journey.check_session(auth)
-        return SessionRecord(session_id=auth.session_id, expires_at=_rfc3339(auth.expires_at))
+        return _checked_session_record(journey, auth)
     return check
 
 
@@ -199,12 +206,15 @@ def _calculation_record(attempt, body):
     wire_submit = None if stored_submit is None else submit_arc_data(
         status=stored_submit["status"], exclusion_reasons=stored_submit["exclusion_reasons"],
     )
+    evaluation = attempt.get("evaluation")
+    if evaluation is not None and "evaluation_gates_json" in attempt:
+        evaluation = {**evaluation, "gates": parse_json(attempt["evaluation_gates_json"])}
     return CalculationRecord(
         attempt_id=attempt["attempt_id"],
         state=attempt["state"],
         error_code=attempt.get("error_code"),
         calculation=calculation,
-        evaluation=attempt.get("evaluation"),
+        evaluation=evaluation,
         progress_application=attempt.get("progress_application"),
         submit_arc=wire_submit,
     )
@@ -254,6 +264,12 @@ def bind_course_http(journey, course_service, settings, *, clock, uuid_factory):
     def logout(auth):
         journey.state.logout(auth)
 
+    def select_organization(auth, organization_id):
+        return journey.state.select_organization(auth, organization_id)
+
+    def reset_dummy_progress(auth, request_id):
+        journey.state.reset_dummy_progress(auth, request_id)
+
     def issue_resume(auth, attempt_id):
         attempt = journey.state.get_attempt(auth, attempt_id)
         return journey.auth.resume_credential(attempt)
@@ -301,6 +317,7 @@ def bind_course_http(journey, course_service, settings, *, clock, uuid_factory):
 
     hooks = CourseHooks(
         authenticate=authenticate, login=_login_hook(journey), logout=logout,
+        select_organization=select_organization, reset_dummy_progress=reset_dummy_progress,
         session_reader=_session_reader(journey, course_service), session_check=_session_check(journey),
         issue_resume=issue_resume, load_attempt=load_attempt, reauthorize=reauthorize,
         cancel=cancel, measurement_submit=measurement_submit,

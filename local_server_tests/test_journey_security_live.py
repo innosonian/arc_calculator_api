@@ -165,7 +165,7 @@ def test_actual_cli_lower_quota_restart_keeps_reads_and_replay_but_rejects_new_u
         replay = server.upload(token, attempt)
         require(replay.stable_body() == committed,
                 "A matching committed input replay must not require a new object write.")
-        pending = server.start_attempt(token, dummy_course("mock-ventilation-only"))
+        pending = server.start_attempt(token, dummy_course("bls-ventilations-12"))
         failure = server.upload(token, pending, data=(ROOT / "tests/dataset/adult_vo_1.bin").read_bytes())
         error(failure, 503, "TEMPORARILY_UNAVAILABLE")
         status = server.attempt(token, pending).data()

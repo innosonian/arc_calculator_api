@@ -128,7 +128,7 @@ def _run_trusted_calculation(event, context):
             body["aed_b64_data"],
             body["condition"],
             body["vp_event_list"],
-            usage=body.get("Usage"),
+            usage=body.get("Usage") if isinstance(body.get("Usage"), dict) else None,
             stage=stage,
             organization=body.get("Organization"),
         )

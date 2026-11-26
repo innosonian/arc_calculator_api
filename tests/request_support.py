@@ -9,7 +9,6 @@ import base64
 from urllib.parse import quote, urlencode
 
 
-# 검출 완결성 시험의 dict 조건(tests/test_detection_completion.py 에서 그대로 옮김).
 def condition(target, training, guideline="ARC2025"):
     return {"mode": "training", "target": target, "training_type": training, "guideline": guideline,
             "cpr_cycle_type": "152" if target == "infant" else "302", "is_2rescuers": False}

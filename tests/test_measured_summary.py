@@ -1,9 +1,7 @@
-# 원본: hstm_v2 tests/test_measured_summary.py (ARC 각색 이식 — guideline ARC2020, 문서
-# 제출용 맥락 서술만 제거. 실측 평균/%CCF 집계 계약과 기대값은 원본 그대로.)
-"""실측 요약(MetricEvaluator)과 %CCF 집계 회귀 테스트.
+"""ResultSummary 실측 요약(MetricEvaluator)과 %CCF 집계 회귀 테스트.
 
-metrics의 실측 요약은 채점 점수가 아니라 실측 평균값(압박 속도 cpm, 깊이 mm,
-환기량 ml, 환기 속도 ms, hands-off 초)과 실측 CCF 비율을 담는다.
+HSTM 완료 제출의 ResultSummary는 V1 계산기와 동일하게 실측 평균값(압박 속도 cpm,
+깊이 mm, 환기량 ml, 환기 속도 ms, hands-off 초)과 실측 CCF 비율을 요구한다.
 sum_ccf 미누적으로 CCF.%_CCF가 항상 0이던 문제의 회귀도 함께 고정한다.
 """
 
@@ -25,7 +23,7 @@ def _condition(training_type="cpr", target="adult"):
         "mode": "training",
         "target": target,
         "training_type": training_type,
-        "guideline": "ARC2020",
+        "guideline": "AHA2020",
         "cpr_cycle_type": "302",
         "is_2rescuers": False,
     }

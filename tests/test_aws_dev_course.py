@@ -8,7 +8,7 @@ import pytest
 from mock_journey.auth import PRINCIPAL
 from mock_journey.aws_runtime import build_runtime
 from mock_journey.aws_settings import AwsSettings
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS
+from mock_journey.catalog import Catalog, program_targets
 from mock_journey.course_contracts import CourseScope, AssignmentBinding
 from mock_journey.course_errors import CourseError
 from mock_journey.course_settings import fixture_course_settings
@@ -69,7 +69,7 @@ def test_invalid_dummy_dev_configuration_fails_offline_and_before_any_client(cha
     elif change == "unknown":
         config["course"]["unexpected"] = "PRIVATE-MARKER"
     elif change == "small_catalog":
-        config["course"]["settings"]["max_assignments"] = 14
+        config["course"]["settings"]["max_assignments"] = 3
     elif change == "small_bundle":
         config["course"]["settings"]["max_bundle_bytes"] = 1
     elif change == "small_transaction":
@@ -84,17 +84,17 @@ def test_invalid_dummy_dev_configuration_fails_offline_and_before_any_client(cha
     assert "PRIVATE-MARKER" not in str(error.value)
 
 
-def test_complete_catalog_reuses_all_fifteen_existing_definitions_without_content_or_scores():
+def test_four_courses_cover_all_round_two_definitions_without_content_or_scores():
     source = provider()
     expected = Catalog(execution_catalog())
     bindings = source.list_assignments(source.learner)
-    assert len(bindings) == len(PROGRAMS) * len(TARGETS) == 15
+    assert len(bindings) == 4
     covered = set()
     for binding in bindings:
         bundle = source.fetch_bundle(binding)
         assert bundle.scope.learner.principal == PRINCIPAL and bundle.scope.learner.is_dummy is True
         assert parse_json(bundle.course_json)["courseName"].startswith("[Dummy Dev]")
-        assert [item.kind for item in bundle.placements] == ["training", "assessment"]
+        assert [item.kind for item in bundle.placements] == ["training"] * (len(bundle.placements) - 1) + ["assessment"]
         for item in bundle.placements:
             row = source.mapping_document["mappings"][item.source_id]
             definition = parse_json(item.execution_json)
@@ -105,7 +105,7 @@ def test_complete_catalog_reuses_all_fifteen_existing_definitions_without_conten
             covered.add((row["program_id"], row["target"]))
         assert collect_exclusion_reasons(is_dummy=True, guideline="ARC2025", attempt_epoch="a",
                                          current_epoch="a", already_finalized=False) == ("dummy",)
-    assert covered == {(program[0], target) for program in PROGRAMS for target in TARGETS}
+    assert covered == {(program.id, target) for program, target in program_targets()}
     assert [source.fetch_bundle(binding).definition_hash for binding in bindings] == [
         provider().fetch_bundle(binding).definition_hash for binding in bindings]
 

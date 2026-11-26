@@ -5,7 +5,7 @@
   "event": "login_succeeded",
   "fields": {
    "http_request_id": "<uuid:1>",
-   "request_id": "<uuid:42>",
+   "request_id": "<uuid:44>",
    "session_id": "<uuid:2>"
   }
  },
@@ -16,7 +16,7 @@
   "fields": {
    "attempt_id": "<uuid:8>",
    "http_request_id": "<uuid:12>",
-   "request_id": "<uuid:43>"
+   "request_id": "<uuid:45>"
   }
  },
  {
@@ -27,7 +27,7 @@
    "attempt_id": "<uuid:8>",
    "http_request_id": "<uuid:13>",
    "reason": "user_stopped",
-   "request_id": "<uuid:44>"
+   "request_id": "<uuid:46>"
   }
  },
  {
@@ -41,7 +41,7 @@
    "message": "request_start",
    "path": "/cpr-analysis",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:45>"
+   "request_id": "<uuid:47>"
   }
  },
  {
@@ -51,13 +51,13 @@
   "fields": {
    "aed_bytes": 0,
    "attempt_id": "<uuid:17>",
-   "cpr_bytes": 3388,
+   "cpr_bytes": 16828,
    "http_request_id": "<uuid:18>",
    "level": "info",
    "message": "parse_complete",
    "parse_ms": "<ms>",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:45>"
+   "request_id": "<uuid:47>"
   }
  },
  {
@@ -67,10 +67,10 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "http_request_id": "<uuid:18>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "progress_epoch": "<uuid:22>",
    "replayed": false,
-   "request_id": "<uuid:45>"
+   "request_id": "<uuid:47>"
   }
  },
  {
@@ -79,7 +79,7 @@
   "event": "calculation_started",
   "fields": {
    "attempt_id": "<uuid:17>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "progress_epoch": "<uuid:22>"
   }
  },
@@ -90,7 +90,7 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "comp_count": 60,
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "level": "info",
    "message": "calc_start",
    "prepared_aed_count": 0,
@@ -108,7 +108,7 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "level": "info",
    "message": "calc_complete",
    "progress_epoch": "<uuid:22>"
@@ -121,7 +121,7 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "level": "info",
    "message": "serialize_complete",
    "progress_epoch": "<uuid:22>"
@@ -134,7 +134,7 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "level": "info",
    "message": "chart_complete",
    "progress_epoch": "<uuid:22>"
@@ -147,7 +147,7 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "level": "info",
    "message": "calc_response_complete",
    "progress_epoch": "<uuid:22>"
@@ -159,7 +159,7 @@
   "event": "calculation_completed",
   "fields": {
    "attempt_id": "<uuid:17>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "progress_epoch": "<uuid:22>",
    "state": "evaluated"
   }
@@ -171,7 +171,7 @@
   "fields": {
    "applied": true,
    "attempt_id": "<uuid:17>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "program_completed": true,
    "progress_epoch": "<uuid:22>",
    "reason": "APPLIED"
@@ -188,7 +188,7 @@
    "message": "request_start",
    "path": "/cpr-analysis",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:47>"
+   "request_id": "<uuid:49>"
   }
  },
  {
@@ -198,13 +198,13 @@
   "fields": {
    "aed_bytes": 0,
    "attempt_id": "<uuid:17>",
-   "cpr_bytes": 3388,
+   "cpr_bytes": 16828,
    "http_request_id": "<uuid:23>",
    "level": "info",
    "message": "parse_complete",
    "parse_ms": "<ms>",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:47>"
+   "request_id": "<uuid:49>"
   }
  },
  {
@@ -214,10 +214,10 @@
   "fields": {
    "attempt_id": "<uuid:17>",
    "http_request_id": "<uuid:23>",
-   "job_id": "<uuid:46>",
+   "job_id": "<uuid:48>",
    "progress_epoch": "<uuid:22>",
    "replayed": true,
-   "request_id": "<uuid:47>"
+   "request_id": "<uuid:49>"
   }
  },
  {
@@ -231,7 +231,7 @@
    "message": "request_start",
    "path": "/cpr-analysis",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:48>"
+   "request_id": "<uuid:50>"
   }
  },
  {
@@ -241,13 +241,13 @@
   "fields": {
    "aed_bytes": 0,
    "attempt_id": "<uuid:27>",
-   "cpr_bytes": 3388,
+   "cpr_bytes": 16828,
    "http_request_id": "<uuid:28>",
    "level": "info",
    "message": "parse_complete",
    "parse_ms": "<ms>",
    "progress_epoch": "<uuid:22>",
-   "request_id": "<uuid:48>"
+   "request_id": "<uuid:50>"
   }
  },
  {
@@ -257,10 +257,10 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "http_request_id": "<uuid:28>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "progress_epoch": "<uuid:22>",
    "replayed": false,
-   "request_id": "<uuid:48>"
+   "request_id": "<uuid:50>"
   }
  },
  {
@@ -269,7 +269,7 @@
   "event": "calculation_started",
   "fields": {
    "attempt_id": "<uuid:27>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "progress_epoch": "<uuid:22>"
   }
  },
@@ -280,7 +280,7 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "comp_count": 60,
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "level": "info",
    "message": "calc_start",
    "prepared_aed_count": 0,
@@ -298,7 +298,7 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "level": "info",
    "message": "calc_complete",
    "progress_epoch": "<uuid:22>"
@@ -311,7 +311,7 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "level": "info",
    "message": "serialize_complete",
    "progress_epoch": "<uuid:22>"
@@ -324,7 +324,7 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "level": "info",
    "message": "chart_complete",
    "progress_epoch": "<uuid:22>"
@@ -337,7 +337,7 @@
   "fields": {
    "attempt_id": "<uuid:27>",
    "elapsed_ms": "<ms>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "level": "info",
    "message": "calc_response_complete",
    "progress_epoch": "<uuid:22>"
@@ -349,7 +349,7 @@
   "event": "calculation_completed",
   "fields": {
    "attempt_id": "<uuid:27>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "progress_epoch": "<uuid:22>",
    "state": "evaluated"
   }
@@ -361,7 +361,7 @@
   "fields": {
    "applied": true,
    "attempt_id": "<uuid:27>",
-   "job_id": "<uuid:49>",
+   "job_id": "<uuid:51>",
    "program_completed": true,
    "progress_epoch": "<uuid:22>",
    "reason": "APPLIED"
@@ -373,8 +373,8 @@
   "event": "progress_reset",
   "fields": {
    "http_request_id": "<uuid:34>",
-   "progress_epoch": "<uuid:50>",
-   "request_id": "<uuid:51>",
+   "progress_epoch": "<uuid:52>",
+   "request_id": "<uuid:53>",
    "session_id": "<uuid:2>"
   }
  },
@@ -384,9 +384,9 @@
   "event": "request_rejected",
   "fields": {
    "error_code": "SESSION_REVOKED",
-   "http_request_id": "<uuid:35>",
+   "http_request_id": "<uuid:36>",
    "http_status": 403,
-   "request_id": "<uuid:52>"
+   "request_id": "<uuid:54>"
   }
  },
  {
@@ -394,9 +394,9 @@
   "category": "operation",
   "event": "login_succeeded",
   "fields": {
-   "http_request_id": "<uuid:36>",
-   "request_id": "<uuid:53>",
-   "session_id": "<uuid:37>"
+   "http_request_id": "<uuid:37>",
+   "request_id": "<uuid:55>",
+   "session_id": "<uuid:38>"
   }
  },
  {
@@ -405,9 +405,9 @@
   "event": "request_rejected",
   "fields": {
    "error_code": "NOT_FOUND",
-   "http_request_id": "<uuid:38>",
+   "http_request_id": "<uuid:39>",
    "http_status": 404,
-   "request_id": "<uuid:54>"
+   "request_id": "<uuid:56>"
   }
  },
  {
@@ -416,8 +416,8 @@
   "event": "attempt_reauthorized",
   "fields": {
    "attempt_id": "<uuid:17>",
-   "http_request_id": "<uuid:39>",
-   "request_id": "<uuid:55>"
+   "http_request_id": "<uuid:40>",
+   "request_id": "<uuid:57>"
   }
  },
  {
@@ -425,10 +425,10 @@
   "category": "operation",
   "event": "progress_reset",
   "fields": {
-   "http_request_id": "<uuid:41>",
-   "progress_epoch": "<uuid:56>",
-   "request_id": "<uuid:57>",
-   "session_id": "<uuid:37>"
+   "http_request_id": "<uuid:42>",
+   "progress_epoch": "<uuid:58>",
+   "request_id": "<uuid:59>",
+   "session_id": "<uuid:38>"
   }
  }
 ]

@@ -1,4 +1,3 @@
-# 원본 hstm_v2 config/enums.py:1-19 그대로 이식(변경 없음).
 from enum import Enum
 
 

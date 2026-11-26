@@ -12,7 +12,7 @@ from mock_journey.aws_scope import (
     partition_matches_region,
 )
 from mock_journey.settings import (
-    StateSettings, StorageSettings, ApiSettings, WorkerSettings, RelaySettings, base64_body_bytes,
+    StateSettings, StorageSettings, ApiSettings, SessionSettings, WorkerSettings, RelaySettings, base64_body_bytes,
     lease_renewal_exceeds, require_positive,
 )
 from mock_journey.typed import strict_loads
@@ -194,7 +194,8 @@ class AwsSettings:
                 value = {key: item for key, item in value.items() if key != "execution"}
                 ignored = True
             extra = "storage course " if role != "relay" else ""
-            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role)
+            session_key = " session" if role == "api" and type(value) is dict and "session" in value else ""
+            _object(value, "schema role account_id partition environment region state sdk logs " + extra + role + session_key)
             if type(value["schema"]) is not int or value["schema"] != 1 or value["role"] != role:
                 raise invalid()
             account = _text(value["account_id"], ACCOUNT_ID_PATTERN)
@@ -245,7 +246,11 @@ class AwsSettings:
                                        artifact_bytes=storage.artifact_bytes)
             if role == "api":
                 _object(value[role], "payload_limit")
-                role_settings = ApiSettings(state, storage, environment, **value[role])
+                session = value.get("session", {})
+                if type(session) is not dict:
+                    raise invalid()
+                role_settings = ApiSettings(state, storage, environment, **value[role],
+                                            session=SessionSettings(**session))
                 # payload_limit bounds the encoded body; it must at least hold
                 # the base64 form of the decoded CPR+AED input quota.
                 if role_settings.payload_limit < base64_body_bytes(storage.input_bytes):

@@ -9,9 +9,11 @@ import pytest
 
 from main import run_calculator
 from mock_journey import typed
+from mock_journey.contracts import CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION
+from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.errors import JourneyError
 from mock_journey.internal_calculator import InternalCalculator, _validate_core
-from mock_journey.projection import LoadedInput, ProjectionSchema, project_input, typed_identity
+from mock_journey.projection import LoadedInput, ProjectedInput, ProjectionSchema, project_input, typed_identity
 from services.http.schemas import DEFAULT_CONDITION
 from util.uploader import build_key_stem, date_prefix
 
@@ -20,22 +22,27 @@ DATA = Path(__file__).parent / "dataset"
 
 
 def real_input(filename="cco_1.bin", training="compression_only", target="adult", guideline="ARC2025"):
-    condition = {**DEFAULT_CONDITION, "training_type": training, "target": target, "guideline": guideline}
+    condition = {**DEFAULT_CONDITION, "training_type": training, "target": target, "guideline": guideline,
+                 "is_2rescuers": False}
     body = {"cpr_b64_data": (DATA / filename).read_bytes(), "aed_b64_data": b"",
             "condition": condition, "vp_event_list": []}
     kind, required = ("compressions", 60) if training == "compression_only" else ("ventilations", 8)
     definition = {"condition": condition, "calculation_profile": {},
                   "goal": {"kind": kind, "required": required}, "catalog_version": "mock-catalog-v1",
-                  "profile_version": "tester-v1", "adapter_version": "internal-v1",
-                  "projection_version": "internal-projection-v1"}
+                  "profile_version": CURRENT_PROFILE_VERSION, "adapter_version": CURRENT_ADAPTER_VERSION,
+                  "projection_version": "internal-projection-v1", "courseType": "BLS", "requiresAed": False,
+                  "minimumQuantity": {"compressions": required if kind == "compressions" else 0,
+                                      "ventilations": required if kind == "ventilations" else 0},
+                  "assessment": {"passRule": "composite", "gates": {}}}
     projected = project_input(body, definition, ProjectionSchema("internal-projection-v1", {}))
     binding = {"attempt_id": str(uuid.uuid4()), "epoch": str(uuid.uuid4()),
-               "input_digest": typed_identity(projected), "adapter_version": "internal-v1",
+               "input_digest": typed_identity(projected), "adapter_version": CURRENT_ADAPTER_VERSION,
                "projection_version": "internal-projection-v1", "job_id": str(uuid.uuid4()),
                "call_id": str(uuid.uuid4())}
     stem = build_key_stem()
     loaded = LoadedInput(projected, f"calculator_result/interpreted_rtdata/arc/local-validation/_no_org/{date_prefix(stem)}/{stem}")
-    adapter = InternalCalculator(version="internal-v1", projection_version="internal-projection-v1", stage="local-validation")
+    adapter = InternalCalculator(version=CURRENT_ADAPTER_VERSION, projection_version="internal-projection-v1",
+                                 stage="local-validation", cycle_goal_resolver=closed_cycle_count)
     return body, loaded, binding, adapter
 
 
@@ -110,3 +117,44 @@ def test_core_shape_validation_accepts_real_cpr_aed_without_choosing_completion_
     before = typed.canonical_bytes(result)
     _validate_core(result)
     assert typed.canonical_bytes(result) == before
+
+
+@pytest.mark.parametrize("category,reason,status", [
+    ("PAYLOAD_TOO_LARGE", "RAW_TOO_LARGE", 413),
+    ("INVALID_REQUEST", "EMPTY_RAW", 400),
+    ("INVALID_REQUEST", "INVALID_RAW_LENGTH", 400),
+    ("INVALID_REQUEST", "INVALID_RAW_HEADER", 400),
+    ("INVALID_REQUEST", "NONZERO_RAW_TRAILER", 400),
+])
+def test_worker_parser_rejections_are_stored_input_errors(category, reason, status, monkeypatch):
+    from data_handlers.data_parser import DataParser, RawInputRejected
+
+    _, loaded, binding, adapter = real_input()
+    calls = []
+
+    def reject(*args, **kwargs):
+        calls.append(True)
+        raise RawInputRejected(category, reason, status)
+
+    monkeypatch.setattr(DataParser, "parse_cpr_bytes", reject)
+    with pytest.raises(JourneyError) as rejected:
+        adapter.calculate(loaded, binding, lambda: None)
+    assert rejected.value.code == "STORED_INPUT_INVALID"
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("damage", [
+    lambda raw: b"",
+    lambda raw: raw + b"\x00",
+    lambda raw: b"\x00" + raw[1:],
+    lambda raw: raw[:28] + b"\x00" * 19 + b"\x01",
+    lambda raw: b"\xa8" + b"\x00" * 4_000_000,
+], ids=["empty", "length", "header", "trailer", "too-large"])
+def test_worker_rejects_actual_malformed_stored_raw(damage):
+    _, loaded, binding, adapter = real_input()
+    previous = loaded.projected
+    projected = ProjectedInput(damage(previous.cpr_bytes), previous.aed_bytes, previous.payload)
+    binding = {**binding, "input_digest": typed_identity(projected)}
+    with pytest.raises(JourneyError) as rejected:
+        adapter.calculate(LoadedInput(projected, loaded.raw_base), binding, lambda: None)
+    assert rejected.value.code == "STORED_INPUT_INVALID"

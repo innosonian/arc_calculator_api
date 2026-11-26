@@ -16,7 +16,7 @@ from boto3.dynamodb.types import TypeSerializer
 import pytest
 
 from local_server_tests.test_live_server import (
-    DYNAMODB_HOME, PROGRAMS, STARTUP_SECONDS, TARGETS, LiveServer, dummy_course, error, objects_fingerprint, require,
+    DYNAMODB_HOME, STARTUP_SECONDS, LiveServer, dummy_course, error, objects_fingerprint, require,
 )
 
 # Real loopback sockets: opted out of the directory network guard (conftest.py).
@@ -146,9 +146,11 @@ def seed_installation(server, *, journey_schema):
         require(len(table.get("GlobalSecondaryIndexes", [])) == (1 if journey_schema else 0),
                 "Seed must create exactly the requested schema.")
         client.put_item(TableName=db.TABLE_NAME, Item=db._sentinel(material))
+        legacy_programs = ("mock-cpr", "mock-compression-only", "mock-ventilation-only",
+                           "mock-two-rescuer-cpr", "mock-two-rescuer-aed")
         slots = {f"{program}:{target}": {"completed": False, "completed_by_attempt": None,
                                          "completed_at": None, "open_attempts": 0}
-                 for program, *_ in PROGRAMS for target in TARGETS}
+                 for program in legacy_programs for target in ("adult", "child", "infant")}
         for row in (
             {"PK": "USER#dummy-tester", "SK": "STATE", "principal": "dummy-tester", "epoch": epoch,
              "revision": 0, "slots": slots, "updated_at": now},
@@ -189,7 +191,7 @@ def test_existing_journey_installation_keeps_its_session_and_shared_epoch(tmp_pa
                 "A pre-existing session has no course inventory until it refreshes.")
         require(server.refresh(token)["learningAvailability"] == {"state": "ready", "reason": None},
                 "Starting on an existing installation must preserve the existing session.")
-        require(len(server.courses(token)["results"]) == 15, "The existing installation must serve the Dummy courses.")
+        require(len(server.courses(token)["results"]) == 4, "The existing installation must serve the Dummy courses.")
         attempt = server.start_attempt(token)
         require(server.upload(token, attempt).status in (200, 202), "The existing owned DB must accept real calculation.")
         require(server.result(token, attempt).status == 200, "The due index must support automatic worker execution.")

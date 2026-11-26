@@ -41,7 +41,7 @@ WEAK_RAMP = (0, 10, 20, 40, 40, 20, 10, 0, 0, 0)
 def _compressions(
     count: int, start_ts: int, start_count: int = 0, ramp: tuple[int, ...] = COMP_RAMP
 ) -> tuple[list[bytes], int, int]:
-    """압박 count회 — 각 압박은 Ccnt 증가 패킷(깊이 램프) + 후속 패킷 1개."""
+    """DEPTH_V1 압박 count회: 0→정점→0, 정점 간격 100샘플(500ms)."""
     packets = []
     ts = start_ts
     ccnt = start_count
@@ -49,8 +49,9 @@ def _compressions(
         ccnt += 1
         packets.append(packet(ccnt, (0, 0), ts, depth=ramp, rate=110))
         ts += 50
-        packets.append(packet(ccnt, (0, 0), ts, rate=110))
-        ts += 50
+        for _ in range(9):
+            packets.append(packet(ccnt, (0, 0), ts, rate=110))
+            ts += 50
     return packets, ts, ccnt
 
 

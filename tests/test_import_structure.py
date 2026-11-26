@@ -53,7 +53,6 @@ KNOWN_UPWARD_EDGES = frozenset({
     # Module-level imports of pinned-function files and unpinned sources.
     ("calculators.action_evaluator", "services.config"),
     ("data_handlers.action_data", "services.config"),
-    ("data_handlers.detection", "services.config"),
     ("data_handlers.chart_data", "services.calculation_context"),
     ("data_handlers.chart_data", "services.operational_logs"),
     # Lazy: the operational log allowlist reads the fixed public error tables.
@@ -228,13 +227,12 @@ importlib.import_module({module!r})
     assert completed.returncode == 0, completed.stderr
 
 
-def test_cycle_evaluator_is_function_pinned_and_imports_only_used_names():
-    # provenance.json pins the scoring methods' AST, not this module header, so
-    # unused header imports may be removed without re-pinning (S1-09 step 1).
+def test_cycle_evaluator_is_byte_and_function_pinned_and_imports_only_used_names():
+    # The HSTM port pins the whole source and retains method-level AST guards.
     import json
 
     provenance = json.loads((ROOT / "tests/fixtures/detection_revision/provenance.json").read_text())
-    assert "calculators/cycle_evaluator.py" not in provenance["preserved_sha256"]
+    assert "calculators/cycle_evaluator.py" in provenance["preserved_sha256"]
     assert "calculators/cycle_evaluator.py" not in provenance["preserved_ast_sha256"]
     assert "calculators/cycle_evaluator.py" in provenance["preserved_function_ast_sha256"]
     tree = ast.parse((ROOT / "calculators/cycle_evaluator.py").read_text(encoding="utf-8"))

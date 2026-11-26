@@ -9,6 +9,8 @@ _COURSE_ERRORS = {
     "CONTRACT_PENDING": (503, "The integration contract is not available."),
     "UPSTREAM_CONTRACT_MISMATCH": (503, "The upstream data contract is not verified."),
     "ARC_PROGRESS_UNAVAILABLE": (503, "Learning is waiting for ARC progress."),
+    "ASSIGNMENT_EXPIRED": (409, "The assignment has expired."),
+    "ORGANIZATION_REQUIRED": (409, "Select an organization before starting."),
     "PROGRESS_RECONCILIATION_REQUIRED": (409, "Progress reconciliation is required."),
     "DEFINITION_CHANGED": (409, "The course definition has changed."),
     "EXECUTION_DEFINITION_MISSING": (409, "The execution definition is missing."),

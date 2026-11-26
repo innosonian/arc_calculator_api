@@ -24,7 +24,7 @@ from local_server import database as db
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.state import DynamoStateRepository
 from tests.journey_support import JourneyStore, V2Journey, dummy_course
-from tests.legacy_rows_support import seed_legacy_rows
+from tests.v2_baseline_support import seed_legacy_candidate
 
 
 GENERIC_MESSAGE = "Local database installation is unavailable or inconsistent."
@@ -97,7 +97,7 @@ def seed_journey(client, material, *, legacy_rows=True):
     wait_until(client, lambda table: db._table_kind(table) == "journey")
     client.put_item(TableName=db.TABLE_NAME, Item=db._sentinel(material),
                     ConditionExpression="attribute_not_exists(PK)")
-    seeded = seed_legacy_rows(JourneyStore(client, db.TABLE_NAME)) if legacy_rows else None
+    seeded = seed_legacy_candidate(JourneyStore(client, db.TABLE_NAME)) if legacy_rows else None
     return mark_initialized(material), seeded
 
 
@@ -176,7 +176,7 @@ def test_legacy_rows_on_the_journey_schema_serve_v2_and_preserve_slots(installat
         assert db.prepare_material(installation.data_dir) == material
         assert reader.ready()
         queued = seeded.attempts["queued"]
-        now = seeded.meta["capture_clock"] + 60
+        now = seeded.recovery_clock
         jobs = DynamoJobRepository(DynamoStateRepository(parent.client, db.TABLE_NAME, clock=lambda: now))
         due, cursor = jobs.due_jobs(limit=20)
         outbox, _ = jobs.due_outbox(limit=20)
@@ -206,7 +206,7 @@ def test_legacy_rows_on_the_journey_schema_serve_v2_and_preserve_slots(installat
         assert h.attempt(token, queued["attempt_id"])["state"] == "queued"
         # The legacy attempt stays bound to its own session; the peer gets no view of it.
         assert h.call("GET", f'/api/v2/attempts/{queued["attempt_id"]}/', token=peer_token).status == 404
-        # The due index drives the existing Relay -> Worker path.
+        # The due index resumes the separately captured pre-port candidate without a new historical calculation.
         assert set(h.relay()) == {queued["job_id"]}  # Outbox and due-job wakes may both name it.
         assert h.deliver() == {"batchItemFailures": []}
         assert h.result(token, queued["attempt_id"])["calculationStatus"] == "succeeded"

@@ -12,7 +12,8 @@ from mock_journey import runtime as api_entry, worker as worker_entry, worker_ru
 from mock_journey.aws_runtime import build_runtime
 from tests.mock_storage_support import MemoryS3
 from tests.aws_runtime_support import context, course_configuration, environment
-from tests.vcc_runtime_support import measurement_event
+from tests._synth import PACKET_BYTES, cpr_session, multipart_event
+from tests.journey_support import synthetic_measurement
 from tests.vcc_support import event
 
 
@@ -65,9 +66,10 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
     token = login["accessToken"]
     assert login["userName"] == "Test User"  # D129
     listing = request("GET", "/api/v2/courses/progress/")
-    assert listing["count"] == 15
+    assert listing["count"] == 4
     assert all(row["status"] == "NOT_STARTED" for row in listing["results"])
-    course_id, enrollment, practice_id, final_id = 910004, 920004, 940041, 940042
+    course_id, enrollment = 911003, 921003
+    practice_ids, final_id = (950031, 950032, 950033, 950034), 950035
     path = f"/api/v2/courses/{course_id}/progress/"
     query = {"enrollmentId": str(enrollment)}
 
@@ -79,13 +81,29 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
         })
 
     assert start(final_id, 409)["code"] == "PREREQUISITES_NOT_COMPLETED"
+    aed = b"".join(bytes((0xB4, event_id)) + timestamp.to_bytes(8, "big")
+                   for event_id, timestamp in ((0, 100), (1, 1000), (10, 3000), (13, 5000), (16, 6000), (19, 6500)))
+    after_shock = cpr_session([(30, 2)])
+    after_shock = b"".join(
+        chunk[:20] + (int.from_bytes(chunk[20:], "big") + 7000).to_bytes(8, "big")
+        for chunk in (after_shock[i:i + PACKET_BYTES] for i in range(0, len(after_shock), PACKET_BYTES))
+    )
+    measurements = (
+        (synthetic_measurement(ventilation=False, count=30), b""),
+        (synthetic_measurement(ventilation=True, count=10), b""),
+        (cpr_session([(30, 2)] * 3), b""),
+        (after_shock, aed),
+        (after_shock, aed),
+    )
     results = []
-    for link_id in (practice_id, final_id):
+    for link_id, (cpr_bytes, aed_bytes) in zip((*practice_ids, final_id), measurements):
         accepted = start(link_id)
         attempt_id = accepted["attemptId"]
         auth = api.target.auth.authenticate(token)
-        stored = api.target.state.get_attempt(auth, attempt_id)
-        upload = measurement_event(stored)
+        parts = {"rawHexBPfile": cpr_bytes, "condition": json.dumps(accepted["condition"])}
+        if aed_bytes:
+            parts["aedHexBPfile"] = aed_bytes
+        upload = multipart_event(parts)
         upload["path"] = f"/api/v2/attempts/{attempt_id}/calculation/"
         upload["headers"]["Authorization"] = f"Bearer {token}"
         response = lambda_handler.run(upload, context(remaining=120000))
@@ -122,8 +140,9 @@ def test_dummy_dev_lambda_entrypoints_complete_real_binary_and_survive_reassembl
     another = request("POST", "/api/v2/sessions/", 201,
                       body={"loginId": "test@test.com", "password": "2222"})["accessToken"]
     assert request("GET", results[0][0], 404, override_token=another)["code"] == "NOT_FOUND"
-    # Dummy logout resets shared progress but must not destroy existing result objects.
-    request("DELETE", "/api/v2/session/", 204, override_token=another)
+    # Explicit Dummy reset clears progress without destroying existing result objects.
+    request("POST", "/api/v2/dev/progress-reset/", 204, override_token=another,
+            body={"clientRequestId": str(uuid.uuid4())})
     assert request("GET", results[0][0]) == results[0][1]
     assert request("GET", path, 503, query=query)["code"] == "ARC_PROGRESS_UNAVAILABLE"
     assert request("POST", "/api/v2/session/refresh/", body={})["learningAvailability"]["state"] == "ready"

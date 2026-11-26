@@ -7,8 +7,8 @@ Two kinds replace the four copies the test suites carried (E-03):
   projection versions so the Dummy Dev execution definitions resolve it; the
   candidate carries the exact call binding and validation rejects any other
   binding. Its goal status follows its ``version`` through
-  contracts.expected_goal_status (a cycle-rule adapter -- the current v5 or the
-  retained v4 -- reports every goal evaluated; a subclass registered under a
+  contracts.expected_goal_status (a cycle-rule adapter -- the current v6 or a
+  retained cycle adapter -- reports every goal evaluated; a subclass registered under a
   pending adapter version
   reports a cycles goal ``observed`` None with ``goal_status``
   "pending_policy"; an unversioned test version reports no status). The class
@@ -27,12 +27,13 @@ raise from a ``before_calculate`` hook.
 """
 
 from copy import deepcopy
+from types import SimpleNamespace
 import hashlib
 import json
 
 from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSIONS, PROJECTION_VERSION,
-    VerifiedCalculation, VerifiedChart, expected_goal_status, uses_cycle_rule,
+    VerifiedCalculation, VerifiedChart, expected_goal_status, uses_cycle_rule, uses_round2_gates,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.internal_calculator import InternalCalculator
@@ -42,7 +43,7 @@ def internal_calculator_options(version):
     """InternalCalculator keyword arguments that give ``version`` its registered meaning.
 
     The same selection as mock_journey.assembly.internal_calculator: pending
-    adapters allow the pending cycle goal, the cycle-rule adapters (v5, v4) are
+    adapters allow the pending cycle goal, the cycle-rule adapters are
     bound to the D136 closed-cycle resolver, any other (test) version gets neither.
     """
     if version in PENDING_GOAL_ADAPTER_VERSIONS:
@@ -112,9 +113,32 @@ class ScriptedCalculator:
                 "training_stats": {"cycle_count": 3, "elapsed_seconds": 90}, "guide_prompts": ["test-only coaching"],
                 "type_preservation": list(TYPE_MARKER)}
         goal_status = expected_goal_status(kind, self.version)
+        current = {}
+        if uses_round2_gates(self.version):
+            from calculators.gate_evaluator import evaluate_gates
+            from config.constants import CALC_CASE_CPR
+            from config.enums import ActorType
+            from mock_journey.course_contracts import validate_execution_definition
+
+            definition = validate_execution_definition(projected.payload["definition"])
+            minimum = definition["minimumQuantity"]
+            counts = {"comp": max(90, minimum["compressions"]),
+                      "vent": max(6, minimum["ventilations"])}
+            core["action_count"] = counts
+            core["metrics"].update({name: {"%_Good": 100} for name in (
+                "CompressionDepth", "CompressionRate", "Recoil", "HandPosition", "VentilationVolume")})
+            # Explicit synthetic evidence for state tests; no real score or input is substituted.
+            evidence = SimpleNamespace(cycles=(SimpleNamespace(
+                calc_case=CALC_CASE_CPR, actor_type=ActorType.ONLY_REAL_PERSON.value,
+                compression_action_count=15 if definition["condition"]["cpr_cycle_type"] == "152" else 30,
+            ),), gate_evidence={"ventilation_interval_score": 100, "pads_attached": 1,
+                "analysis_contacts": 0, "shock_delivered": 1, "arrival_seconds": None,
+                "no_shock_only": False, "arrived": False})
+            current = {"gates": evaluate_gates(definition, value["observed"], core["metrics"], evidence),
+                       "learner_counts": dict(counts)}
         return VerifiedCalculation(core, kind, value["observed"], self.chart_kind,
                                    "test-bound-chart" if self.chart_kind == "snapshot" else None,
-                                   goal_status=goal_status)
+                                   goal_status=goal_status, **current)
 
     def get_chart(self, verified, binding, heartbeat):
         self.chart_calls += 1

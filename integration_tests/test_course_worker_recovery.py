@@ -19,7 +19,8 @@ from integration_tests.worker_journey_support import (  # noqa: F401 (store fixt
     DUMMY_SUBMISSION, TYPE_MARKER, ScriptedCalculator, accepted, attempt_row, calculation, chart_link,
     course_rows, item_view, job_row, journey, progress_facts, recovery_facts, start, start_reply, store, submit,
 )
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import TARGETS
+from tests.legacy_dummy_catalog import LEGACY_PROGRAMS as PROGRAMS
 from mock_journey.contracts import CalculatorRegistry
 from mock_journey.errors import JourneyError
 from mock_journey.worker import call_binding
@@ -79,7 +80,9 @@ def test_each_dummy_course_accepts_scores_once_and_commits_the_completion_contra
     assert not {"submit_arc", "submit_hstm", "hstm_document", "evaluation"} & set(body)
     assert reply.data["submit_arc"] == DUMMY_SUBMISSION
     stored = attempt_row(h, attempt["attemptId"])
-    assert stored["evaluation"] == reply.data["evaluation"]
+    gates = json.loads(stored["evaluation_gates_json"])
+    assert gates and all(gate["passed"] is not False for gate in gates)
+    assert {**stored["evaluation"], "gates": gates} == reply.data["evaluation"]
     assert stored["evaluation"]["program_completed"] is True
     assert stored["evaluation"]["goal"]["status"] == "evaluated"
     assert stored["evaluation"]["goal"] == {"kind": kind, "required": required, "observed": required,
@@ -111,12 +114,12 @@ def test_response_certification_override_cannot_grant_course_completion(store):
     assert item_view(h, token, course, course.practice_link_id)["isCompleted"] is False
 
 
-def test_late_result_after_other_session_logout_is_stored_without_new_progress(store):
+def test_late_result_after_other_session_reset_is_stored_without_new_progress(store):
     h, course = world(store)
     token, other = h.login().token, h.login().token
     token, attempt, job_id = accepted(h, course, token=token, data=MEASUREMENT)
     original = course_rows(h, attempt["attemptId"])
-    h.logout(other)
+    h.reset(other)
     h.calculator.on_calculate = lambda: h.advance(31)  # Past the app's 30s wait; never a server deadline.
     assert h.work(job_id=job_id) is True
     stored = attempt_row(h, attempt["attemptId"])

@@ -3,8 +3,8 @@
 Only public entry points are used: the V2Journey harness (tests/journey_support.py)
 drives ``mock_journey.handler.handle`` and the ``build_course_application`` /
 ``build_worker`` factories on a real DynamoDB Local table. Legacy (course_binding
-absent) attempts come from the captured row fixture (tests/legacy_rows_support.py),
-never from a v1 API route or a v1-only service method.
+absent) attempts come from the captured row fixture (tests/legacy_rows_support.py)
+or explicit current-version test seeds, never from a v1 API route or a v1-only service method.
 
 Two calculator adapters are available (tests/calculator_doubles.py):
 
@@ -12,13 +12,14 @@ Two calculator adapters are available (tests/calculator_doubles.py):
   call recording and explicit fault hooks around the actual calculation.
 * ``ScriptedCalculator`` is a test-only adapter registered under the current
   adapter/projection versions. Its values test state handling, not scoring; it
-  still obeys the pending-goal contract (cycles -> pending_policy).
+  retains the pending-goal contract when explicitly bound to a historical version.
 
 ``OneTransactionInterruption`` is tests/dynamodb_doubles.OneTransactionInterruption.
 """
 
 from contextlib import contextmanager
 import hashlib
+import secrets
 import time
 from types import SimpleNamespace
 import uuid
@@ -29,7 +30,7 @@ from tests.calculator_doubles import TYPE_MARKER, ScriptedCalculator, TrackedCal
 from tests.dynamodb_doubles import OneTransactionInterruption  # noqa: F401 (re-export)
 from tests.journey_support import (
     HARNESS_START, MULTIPART_CONTENT_TYPE, StorageLimits, V2Journey, dummy_course, dynamodb_local_store,
-    measurement_for, multipart,
+    encode_item, measurement_for, multipart, seed_current_legacy_job,
 )
 
 
@@ -164,19 +165,43 @@ def jobs_over(h, client):
                                course_blobs=CourseBlobStore(h.worker.storage))
 
 
-def seeded_legacy(store, adapter=None, **options):
+def seeded_legacy(store, adapter=None, *, saved_candidate=False, **options):
     """Legacy fixture rows + a harness on the same table while the legacy session is still active.
 
-    The legacy fixture attempts are bound to the retained pending-v3 adapter (D136, 3A), so the
-    harness's hooked adapter (h.calculator) is built under that version; pass an adapter of that
-    version to replace it.
+    The historical pending-v3 adapter is a candidate reader. ``saved_candidate=True``
+    overlays the separately captured pre-port candidate and starts after its lease expires;
+    the original fixture files and bound definitions remain unchanged.
     """
     from mock_journey.contracts import PENDING_GOAL_ADAPTER_VERSION
     from tests.legacy_rows_support import seed_legacy_rows
-    seeded = seed_legacy_rows(store)
+    if saved_candidate:
+        from tests.v2_baseline_support import seed_legacy_candidate
+        seeded = seed_legacy_candidate(store)
+        start_clock = seeded.recovery_clock
+    else:
+        seeded = seed_legacy_rows(store)
+        start_clock = seeded.meta["capture_clock"] + 60
     adapter = adapter if adapter is not None else TrackedCalculator(version=PENDING_GOAL_ADAPTER_VERSION)
-    h = journey(store, adapter, objects=seeded.objects, start=seeded.meta["capture_clock"] + 60, **options)
+    h = journey(store, adapter, objects=seeded.objects, start=start_clock, **options)
     return h, seeded, seeded.issue_session_token()
+
+
+def seeded_current_legacy(store, adapter=None, **options):
+    """Fresh v6 calculation on the legacy row layout, separate from historical stored fixtures."""
+    h = journey(store, adapter, **options)
+    job_id = seed_current_legacy_job(h)
+    job = job_row(h, job_id)
+    attempt = attempt_row(h, job["attempt_id"])
+    session_id = attempt["bound_session_id"]
+    token = f"s1.{session_id}.{secrets.token_urlsafe(32)}"
+    session = store.row(f"SESSION#{session_id}", "AUTH")
+    session["token_hash"] = hashlib.sha256(token.encode()).hexdigest()
+    store.put_raw(encode_item(session))
+    seeded = SimpleNamespace(
+        attempts={"queued": {"attempt_id": attempt["attempt_id"], "job_id": job_id, "row": attempt}},
+        rows={(row["PK"], row["SK"]): row for row in store.rows()},
+    )
+    return h, seeded, token
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +342,6 @@ __all__ = [
     "ARTIFACT_LIMIT", "DUMMY_PRINCIPAL", "DUMMY_SUBMISSION", "FILES_BUCKET", "FilesJourney", "LEGACY_SUBMISSION",
     "OneTransactionInterruption", "ScriptedCalculator", "TYPE_MARKER", "TrackedCalculator", "accepted",
     "attempt_row", "calculation", "chart_link", "course_rows", "dummy_course", "files_journey", "files_journey_at",
-    "item_view", "job_row", "jobs_over", "journey", "progress_facts", "recovery_facts", "seeded_legacy", "start",
+    "item_view", "job_row", "jobs_over", "journey", "progress_facts", "recovery_facts", "seeded_current_legacy", "seeded_legacy", "start",
     "start_reply", "store", "submit", "upload_event", "user_row",
 ]

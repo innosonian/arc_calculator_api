@@ -35,7 +35,10 @@ def test_session_read_does_not_repeat_login_credentials(dynamodb_client, dynamod
     response = handle(event("GET", "/api/v2/session/", token=token), CONTEXT, app)
     assert response["statusCode"] == 200
     data = json.loads(response["body"])["data"]
-    assert set(data) == {"sessionId", "expiresAt", "learningAvailability"}
+    assert set(data) == {"sessionId", "expiresAt", "learningAvailability", "organizations", "organizationId",
+                         "inactivityLogoutSeconds", "hardCapSeconds"}
+    assert data["organizations"] == [] and data["organizationId"] is None
+    assert data["inactivityLogoutSeconds"] is None and data["hardCapSeconds"] is None
     text = response["body"]
     assert "2222" not in text
     assert "resumeCredential" not in text and "accessToken" not in text

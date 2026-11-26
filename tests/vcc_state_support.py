@@ -68,13 +68,16 @@ def binding_of(bundle):
     return AssignmentBinding(bundle.scope, bundle.public_ids)
 
 
-def seed_auth(store, *, epoch=EPOCH, session_id=SESSION, principal=None, expires_at=2_000_000):
+def seed_auth(store, *, epoch=EPOCH, session_id=SESSION, principal=None, expires_at=2_000_000,
+              organizations=None):
     learner = learner_from()
     principal = principal or learner.principal
     store.seed({
         **session_key(session_id),
         "session_id": session_id, "principal": principal, "token_hash": "hash-only",
         "issued_at": 1, "expires_at": expires_at, "status": "active", "revision": 0,
+        "organizations": [{"id": "fixture-org", "name": "Fixture organization"}]
+        if organizations is None else organizations,
     })
     store.seed({
         **user_key(principal),

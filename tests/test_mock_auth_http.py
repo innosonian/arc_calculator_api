@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from mock_journey.auth import AuthManager
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_keys
+from mock_journey.catalog import Catalog, program_targets, definition_keys
 from mock_journey.errors import JourneyError
 from mock_journey.handler import run
 from tests.journey_support import JourneyStore, V2Journey
@@ -85,6 +85,14 @@ def test_logout_receipt_is_the_only_revoked_token_exception(auth_setup):
     assert auth.authenticate(token, allow_logout_receipt=True).revision == 1
 
 
+def test_new_dummy_sessions_persist_explicit_account_metadata(auth_setup):
+    store, auth, _ = auth_setup
+    session, _ = auth.login("test@test.com", "2222")
+    assert session["is_dummy"] is True
+    assert session["organizations"] == []
+    assert store.sessions[session["session_id"]] == session
+
+
 def test_resume_proof_is_creator_attempt_environment_and_key_bound(auth_setup):
     _, auth, _ = auth_setup
     attempt = auth.prepare_resume({"principal": "tester", "attempt_id": "attempt-a", "creator_session_id": "creator"})
@@ -104,12 +112,11 @@ def test_resume_proof_is_creator_attempt_environment_and_key_bound(auth_setup):
     expect("TEMPORARILY_UNAVAILABLE", lambda: rotated.verify_resume(attempt, "tester", proof))
 
 
-def test_catalog_has_fifteen_definition_keys_and_no_unverified_runtime_definition():
+def test_catalog_has_eighteen_definition_keys_and_no_unverified_runtime_definition():
     catalog = Catalog()
-    assert len(definition_keys()) == 15
-    for program in PROGRAMS:
-        for target in TARGETS:
-            expect("CALCULATOR_CONTRACT_MISMATCH", lambda: catalog.definition(program[0], target))
+    assert len(definition_keys()) == 18
+    for program, target in program_targets():
+        expect("CALCULATOR_CONTRACT_MISMATCH", lambda: catalog.definition(program.id, target))
 
 
 # -- /api/v2 HTTP boundary -----------------------------------------------------------------

@@ -31,7 +31,7 @@ from local_server.private_fs import private_directory_violation, private_file_vi
 
 ROOT = Path(__file__).resolve().parent.parent
 READY_BANNER = (
-    "Available: /api/v2 login, 15 temporary Dummy courses after Dummy login, measured binary calculation, "
+    "Available: /api/v2 login, 4 temporary Dummy courses after Dummy login, measured binary calculation, "
     f"stored results and {CHART_URL_TTL_SECONDS}-second charts.",
     "CPR completion follows the cycle rule (D136); ARC submission remains disabled.",
 )

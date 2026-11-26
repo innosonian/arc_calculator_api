@@ -151,7 +151,7 @@ def test_latent_renewal_failure_after_final_file_blocks_db_finalization(files_jo
     assert "PRIVATE-RENEWAL-CREDENTIAL" not in captured.out + captured.err
 
 
-def test_logout_epoch_reset_remains_authoritative_with_guard(files_journey, monkeypatch):
+def test_explicit_epoch_reset_remains_authoritative_with_guard(files_journey, monkeypatch):
     world = files_journey
     token, attempt_id, job_id = accepted_attempt(world)
     other = world.login().token
@@ -160,7 +160,7 @@ def test_logout_epoch_reset_remains_authoritative_with_guard(files_journey, monk
 
     def calculate(loaded, binding, heartbeat):
         raw = original(loaded, binding, heartbeat)
-        world.logout(other)
+        world.reset(other)
         return raw
     monkeypatch.setattr(world.calculator, "calculate", calculate)
     worker, guards = configured(world)

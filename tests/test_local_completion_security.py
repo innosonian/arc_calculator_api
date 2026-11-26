@@ -1,6 +1,8 @@
-"""Independent v1/v2 completion evidence and pending-state counterexamples."""
+"""Current calculation isolation and retained candidate completion counterexamples."""
 
 from copy import deepcopy
+import base64
+from pathlib import Path
 from dataclasses import replace
 import hashlib
 import json
@@ -12,7 +14,7 @@ import pytest
 
 from mock_journey import typed
 from mock_journey.contracts import (
-    CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
+    CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, CYCLE_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_PROFILE_VERSION,
     VerifiedCalculation,
 )
 from mock_journey.errors import JourneyError
@@ -32,15 +34,22 @@ SECRET = "L1_INDEPENDENT_PRIVATE_MARKER"
 PROJECTION = "security-only-projection"
 
 
-def accepted(training="cpr", *, pending=True):
+def accepted(training="cpr", *, pending=True, current=False):
     version = PENDING_GOAL_ADAPTER_VERSION if pending else "security-legacy-calculator-v1"
     profile = PENDING_GOAL_PROFILE_VERSION if pending else "security-legacy-profile-v1"
+    if current:
+        version, profile, pending = CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, False
     condition = json.loads(condition_json(training_type=training, guideline="ARC2025"))
     kind, required = {"cpr": ("cycles", 3), "compression_only": ("compressions", 60),
                       "ventilation_only": ("ventilations", 8)}[training]
     definition = {"condition": deepcopy(condition), "calculation_profile": {},
                   "goal": {"kind": kind, "required": required}, "catalog_version": "mock-catalog-v1",
                   "profile_version": profile, "adapter_version": version, "projection_version": PROJECTION}
+    if current:
+        definition.update(courseType="BLS", requiresAed=False,
+                          minimumQuantity={"compressions": 90 if training == "cpr" else 60 if training == "compression_only" else 0,
+                                           "ventilations": 6 if training == "cpr" else 8 if training == "ventilation_only" else 0},
+                          assessment={"passRule": "composite", "gates": {}})
     body = {"cpr_b64_data": comp_session(60) if training == "compression_only" else
             cpr_session([(0, 8)] if training == "ventilation_only" else [(30, 2)] * 3),
             "aed_b64_data": b"", "condition": condition, "vp_event_list": [],
@@ -54,14 +63,29 @@ def accepted(training="cpr", *, pending=True):
                              limits={"input_bytes": 100_000, "artifact_bytes": 1_000_000})
     saved = storage.save_input(projected, binding)
     loaded = storage.load_input(saved["manifest_ref"], binding)
+    from mock_journey.cycle_goal import closed_cycle_count
     adapter = InternalCalculator(version=version, projection_version=PROJECTION, stage="local-test",
-                                 allow_pending_cycle_goal=pending)
+                                 allow_pending_cycle_goal=pending,
+                                 cycle_goal_resolver=closed_cycle_count if current else None)
     return loaded, {**binding, "job_id": str(uuid.uuid4()), "call_id": str(uuid.uuid4())}, adapter, objects
 
 
 def candidate(training="cpr", *, pending=True):
     loaded, binding, adapter, objects = accepted(training, pending=pending)
-    raw = adapter.calculate(loaded, binding, lambda: None)
+    # Structural attack fixtures reuse stored bytes, never execute a retained
+    # adapter. Rebinding makes this a contract sample, not a scoring oracle.
+    fixtures = json.loads((Path(__file__).parent / "fixtures/retained_v2_candidates.json").read_text())
+    row = next(row for row in fixtures["cases"] if row["id"] == "mock-cpr")
+    saved = base64.b64decode(row["candidate_base64"])
+    assert hashlib.sha256(saved).hexdigest() == row["candidate_sha256"]
+    value = typed.parse_json(saved)
+    kind = loaded.projected.payload["definition"]["goal"]["kind"]
+    value.update(schema=adapter.candidate_schema, binding=deepcopy(binding))
+    value["goal"] = {"kind": kind, "observed": None if pending and kind == "cycles"
+                     else value["counts"]["comp" if kind == "compressions" else "vent"]}
+    if pending:
+        value["goal"]["status"] = "pending_policy" if kind == "cycles" else "evaluated"
+    raw = typed.json_bytes(value)
     verified = adapter.validate_response(raw, loaded.projected, binding)
     return loaded, binding, adapter, raw, verified, objects
 
@@ -73,16 +97,16 @@ def contract_error(operation):
     assert SECRET not in str(caught.value)
 
 
-def test_real_pending_calculation_preserves_score_and_chart_without_network_or_premature_publication(monkeypatch, capsys):
+def test_real_current_calculation_preserves_score_and_chart_without_network_or_premature_publication(monkeypatch, capsys):
     import main
     import data_handlers.chart_data as charts
     from util import uploader
 
-    loaded, binding, adapter, objects = accepted()
+    loaded, binding, adapter, objects = accepted(current=True)
     before, identity = deepcopy(objects.objects), typed_identity(loaded.projected)
 
     def forbidden(*args, **kwargs):
-        pytest.fail("Pending completion invoked a network or ambient publication side effect.")
+        pytest.fail("Current calculation invoked a network or ambient publication side effect.")
 
     for owner, name in ((boto3, "client"), (boto3.session.Session, "client"),
                         (socket.socket, "connect"), (socket.socket, "sendto"),
@@ -93,12 +117,13 @@ def test_real_pending_calculation_preserves_score_and_chart_without_network_or_p
     raw = adapter.calculate(loaded, binding, lambda: None)
     verified = adapter.validate_response(raw, loaded.projected, binding)
     evaluation = evaluate(verified.core_result, loaded.projected.payload["definition"], verified)
-    assert verified.goal_status == "pending_policy" and verified.observed is None
-    assert evaluation["goal"] == {"kind": "cycles", "required": 3, "status": "pending_policy",
-                                  "observed": None, "met": None}
-    assert evaluation["program_completed"] is False
+    assert verified.goal_status == "evaluated" and verified.observed == 3
+    assert evaluation["goal"] == {"kind": "cycles", "required": 3, "status": "evaluated",
+                                  "observed": 3, "met": True}
+    assert evaluation["program_completed"] is True
     assert evaluation["score"]["decision"] == ("pass" if _is_pass(verified.core_result, None, None, None, "adult") else "fail")
-    assert evaluation["reason_codes"][0] == "GOAL_POLICY_UNRESOLVED"
+    assert evaluation["reason_codes"] == []
+    assert evaluation["gates"] == list(verified.gates)
     assert verified.core_result["chart_dataset_url"] is None
     assert adapter.get_chart(verified, binding, lambda: None).data
     assert objects.objects == before and objects.sign_calls == []
@@ -126,7 +151,7 @@ def test_schema_cannot_be_relabelled_by_rebinding_another_version_candidate(targ
     (CYCLE_GOAL_ADAPTER_VERSION, True, None),
     (CYCLE_GOAL_ADAPTER_VERSION, False, None),
     (CYCLE_GOAL_ADAPTER_VERSION, True, lambda *args: 3),
-    # D138: the same holds for the current cycle-rule adapter (v5).
+    # Current calculation also requires its registered cycle resolver.
     (CURRENT_ADAPTER_VERSION, True, None),
     (CURRENT_ADAPTER_VERSION, False, None),
     (CURRENT_ADAPTER_VERSION, True, lambda *args: 3),
@@ -204,13 +229,13 @@ def test_pending_chart_remains_detached_and_bound_to_its_own_call():
 @pytest.mark.parametrize("profile", ["security-legacy-profile-v1", None, True])
 def test_v2_adapter_cannot_silently_use_another_profile_even_with_a_new_input_digest(profile, monkeypatch):
     import main
-    loaded, binding, adapter, _ = accepted()
+    loaded, binding, adapter, raw, _, _ = candidate()
     payload = deepcopy(loaded.projected.payload)
     payload["definition"]["profile_version"] = profile
     projected = replace(loaded.projected, payload=payload)
     rebound = {**binding, "input_digest": typed_identity(projected)}
     monkeypatch.setattr(main, "run_calculator", lambda *a, **k: pytest.fail("Invalid profile reached calculator."))
-    contract_error(lambda: adapter.calculate(replace(loaded, projected=projected), rebound, lambda: None))
+    contract_error(lambda: adapter.validate_response(raw, projected, rebound))
 
 
 @pytest.mark.parametrize("mutation", [
@@ -277,3 +302,31 @@ def test_pending_finalization_never_authorizes_progress_and_preserves_existing_c
         assert stored_slot["open_attempts"] == {"N": "0"}
         assert stored_slot["completed_by_attempt"] == ({"S": "previous"} if completed else {"NULL": True})
     assert client.expected == []
+
+
+@pytest.mark.parametrize("journey", [
+    "recorded_cpr_below_minimum_journey",
+    "auto_stopped_ventilation_only_journey",
+    "in_flight_v4_attempts_require_new_attempts_after_upgrade",
+])
+def test_recorded_input_and_retained_upgrade_journeys(journey):
+    from tests import eof_vent_support
+    from tests.journey_support import JourneyStore
+
+    getattr(eof_vent_support, journey)(JourneyStore.memory())
+
+
+@pytest.mark.parametrize("kind", ["empty", "length", "header", "trailer", "too_large"])
+def test_current_worker_maps_rejected_stored_raw_to_input_invalid(kind):
+    loaded, binding, adapter, _ = accepted(current=True)
+    source = loaded.projected.cpr_bytes
+    raw = {
+        "empty": b"", "length": source + b"x", "header": b"\x00" + source[1:],
+        "trailer": source + b"\x00" * 19 + b"x", "too_large": b"x" * 4_000_001,
+    }[kind]
+    projected = replace(loaded.projected, cpr_bytes=raw)
+    rebound = {**binding, "input_digest": typed_identity(projected)}
+    with pytest.raises(JourneyError) as rejected:
+        adapter.calculate(replace(loaded, projected=projected), rebound, lambda: None)
+    assert rejected.value.code == "STORED_INPUT_INVALID"
+    assert SECRET not in str(rejected.value)

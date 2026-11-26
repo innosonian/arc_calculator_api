@@ -9,6 +9,7 @@ import lambda_handler
 import main
 from data_handlers import chart_data
 from services import calculate_cpr
+from services.config import Config
 from services.http.schemas import DEFAULT_CONDITION
 
 
@@ -81,7 +82,7 @@ def test_calculation_layer_rethrows_same_exception_and_redacts_diagnostics(monke
 
     monkeypatch.setattr(calculate_cpr, "calculate_cpr", fail)
     with pytest.raises(RuntimeError) as raised:
-        calculate_cpr.make_calculate_result(None, {}, "test")
+        calculate_cpr.make_calculate_result(Config(dict(DEFAULT_CONDITION)), {}, "test")
     assert raised.value is failure
     output = capsys.readouterr().out
     assert MARKER not in output

@@ -1,13 +1,9 @@
 """Separate API/worker processes reopen real files and a mixed durable job queue.
 
-Legacy jobs come from rows the removed /mock/v1 API stored
-(tests/fixtures/legacy_mock_v1_rows): its accepted-but-never-processed job, its
-created attempt measured now, and one more attempt seeded in the same captured
-shape (tests/legacy_attempt_seeds.py). The course job uses the fixture learner,
-whose USER row is seeded in the legacy shape (with ``slots``) before the runtime
-opens, and who also owns one legacy attempt: after migration a legacy user can
-run course work, so legacy slot finalize and course finalize meet on one USER
-row and both must survive the restart.
+Fresh v6 definitions exercise legacy row layouts without changing historical
+fixtures. Accepted-but-unprocessed, lease-claimed, and saved-candidate jobs
+cross the process boundary. A learner owns both a legacy-layout attempt and
+course work, so both finalize paths must preserve the shared USER row.
 """
 
 import hashlib
@@ -16,9 +12,9 @@ import os
 import subprocess
 import sys
 
+from integration_tests.worker_journey_support import seeded_current_legacy
 from tests.journey_support import HARNESS_ENVIRONMENT, JourneyStore
 from tests.legacy_attempt_seeds import seed_legacy_attempt, seed_legacy_session
-from tests.legacy_rows_support import seed_legacy_rows
 from tests.mixed_queue_process_support import open_files
 from tests.vcc_runtime_support import measurement_event, runtime, start_attempt, submit
 from tests.vcc_support import load_fixture
@@ -38,18 +34,20 @@ def test_process_restart_preserves_legacy_and_course_jobs(dynamodb_client, dynam
     directory.mkdir(mode=0o700)
     objects, bindings = open_files(directory)
     try:
-        seeded = seed_legacy_rows(JourneyStore(dynamodb_client, dynamodb_table), objects=objects)
+        h, seeded, legacy_token = seeded_current_legacy(
+            JourneyStore(dynamodb_client, dynamodb_table), objects=objects, bindings=bindings)
         learner = load_fixture("course_bundle.json")["learners"]["real"]["principal"]
         # The learner's USER row predates course work: the legacy shape with slots.
-        seed_legacy_session(dynamodb_client, dynamodb_table, clock=lambda: seeded.meta["capture_clock"],
+        seed_legacy_session(dynamodb_client, dynamodb_table, clock=h.clock,
                             principal=learner)
         env = runtime(dynamodb_client, dynamodb_table, objects=objects, legacy_bindings=bindings)
-        env.now[0] = seeded.meta["clock_at_end"]
-        legacy_token = seeded.issue_session_token()
+        env.now[0] = h.clock()
         legacy_auth = env.app.auth.authenticate(legacy_token)
         bundle_hash = env.app.course_service.get_course(env.auth, course_id=101, enrollment_id=501).bundle.definition_hash
         queued = env.app.state.get_attempt(legacy_auth, seeded.attempts["queued"]["attempt_id"])
-        created = env.app.state.get_attempt(legacy_auth, seeded.attempts["created"]["attempt_id"])
+        created = seed_legacy_attempt(dynamodb_client, dynamodb_table, legacy_auth, clock=env.clock,
+                                      program_id=queued["program_id"], target=queued["target"],
+                                      definition_json=queued["definition_json"], environment=HARNESS_ENVIRONMENT)
         another = seed_legacy_attempt(dynamodb_client, dynamodb_table, legacy_auth, clock=env.clock,
                                       program_id=queued["program_id"], target=queued["target"],
                                       definition_json=queued["definition_json"], environment=HARNESS_ENVIRONMENT)
@@ -86,7 +84,7 @@ def test_process_restart_preserves_legacy_and_course_jobs(dynamodb_client, dynam
         object_directory = objects.material.object_dir
         payload = {"endpoint": dynamodb_client.meta.endpoint_url, "table": dynamodb_table,
             "directory": str(directory), "now": env.now[0]+61, "token": env.token, "legacy_token": legacy_token,
-            "legacy_principal": seeded.principal,
+            "legacy_principal": legacy_auth.principal,
             "attempts": [[a["attempt_id"], "legacy"] for a in attempts[:3]]
                         + [[learner_legacy["attempt_id"], "learner"], [course["attempt_id"], "learner"]],
             "jobs": jobs}

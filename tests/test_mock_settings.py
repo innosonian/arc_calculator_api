@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from mock_journey.settings import ApiSettings, RelaySettings, StateSettings, StorageSettings, WorkerSettings
+from mock_journey.settings import ApiSettings, RelaySettings, SessionSettings, StateSettings, StorageSettings, WorkerSettings
 
 
 STATE = StateSettings("explicit-local-table", 8)
@@ -30,7 +30,10 @@ def reject(value, **changes):
 @pytest.mark.parametrize("value", SETTINGS)
 def test_every_value_is_explicit_and_frozen(value):
     for field in fields(value):
-        assert field.default is MISSING and field.default_factory is MISSING
+        if field.name == "session":
+            assert field.default == SessionSettings()
+        else:
+            assert field.default is MISSING and field.default_factory is MISSING
     with pytest.raises(FrozenInstanceError):
         setattr(value, fields(value)[0].name, "replacement")
 
@@ -131,7 +134,7 @@ def test_each_role_requires_only_its_own_constructor_settings():
         "state", "queue_url", "lease_seconds", "retry_seconds", "page_size", "max_pages",
     }
     assert {field.name for field in fields(WorkerSettings)} == {"state", "storage", "lease_seconds", "retry_seconds"}
-    assert {field.name for field in fields(ApiSettings)} == {"state", "storage", "environment", "payload_limit"}
+    assert {field.name for field in fields(ApiSettings)} == {"state", "storage", "environment", "payload_limit", "session"}
 
 
 def test_isolated_import_and_validation_do_not_read_environment_or_construct_sdk_clients():

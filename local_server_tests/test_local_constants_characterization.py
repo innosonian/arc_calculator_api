@@ -79,7 +79,7 @@ def test_settings_keep_local_conflict_retry_and_storage_values():
 
 def test_ready_banner_text_is_exact():
     assert cli.READY_BANNER == (
-        "Available: /api/v2 login, 15 temporary Dummy courses after Dummy login, measured binary calculation, "
+        "Available: /api/v2 login, 4 temporary Dummy courses after Dummy login, measured binary calculation, "
         "stored results and 300-second charts.",
         "CPR completion follows the cycle rule (D136); ARC submission remains disabled.",
     )

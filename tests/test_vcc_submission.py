@@ -26,6 +26,20 @@ def _kinds(plan):
     return [item["kind"] for item in parse_json(plan.actions_json)["writes"]]
 
 
+def _round2_rows(*, final=False, is_dummy=False):
+    from mock_journey.course_settings import fixture_course_settings
+    from mock_journey.dev_course import DummyDevCourseProvider
+    from mock_journey.execution_definitions import execution_catalog
+
+    provider = DummyDevCourseProvider(settings=fixture_course_settings(), execution=execution_catalog())
+    bundle = provider.fetch_bundle(provider.list_assignments(provider.learner)[0])
+    if not is_dummy:
+        learner = replace(bundle.scope.learner, is_dummy=False, principal="fixture-learner@example.test")
+        bundle = replace(bundle, scope=replace(bundle.scope, learner=learner))
+    placement = bundle.placements[-1 if final else 0]
+    return _rows(_template(placement.public_link_id, bundle=bundle), bundle=bundle, is_dummy=is_dummy)
+
+
 class TestV20ExclusionAndEpoch:
     def test_dummy_non_arc_and_reset_are_excluded_ok_false(self):
         template = _template()
@@ -78,12 +92,12 @@ class TestV20ExclusionAndEpoch:
         assert submit["exclusion_reasons"] == []
         assert "progress_reset_before_result" not in submit["exclusion_reasons"]
 
-    def test_complete_and_incomplete_are_both_eligible_when_not_excluded(self):
-        template = _template()
+    def test_round2_training_success_and_failure_are_both_disabled(self):
         plan = CourseCompletionPlan()
-        complete = plan.build(*_rows(template), _evaluation())
-        incomplete = plan.build(*_rows(template), _evaluation(observed=1, met=False, completed=False))
+        complete = plan.build(*_round2_rows(), _evaluation())
+        incomplete = plan.build(*_round2_rows(), _evaluation(observed=1, met=False, completed=False))
         for built in (complete, incomplete):
+            assert "SUBMISSION" not in _kinds(built)
             submit = parse_json(built.result_receipt_json)["submit_arc"]
             assert submit == {
                 "status": "disabled", "ok": False, "error": "arc_contract_pending", "exclusion_reasons": [],
@@ -93,6 +107,48 @@ class TestV20ExclusionAndEpoch:
 
 
 class TestV21DisabledGatewayAndIntent:
+    def test_acknowledged_read_is_success_but_cannot_be_written(self):
+        from mock_journey.course_submission import _stored_submit
+
+        stored = {"status": "acknowledged", "ok": False, "error": None, "exclusion_reasons": []}
+        job, attempt, user, rows = _rows(_template(), already=True, submit_arc=stored)
+        assert _stored_submit(attempt, rows)["ok"] is True
+        with pytest.raises(CourseError, match="CALCULATOR_CONTRACT_MISMATCH"):
+            CourseCompletionPlan().build(job, attempt, user, rows, _evaluation())
+
+    @pytest.mark.parametrize("status", ["sent", "acknowledged", "failed"])
+    def test_completion_plan_cannot_produce_reserved_status(self, monkeypatch, status):
+        import mock_journey.course_submission as submission
+
+        monkeypatch.setattr(submission, "classify_launch_status", lambda *args, **kwargs: {
+            "status": status, "ok": status == "acknowledged", "error": None, "exclusion_reasons": [],
+        })
+        with pytest.raises(CourseError, match="CALCULATOR_CONTRACT_MISMATCH"):
+            CourseCompletionPlan().build(*_rows(_template()), _evaluation())
+
+    def test_launch_classifier_produces_only_enabled_states(self):
+        from itertools import combinations
+        from mock_journey.course_contracts import PRODUCIBLE_SUBMIT_STATUSES
+
+        observed = set()
+        for size in range(len(EXCLUSION_REASON_ORDER) + 1):
+            for reasons in combinations(EXCLUSION_REASON_ORDER, size):
+                for completed in (False, True):
+                    value = classify_launch_status(reasons, course_completed=completed)
+                    observed.add(value["status"])
+                    assert value["ok"] is False
+        assert observed == PRODUCIBLE_SUBMIT_STATUSES == {"disabled", "excluded", "pending"}
+
+    def test_acknowledged_receipt_requires_reference(self):
+        assert ArcReceipt("acknowledged", "fixture-receipt", None).receipt_id == "fixture-receipt"
+        for reference in (None, "", 7):
+            with pytest.raises(CourseError):
+                ArcReceipt("acknowledged", reference, None)
+        for status in ("disabled", "excluded", "pending", "sent", "failed"):
+            assert ArcReceipt(status, None, None).receipt_id is None
+            with pytest.raises(CourseError):
+                ArcReceipt(status, "fixture-receipt", None)
+
     def test_disabled_versus_excluded_and_stable_intent(self):
         template = _template()
         plan = CourseCompletionPlan()
@@ -185,8 +241,9 @@ class TestAtomicCourseProgress:
         assert actions["conditions"]["head_definition_hash"] == rows["head"]["definition_hash"]
         assert actions["conditions"]["final_active_attempt_id"] == ATTEMPT
 
-    def test_final_success_completes_course_only_with_all_prerequisites(self):
-        job, attempt, user, rows = _rows(_template(1005))
+    @pytest.mark.parametrize("is_dummy", [True, False])
+    def test_final_success_completes_course_only_with_all_prerequisites(self, is_dummy):
+        job, attempt, user, rows = _round2_rows(final=True, is_dummy=is_dummy)
         bundle = rows["bundle"]
         progress = empty_progress()
         for p in bundle.placements[:-1]:
@@ -202,7 +259,25 @@ class TestAtomicCourseProgress:
         head = next(w["set"] for w in writes if w["kind"] == "COURSE_HEAD")
         final = next(w["set"] for w in writes if w["kind"] == "COURSE_FINAL")
         assert head["course_complete"] is True
-        assert parse_json(head["progress_json"].encode())["course_status"] == "FINISHED"
+        saved = parse_json(head["progress_json"].encode())
+        assert saved["course_status"] == ("FINISHED" if is_dummy else "COMPLETION_PENDING_ARC")
+        expected = "excluded" if is_dummy else "pending"
+        submit = parse_json(plan.result_receipt_json)["submit_arc"]
+        assert submit["status"] == expected and submit["ok"] is False
+        assert [w["set"]["status"] for w in writes if w["kind"] == "SUBMISSION"] == [expected]
+        assert "OUTBOX" not in _kinds(plan)
+        assert plan.result_receipt_json == CourseCompletionPlan().build(job, attempt, user, rows, _evaluation()).result_receipt_json
+        if not is_dummy:
+            for status in ("pending", "sent", "failed", "acknowledged"):
+                public = parse_json(CoursePolicy.aggregate_progress(bundle, json_bytes({
+                    **saved, "arc_submission_status": status,
+                })))
+                assert public["course_status"] == ("FINISHED" if status == "acknowledged" else "COMPLETION_PENDING_ARC")
+            rows["head"].update(head)
+            rows["final"].update(final, phase="active", active_attempt_id=ATTEMPT)
+            repeated = CourseCompletionPlan().build(job, attempt, user, rows, _evaluation())
+            assert "SUBMISSION" not in _kinds(repeated)
+            assert parse_json(repeated.result_receipt_json)["submit_arc"]["status"] == "disabled"
         assert final["passed_placement_key"] == attempt["course_binding"].placement_key
         assert final["passed_definition_hash"] == attempt["course_binding"].definition_hash
 

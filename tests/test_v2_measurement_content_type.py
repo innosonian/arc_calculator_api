@@ -25,6 +25,7 @@ per module and forked for every test.
 """
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 
 import pytest
@@ -249,3 +250,62 @@ def test_rejection_body_is_the_fixed_v2_envelope(world, monkeypatch):
     assert set(reply.body) == {"success", "error", "timestamp"}
     assert reply.error == {"code": "INVALID_REQUEST", "message": "Invalid request.", "details": None}
     assert MULTIPART_CONTENT_TYPE not in json.dumps(reply.raw)
+
+
+@pytest.mark.parametrize("kind,status,code", [
+    ("empty", 422, "MEASUREMENT_INPUT_INVALID"),
+    ("length", 422, "MEASUREMENT_INPUT_INVALID"),
+    ("header", 422, "MEASUREMENT_INPUT_INVALID"),
+    ("trailer", 422, "MEASUREMENT_INPUT_INVALID"),
+    ("too_large", 413, "PAYLOAD_TOO_LARGE"),
+])
+def test_raw_framing_is_rejected_before_acceptance_without_packet_decoding(world, monkeypatch, kind, status, code):
+    from data_handlers.data_parser import DataParser, RawInputRejected
+
+    raw = {
+        "empty": b"", "length": world.measurement + b"x",
+        "header": b"\x00" + world.measurement[1:],
+        "trailer": world.measurement + b"\x00" * 19 + b"x",
+        # Size wins even when the same bytes also have a bad length/header.
+        "too_large": b"x" * 4_000_001,
+    }[kind]
+    # Let the parser see the raw limit; the normal harness transport limit is smaller.
+    if kind == "too_large":
+        world.h.api_settings = replace(world.h.api_settings, payload_limit=6_000_000)
+        world.h.api = world.h.build_api()
+    reasons = []
+    validate = DataParser.validate_cpr_bytes
+
+    def observed(self, data):
+        try:
+            return validate(self, data)
+        except RawInputRejected as error:
+            reasons.append(error.reason)
+            raise
+
+    monkeypatch.setattr(DataParser, "validate_cpr_bytes", observed)
+    monkeypatch.setattr(DataParser, "parse_cpr_bytes", lambda *args, **kwargs:
+                        pytest.fail("Ingress decoded packets instead of validating framing."))
+    reply = call(world, upload_event(world, data=raw))
+    assert (reply.status, reply.error["code"]) == (status, code)
+    assert reply.error["details"] is None
+    # Empty raw is also rejected by the earlier mandatory request-field check.
+    assert reasons == ([] if kind == "empty" else [{
+        "length": "INVALID_RAW_LENGTH", "header": "INVALID_RAW_HEADER",
+        "trailer": "NONZERO_RAW_TRAILER", "too_large": "RAW_TOO_LARGE",
+    }[kind]])
+    assert_nothing_accepted(world)
+    assert not any(record["event"] == "calculation_accepted" for record in world.events.operations())
+
+
+@pytest.mark.parametrize("trailer", [b"", b"\x00" * 20], ids=["whole_packets", "zero_trailer"])
+def test_valid_raw_framing_is_accepted_without_packet_decoding(world, monkeypatch, trailer):
+    from data_handlers.data_parser import DataParser
+
+    monkeypatch.setattr(DataParser, "parse_cpr_bytes", lambda *args, **kwargs:
+                        pytest.fail("Ingress decoded packets instead of validating framing."))
+    raw = world.measurement + trailer
+    reply = call(world, upload_event(world, data=raw))
+    assert reply.status == 202 and reply.data["calculationStatus"] == "pending"
+    assert saved_measurement(world) == raw
+    assert len(job_rows(world)) == 1

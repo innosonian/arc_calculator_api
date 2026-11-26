@@ -1,8 +1,8 @@
-"""D138/D139 journeys on DynamoDB Local (twins of tests/test_eof_truncated_ventilation.py's in-memory journeys)."""
+"""Recorded legacy-path calculation and verify-only upgrades on DynamoDB Local."""
 
 from integration_tests.worker_journey_support import store  # noqa: F401 (fixture)
 from tests.eof_vent_support import (
-    auto_stopped_ventilation_only_journey, in_flight_v4_attempts_keep_their_meaning_after_the_upgrade,
+    auto_stopped_ventilation_only_journey, in_flight_v4_attempts_require_new_attempts_after_upgrade,
     recorded_cpr_below_minimum_journey,
 )
 
@@ -15,5 +15,5 @@ def test_auto_stopped_ventilation_only_recording_completes_the_practice(store):
     auto_stopped_ventilation_only_journey(store)
 
 
-def test_in_flight_v4_attempts_keep_their_meaning_after_the_upgrade(store):
-    in_flight_v4_attempts_keep_their_meaning_after_the_upgrade(store)
+def test_in_flight_v4_attempts_require_new_attempts_after_upgrade(store):
+    in_flight_v4_attempts_require_new_attempts_after_upgrade(store)

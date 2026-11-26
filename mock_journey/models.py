@@ -8,3 +8,5 @@ class AuthContext:
     principal: str
     revision: int
     expires_at: int
+    organizations: tuple[tuple[str, str], ...] = ()
+    organization_id: str | None = None

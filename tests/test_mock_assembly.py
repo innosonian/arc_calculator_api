@@ -11,7 +11,7 @@ import json
 import pytest
 
 from mock_journey.assembly import ExecutionCatalog, build_course_application, build_worker, build_relay
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_key, definition_keys
+from mock_journey.catalog import Catalog, definition_key, definition_keys, program_targets
 from mock_journey.course_provider import UnavailableCourseProvider
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.projection import ProjectionSchema
@@ -27,11 +27,11 @@ def build_api(settings, **kwargs):
     return build_course_application(settings, **kwargs)
 
 
-def test_definition_keys_are_the_fifteen_program_target_pairs():
+def test_definition_keys_are_the_eighteen_program_target_pairs():
     keys = definition_keys()
-    assert len(keys) == len(set(keys)) == 15
-    assert keys == tuple(f"{program[0]}:{target}" for program in PROGRAMS for target in TARGETS)
-    assert definition_key("mock-cpr", "adult") == "mock-cpr:adult"
+    assert len(keys) == len(set(keys)) == 18
+    assert keys == tuple(f"{program.id}:{target}" for program, target in program_targets())
+    assert definition_key("bls-cpr-3", "adult") == "bls-cpr-3:adult"
     assert set(definitions()) == set(keys)
 
 
@@ -62,21 +62,20 @@ def test_roles_construct_without_sdk_calls_or_sharing_user_keys():
 def test_catalog_and_schema_snapshots_survive_caller_and_return_value_mutation():
     supplied, supplied_schemas = definitions(), schemas()
     execution = ExecutionCatalog(supplied, supplied_schemas)
-    expected = typed.canonical_bytes(supplied["mock-cpr:adult"])
-    supplied["mock-cpr:adult"]["calculation_profile"]["Custom"]["PassThreshold"] = 1
+    expected = typed.canonical_bytes(supplied["bls-cpr-3:adult"])
+    supplied["bls-cpr-3:adult"]["calculation_profile"]["Custom"]["PassThreshold"] = 1
     supplied_schemas["test-projection"].metric_fields["CompressionDepth"]["value"] = {}
-    first = execution.get_definition("mock-cpr", "adult")
+    first = execution.get_definition("bls-cpr-3", "adult")
     assert typed.canonical_bytes(first) == expected
     first["condition"]["target"] = "child"
     execution.schemas["test-projection"].metric_fields.clear()
-    assert execution.get_definition("mock-cpr", "adult")["condition"]["target"] == "adult"
+    assert execution.get_definition("bls-cpr-3", "adult")["condition"]["target"] == "adult"
     assert execution.schemas["test-projection"].metric_fields == {"CompressionDepth": {"value": "scalar"}}
-    for program in PROGRAMS:
-        for target in TARGETS:
-            row = json.loads(Catalog(execution).definition(program[0], target))
-            assert row["goal"] == {"kind": program[2], "required": program[3]}
-            assert type(row["calculation_profile"]["Custom"]["PassThreshold"]) is float
-            assert row["calculation_profile"]["Custom"]["CertificateAdult"] is False
+    for program, target in program_targets():
+        row = json.loads(Catalog(execution).definition(program.id, target))
+        assert row["goal"] == {"kind": program.kind, "required": program.required}
+        assert type(row["calculation_profile"]["Custom"]["PassThreshold"]) is float
+        assert row["calculation_profile"]["Custom"]["CertificateAdult"] is False
 
 
 @pytest.mark.parametrize("change", [
@@ -87,9 +86,9 @@ def test_catalog_and_schema_snapshots_survive_caller_and_return_value_mutation()
 ])
 def test_invalid_contracts_fail_before_any_client_is_available(change):
     supplied, supplied_schemas = definitions(), schemas()
-    item = supplied["mock-cpr:adult"]
+    item = supplied["bls-cpr-3:adult"]
     if change == "missing_definition":
-        supplied.pop("mock-two-rescuer-aed:infant")
+        supplied.pop("bls-2r-cpr-aed-8:infant")
     elif change == "extra_definition":
         supplied["unconfirmed:adult"] = deepcopy(item)
     elif change == "wrong_target":

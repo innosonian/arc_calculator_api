@@ -275,6 +275,11 @@ class CourseHttp:
             return parsed
         if spec.body_kind == "login":
             return self._login_body(parsed)
+        if spec.body_kind == "organization_selection":
+            return self._exact_strings(parsed, ("organizationId",))
+        if spec.body_kind == "progress_reset":
+            data = self._exact_strings(parsed, ("clientRequestId",))
+            return require_uuid(data["clientRequestId"], code=_INVALID)
         if spec.body_kind == "start_request":
             return self._start_body(parsed)
         if spec.body_kind == "content_report":
@@ -332,6 +337,8 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
 
     def _login_body(self, parsed):
+        if type(parsed) is dict and parsed.get("grant") == "arc_oidc":
+            return self._exact_strings(parsed, ("grant", "idToken", "accessToken"))
         if type(parsed) is not dict or set(parsed) != {"loginId", "password"}:
             raise CourseError("INVALID_REQUEST")
         login_id, password = parsed["loginId"], parsed["password"]
@@ -359,7 +366,7 @@ class CourseHttp:
             raise CourseError("INVALID_REQUEST")
         if type(parsed["contentVersion"]) is not str:
             raise CourseError("INVALID_REQUEST")
-        event_type, intervals, display_id = _parse_event(parsed["event"])
+        event_type, intervals, display_id, position_ms = _parse_event(parsed["event"])
         return {
             "enrollmentId": require_public_id(parsed["enrollmentId"], code=_INVALID),
             "courseItemLinkId": require_public_id(parsed["courseItemLinkId"], code=_INVALID),
@@ -370,6 +377,7 @@ class CourseHttp:
                 event_type,
                 intervals,
                 display_id,
+                position_ms,
             ),
         }
 
@@ -396,6 +404,12 @@ class CourseHttp:
         if route == "logout":
             self._hooks.logout(auth)
             return None, 204
+        if route == "session_organization":
+            organization_id = self._hooks.select_organization(auth, body["organizationId"])
+            return {"organizationId": organization_id}, 200
+        if route == "progress_reset":
+            self._hooks.reset_dummy_progress(auth, body)
+            return None, 204
         if route == "course_list":
             return self._service.list_courses(auth, page=query["page"], page_size=query["pageSize"]), 200
         if route == "course_detail":
@@ -421,7 +435,11 @@ class CourseHttp:
                 placement_id=body["courseItemLinkId"],
                 report=body["report"],
             )
-            return parse_receipt_data(receipt.response_json), 200
+            data = parse_receipt_data(receipt.response_json)
+            if data.get("completionKind") is None:
+                is_video = body["report"].event_type in {"video_segments", "video_skipped"}
+                data["completionKind"] = "watched" if is_video and data["isCompleted"] is True else None
+            return data, 200
         if route == "attempt_create":
             receipt = self._service.start_attempt(auth, body)
             data = parse_receipt_data(receipt.response_json)
@@ -446,7 +464,7 @@ class CourseHttp:
         raise CourseError("NOT_FOUND")
 
     def _handle_login(self, body):
-        if body["loginId"] != _DUMMY_LOGIN:
+        if body.get("grant") == "arc_oidc" or body["loginId"] != _DUMMY_LOGIN:
             raise CourseError("CONTRACT_PENDING")
         session = self._hooks.login(body["loginId"], body["password"])
         # Not absorbed: an unexpected refresh failure stays a 503 response.
@@ -463,7 +481,7 @@ class CourseHttp:
         snapshot = self._hooks.session_reader(auth)
         return session_data(
             session_id=snapshot.session_id, expires_at=snapshot.expires_at,
-            learning_availability=snapshot.learning_availability,
+            learning_availability=snapshot.learning_availability, metadata=snapshot,
         )
 
     def _handle_refresh(self, auth):
@@ -474,6 +492,7 @@ class CourseHttp:
         )
         return session_data(
             session_id=session.session_id, expires_at=session.expires_at, learning_availability=availability,
+            metadata=session,
         )
 
     def _attempt_from_record(self, record: AttemptRecord):
@@ -571,14 +590,18 @@ def _parse_event(event):
             if not (0 <= start < end):
                 raise CourseError("INVALID_REQUEST")
             owned.append((start, end))
-        return "video_segments", tuple(owned), None
+        return "video_segments", tuple(owned), None, None
+    if event_type == "video_skipped":
+        if set(event) != {"type", "positionMs"}:
+            raise CourseError("INVALID_REQUEST")
+        return event_type, (), None, event["positionMs"]
     if event_type == "document_displayed":
         if set(event) != {"type"}:
             raise CourseError("INVALID_REQUEST")
-        return "document_displayed", (), None
+        return "document_displayed", (), None, None
     if set(event) != {"type", "displayReportId"}:
         raise CourseError("INVALID_REQUEST")
-    return "document_confirmed", (), require_uuid(event["displayReportId"], code=_INVALID)
+    return "document_confirmed", (), require_uuid(event["displayReportId"], code=_INVALID), None
 
 
 def header_representation(event, name):

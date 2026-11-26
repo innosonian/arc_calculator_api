@@ -7,10 +7,11 @@ import re
 
 from botocore.exceptions import BotoCoreError, ClientError
 
+from calculators.gate_evaluator import valid_gate_results
 from mock_journey.auth import PRINCIPAL
 from mock_journey.contracts import (
-    CALL_BINDING_FIELDS, MINIMUM_QUANTITY_REASON, expected_goal_status, expected_profile_version,
-    gates_pass_on_minimum_quantity, is_versioned_goal, minimum_quantity_policy,
+    CALL_BINDING_FIELDS, GATE_REASON, MINIMUM_QUANTITY_REASON, expected_goal_status, expected_profile_version,
+    gates_pass_on_minimum_quantity, is_versioned_goal, minimum_quantity_policy, uses_round2_gates,
 )
 from mock_journey.errors import JourneyError
 from mock_journey.state import (
@@ -205,7 +206,7 @@ class DynamoJobRepository:
             raise JourneyError("STORED_INPUT_INVALID")
         return {
             "head": head, "item": item, "final": final, "bundle": bundle,
-            "is_dummy": _is_dummy(attempt),
+            "is_dummy": bundle.scope.learner.is_dummy or _is_dummy(attempt),
         }
 
     def _course_put_from_row(self, current, updates, match):
@@ -472,13 +473,17 @@ class DynamoJobRepository:
     @staticmethod
     def check_evaluation(value, attempt):
         """The evaluation as stored, once it agrees with the attempt's definition (else CALCULATOR_CONTRACT_MISMATCH)."""
-        if type(value) is not dict or set(value) != {"goal", "score", "program_completed", "reason_codes"}:
-            raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         definition = json.loads(attempt["definition_json"])
+        adapter_version = definition.get("adapter_version")
+        round2 = uses_round2_gates(adapter_version)
+        fields = {"goal", "score", "program_completed", "reason_codes"}
+        if round2:
+            fields.add("gates")
+        if type(value) is not dict or set(value) != fields:
+            raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
         goal = value["goal"]
         score = value["score"]
         versioned_goal = is_versioned_goal(definition)
-        adapter_version = definition.get("adapter_version")
         goal_fields = {"kind", "required", "observed", "met"}
         if versioned_goal:
             goal_fields.add("status")
@@ -504,22 +509,23 @@ class DynamoJobRepository:
                 raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
             completed = goal["met"] and score["decision"] == "pass"
             reasons = [] if goal["met"] else ["GOAL_NOT_MET"]
-        if score["decision"] == "pass":
-            accepted = [reasons]
+        if round2 and not valid_gate_results(value["gates"], definition, goal["observed"]):
+            raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
+        minimum_reasons = [[]]
+        if (gates_pass_on_minimum_quantity(adapter_version)
+                and MINIMUM_QUANTITY_REASON in (value["reason_codes"] if type(value["reason_codes"]) is list else ())):
+            # Counts are only in the verified candidate. Here we check whether
+            # the definition permits the minimum failure and enforce reason order.
+            minimum_applies = (any(definition["minimumQuantity"].values()) if round2
+                               else minimum_quantity_policy(definition.get("condition"), 0, 0).active)
+            if minimum_applies:
+                minimum_reasons.append([MINIMUM_QUANTITY_REASON])
+        if round2 and definition.get("assessment", {}).get("passRule") == "gates":
+            pass_rule_reasons = [[GATE_REASON] if any(gate["passed"] is False for gate in value["gates"]) else []]
         else:
-            accepted = [reasons + ["SCORE_NOT_PASS"]]
-            # D139: a fail of an adapter that gates the pass on the ARC minimum
-            # quantity is explained by the minimum, the score, or both, in that
-            # fixed order after the goal reason. The stored evaluation holds no
-            # action counts, so which of the three applies is not re-derived;
-            # the minimum code is accepted only where the D07 policy can apply
-            # to the definition's condition at all (ARC CPR). Every other
-            # adapter keeps its exact list, so the code is refused there.
-            if (gates_pass_on_minimum_quantity(adapter_version)
-                    and MINIMUM_QUANTITY_REASON in (value["reason_codes"] if type(value["reason_codes"]) is list else ())
-                    and minimum_quantity_policy(definition.get("condition"), 0, 0).active):
-                accepted += [reasons + [MINIMUM_QUANTITY_REASON],
-                             reasons + [MINIMUM_QUANTITY_REASON, "SCORE_NOT_PASS"]]
+            pass_rule_reasons = [[], ["SCORE_NOT_PASS"]]
+        accepted = [reasons + minimum + pass_rule for minimum in minimum_reasons for pass_rule in pass_rule_reasons
+                    if (not minimum and not pass_rule) == (score["decision"] == "pass")]
         if (type(value["program_completed"]) is not bool or value["program_completed"] != completed
                 or value["reason_codes"] not in accepted):
             raise JourneyError("CALCULATOR_CONTRACT_MISMATCH")
@@ -586,6 +592,11 @@ class DynamoJobRepository:
             updated_attempt = {**attempt, "state": "evaluated", "revision": attempt["revision"] + 1,
                                "active_counted": False, "result_ref": reference, "evaluation": checked,
                                "progress_application": progress, "chart_publication": deepcopy(chart_publication)}
+            if "gates" in checked:
+                # State rows contain integer controls. Preserve the checklist's
+                # fractional measurements as JSON without broadening that codec.
+                updated_attempt["evaluation"] = {key: value for key, value in checked.items() if key != "gates"}
+                updated_attempt["evaluation_gates_json"] = json.dumps(checked["gates"], allow_nan=False)
             if plan_receipt is not None:
                 updated_attempt["submit_arc"] = plan_receipt["submit_arc"]
             updated_attempt.pop("error_code", None)

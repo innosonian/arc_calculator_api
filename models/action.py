@@ -1,5 +1,34 @@
-# 원본 hstm_v2 models/action.py (V1 패리티 보존)
-# 스펙 §4.5(I-1): 원본의 Score/Action/ActionScore(어노테이션-전용, 저장소 전체 소비처 0건 grep 재확인)는 미이식.
+class Score:
+    grade: int
+    value: str | int
+    criterion: str
+
+
+class Action:
+    compression_depth: list
+    compression_rate: list
+    compression_count: int
+    hand_position: list
+    ventilation_volume: list
+    ventilation_speed: list
+    ventilation_count: int
+    action_type: str
+    total_action_ms: int
+    handsoff_ms: int
+    cycle_cnt: int
+    cycle_num: int
+
+
+class ActionScore:
+    comp_depth: Score | None
+    comp_rate: Score | None
+    recoil: Score | None
+    hand_position: Score | None
+    vent_vol: Score | None
+    vent_speed: Score | None
+    vent_rate: Score | None
+
+
 class ActionWithScore:
     action_data: dict
     score: dict

@@ -1,6 +1,5 @@
 """Content report use-case of DynamoCourseRepository.
 
-Split out of course_state.py (S7-04/X3-04); method bodies are unchanged.
 Each retry calls _report_once, which reads its own snapshot and commits
 against it.
 """
@@ -85,6 +84,12 @@ class ReportOps(CourseRepositoryCore):
                         break
                 evidence["current_content_version"] = current
                 evidence["current_content_missing"] = current is None
+        progress = _parse_field(head["progress_json"]) if head is not None else {}
+        prior_item = (progress.get("items") or {}).get(computed, {})
+        if report.event_type in {"video_segments", "video_skipped"}:
+            evidence["item_watched"] = (prior_item.get("completed") is True
+                                        and prior_item.get("content_version") == start["content_version"]
+                                        and prior_item.get("completion_kind") != "skipped")
         receipt_body = parse_json(self.policy.evaluate_content(json_bytes(evidence), report))
         report_row = {
             **course_report_key(scope_key_value, start_epoch, report.start_id, report.report_id),
@@ -103,8 +108,13 @@ class ReportOps(CourseRepositoryCore):
         if report.event_type == "video_segments" and not historical:
             merged = merge_intervals(list(start.get("merged_intervals_ms") or []) + [list(pair) for pair in report.intervals_ms])
             new_start["merged_intervals_ms"] = merged
+        if report.event_type in {"video_segments", "video_skipped"} and not historical:
             if receipt_body.get("isCompleted") is True:
                 new_start["completed"] = True
+                if receipt_body.get("completionKind") == "skipped":
+                    new_start["completion_kind"] = "skipped"
+                else:
+                    new_start.pop("completion_kind", None)
         if report.event_type == "document_displayed" and not historical:
             displayed = list(start.get("displayed") or [])
             displayed.append({"report_id": report.report_id, "content_version": report.content_version})
@@ -164,7 +174,6 @@ class ReportOps(CourseRepositoryCore):
             else:
                 new_item["completed"] = completed_now
             actions.append(_put(new_item, if_match={"revision": item_row["revision"]}))
-        progress = _parse_field(head["progress_json"])
         completed = list(progress.get("completed_placements") or [])
         if completed_now and place_key not in completed:
             if item_row.get("completed") is True or completed_now:
@@ -178,6 +187,12 @@ class ReportOps(CourseRepositoryCore):
             "completed": True if (item_row.get("completed") is True or completed_now) else False,
             "passed": None,
         }
+        if start.get("content_kind") == "video":
+            applied_completion = completed_now and receipt_body["application"] == "applied"
+            skipped = (receipt_body.get("completionKind") == "skipped" if applied_completion
+                       else prior_item.get("completion_kind") == "skipped")
+            if skipped:
+                items[place_key]["completion_kind"] = "skipped"
         progress["completed_placements"] = completed
         progress["items"] = items
         aggregated = parse_json(self.policy.aggregate_progress(bundle, json_bytes(progress)))
@@ -207,6 +222,7 @@ def _start_evidence(start, *, historical, current_version):
         "duration_ms": start.get("duration_ms"),
         "historical_only": historical,
         "completed": start.get("completed") is True,
+        "completion_kind": start.get("completion_kind"),
         "course_status": "IN_PROGRESS",
         "merged_intervals_ms": list(start.get("merged_intervals_ms") or []),
         "displayed": list(start.get("displayed") or []),

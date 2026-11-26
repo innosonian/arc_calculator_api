@@ -1,37 +1,26 @@
-"""Offline typed regression with independently derived D38-D46/D138 detection inputs.
+"""Offline regression against raw outputs from the pinned hstm legacy path.
 
-The original reference observations and ARC exceptions remain unchanged. The
-candidate runs in an isolated worker with side-effect guards; its output never
-supplies expected values. Reused historical scoring sources are hash-pinned.
-
-D139 (2026-09-30) abolished the ARC minimum-quantity null for new
-calculations (the minimum stays a pass condition of the evaluation, which is
-not part of the calculation result compared here). The current rules are therefore compared with the recorded
-reference values alone; the approved ARC exceptions
-(approved_expectations.json, unchanged) stay the historical expectation of the
-retained adapters' options (arc-internal-detection-v4 / pending-v3), which a
-second matrix below keeps proving.
+Expected values are captured by the guarded reference worker, never derived
+from ARC output. Types, key order, signed zero, charts, and serialization bytes
+are all part of the comparison. Historical result_*.json files are separately
+checked as source artifacts; they do not override live reference observations.
 """
 
-import json
 import base64
-from copy import deepcopy
+from itertools import product
+import json
 from pathlib import Path
 
 import pytest
 
 from scripts import verify_reference_parity as parity
-from tests.calculation_options_support import RETAINED_OPTIONS, run_with_options
-from tests.detection_oracle import run_expected
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures/reference_parity"
 REFERENCE = json.loads((FIXTURES / "reference_results.json").read_text(encoding="utf-8"))
-APPROVED = json.loads((FIXTURES / "approved_expectations.json").read_text(encoding="utf-8"))
 MANIFEST = json.loads((FIXTURES / "parity_manifest.json").read_text(encoding="utf-8"))
 REFERENCE_BY_ID = {case["id"]: case for case in REFERENCE["cases"]}
-APPROVED_BY_ID = {case["id"]: case for case in APPROVED["cases"]}
 
 
 @pytest.fixture(scope="module")
@@ -41,166 +30,87 @@ def input_cases():
 
 @pytest.fixture(scope="module")
 def current_results(input_cases):
-    # Only ROOT is executed; the reference is a versioned local JSON fixture.
+    # Execute only ARC. The reference authority is a checked-in observation.
     reply = parity._run_worker(ROOT, input_cases)
     assert not reply.get("unexpected_blocked_operations")
     assert all(value == "blocked" for value in reply["guard_self_test"].values())
+    assert reply["legacy_conversion_available"] is True
     assert len(reply["cases"]) == len(input_cases)
     return {case["id"]: case for case in reply["cases"]}
 
 
-def _record(case, core):
-    import lambda_handler
-
-    converted = lambda_handler._convert_result_to_legacy(deepcopy(core), deepcopy(case["condition"]))
-    return json.loads(json.dumps({"id": case["id"], "status": "ok",
-                                  "main_result": core, "http_calculation_result": converted}))
-
-
-def _expectations(input_cases, options):
-    # User-approved D38-D46/D138 change events and their measurement periods.
-    # Do not copy the current worker output or overwrite the old JSON oracle.
-    expected = {}
-    for case in input_cases:
-        core, _chart = run_expected(base64.b64decode(case["cpr_b64"]), base64.b64decode(case["aed_b64"]),
-                                    case["condition"], case["vp_event_list"], options=options)
-        expected[case["id"]] = _record(case, core)
-    return expected
-
-
-@pytest.fixture(scope="module")
-def detection_expectations(input_cases):
-    return _expectations(input_cases, None)
-
-
-@pytest.fixture(scope="module")
-def retained_expectations(input_cases):
-    return _expectations(input_cases, RETAINED_OPTIONS)
-
-
-@pytest.fixture(scope="module")
-def retained_results(input_cases):
-    # The retained adapters' path: the same core through an execution context
-    # carrying their options (mock_journey.contracts.ADAPTER_FEATURES).
-    results = {}
-    for case in input_cases:
-        core, _chart, _evidence = run_with_options(
-            base64.b64decode(case["cpr_b64"]), base64.b64decode(case["aed_b64"]), case["condition"],
-            RETAINED_OPTIONS, case["vp_event_list"])
-        results[case["id"]] = _record(case, core)
-    return results
-
-
-def test_oracle_coverage_and_input_identity(input_cases):
+def test_reference_authority_and_input_identity(input_cases):
+    assert MANIFEST["reference_root"] == str(parity.DEFAULT_REFERENCE)
+    assert MANIFEST["reference_commit"] == parity.REFERENCE_COMMIT
+    assert MANIFEST["authority"] == parity.REFERENCE_AUTHORITY
+    assert MANIFEST["generator_sha256"]["before"] == MANIFEST["generator_sha256"]["after"]
+    assert MANIFEST["generator_sha256"]["after"] == parity._sha((ROOT / "tests/_synth.py").read_bytes())
     manifest = {case["id"]: case for case in MANIFEST["cases"]}
+    assert len(manifest) == len(MANIFEST["cases"])
     assert set(manifest) == set(REFERENCE_BY_ID) == {case["id"] for case in input_cases}
-    groups = {}
     for case in input_cases:
-        groups[case["group"]] = groups.get(case["group"], 0) + 1
-        for key in ("condition", "cpr_sha256", "aed_sha256", "vp_event_list"):
-            assert not parity._differences(manifest[case["id"]][key], case[key]), (case["id"], key)
-    assert groups == {"matrix": 45, "boundary": 60, "recorded": 8, "vp": 6, "erc_rescue": 4}
-    assert set(APPROVED_BY_ID) <= set(REFERENCE_BY_ID)
+        metadata = {key: value for key, value in case.items() if key not in ("cpr_b64", "aed_b64")}
+        assert not parity._differences(manifest[case["id"]], metadata), case["id"]
+        for channel in ("cpr", "aed"):
+            assert parity._sha(base64.b64decode(case[f"{channel}_b64"])) == case[f"{channel}_sha256"]
 
 
-def test_approved_expectations_retain_independently_checked_arithmetic(input_cases):
-    active_ids = set()
+def test_recordings_cover_full_condition_grid_and_arc_regions(input_cases):
+    recordings = {path.stem for path in (ROOT / "tests/dataset").glob("*.bin")
+                  if not path.name.startswith("aed_")}
+    assert {"infant_cco_idle_flag", "infant_cpr_idle_flag_pause", "cpr_eof_truncated_vent_1"} <= recordings
+    expected = {
+        (recording, guideline, target, training_type, region)
+        for recording, guideline, target, training_type in product(
+            recordings, parity.GUIDELINES, parity.TARGETS, parity.TRAINING_TYPES)
+        for region in (parity.ARC_REGIONS if guideline.startswith("ARC") else ("british",))
+    }
+    actual = {
+        (Path(case["source_files"][0]).stem, case["condition"]["guideline"],
+         case["condition"]["target"], case["condition"]["training_type"], case["usage"]["Regional_Option"])
+        for case in input_cases if case["group"] == "recorded"
+    }
+    assert actual == expected
+    groups = {group: sum(case["group"] == group for case in input_cases)
+              for group in ("matrix", "boundary", "recorded", "vp", "erc_rescue")}
+    assert groups == {"matrix": 63, "boundary": 84, "recorded": len(expected), "vp": 12, "erc_rescue": 4}
+    assert len({case["id"] for case in input_cases}) == len(input_cases)
+
+
+def test_vp_first_compression_interval_matches_generated_timestamps(input_cases):
     for case in input_cases:
-        reference = REFERENCE_BY_ID[case["id"]]
-        assert reference["status"] == "ok", case["id"]
-        derived = parity._derive_arc_minimum_result(reference["main_result"], case)
-        if derived is None:
-            assert case["id"] not in APPROVED_BY_ID
+        if case["group"] != "vp" or "/first_compression_segment_virtual/" not in case["id"]:
             continue
-        active_ids.add(case["id"])
-        _, arithmetic = derived
-        approved = APPROVED_BY_ID[case["id"]]
-        assert not parity._differences(arithmetic, approved["arithmetic"]), case["id"]
-        for key in ("main_result", "http_calculation_result"):
-            expected, _ = parity._derive_arc_minimum_result(reference[key], case)
-            # Exact strings came from the reference generator fed independently
-            # derived totals, unchanged metrics, and its measured coaching signal.
-            expected["guide_prompts"] = approved["expected_record"][key]["guide_prompts"]
-            assert not parity._differences(expected, approved["expected_record"][key]), case["id"]
-    assert active_ids == set(APPROVED_BY_ID)
-    assert len(active_ids) == 27
+        raw = base64.b64decode(case["cpr_b64"])
+        count = 15 if case["condition"]["target"] == "infant" else 30
+        vent_start = int.from_bytes(raw[(1 + count * 10) * 28 + 20:(1 + count * 10) * 28 + 28], "big")
+        assert case["vp_event_list"][1]["timestamp"] == vent_start == 100 + count * 500
 
 
 @pytest.mark.parametrize("case_id", list(REFERENCE_BY_ID))
-def test_calculator_matches_independent_detection_expectation(case_id, current_results, detection_expectations):
-    # D139: the current rules have no ARC exception, so the historical value of
-    # every case (the former 27 exceptions included) is the reference itself.
-    historical = REFERENCE_BY_ID[case_id]
-    expected = detection_expectations[case_id]
+def test_calculator_matches_raw_reference_bytes(case_id, current_results):
+    expected = REFERENCE_BY_ID[case_id]
+    assert case_id in current_results, "Reference fixture requires registration for the current case grid."
     current = current_results[case_id]
-    assert current["status"] == "ok", (case_id, current)
+    assert expected["status"] == current["status"] == "ok", (case_id, current)
     differences = parity._differences(expected, current)
     assert not differences, (case_id, differences[:10])
-    # On paths for which the independent oracle says the rule makes no change,
-    # the full typed comparison still enforces the original reference value.
-    if not parity._differences(historical, expected):
-        assert not parity._differences(historical, current)
+    for field in ("main_result", "http_calculation_result", "chart_json"):
+        expected_bytes = expected["serialized_json"][field].encode("utf-8")
+        current_bytes = current["serialized_json"][field].encode("utf-8")
+        assert expected_bytes == current_bytes == parity._json_bytes(current[field]), (case_id, field)
+    assert parity._json_bytes(expected) == parity._json_bytes(current)
 
 
-@pytest.mark.parametrize("case_id", list(REFERENCE_BY_ID))
-def test_retained_options_match_independent_detection_expectation(case_id, retained_results, retained_expectations):
-    # The pre-D138/D139 matrix, unchanged: the approved ARC exception is still
-    # the historical expectation of the retained adapters' options.
-    historical = APPROVED_BY_ID.get(case_id, {}).get("expected_record", REFERENCE_BY_ID[case_id])
-    expected = retained_expectations[case_id]
-    current = retained_results[case_id]
-    differences = parity._differences(expected, current)
-    assert not differences, (case_id, differences[:10])
-    if not parity._differences(historical, expected):
-        assert not parity._differences(historical, current)
-
-
-@pytest.mark.parametrize("case_id", list(APPROVED_BY_ID))
-def test_abolished_arc_minimum_is_exactly_the_approved_exception_removed(case_id, input_cases, current_results,
-                                                                         retained_results):
-    # D139 removes the exception and nothing else: applying the independent
-    # approved-exception arithmetic (nulled groups, reweighted overall) to the
-    # current result reproduces the retained adapters' result. Coaching text is
-    # derived from the totals by the pinned generator, so it is taken as is.
-    case = next(case for case in input_cases if case["id"] == case_id)
-    for key in ("main_result", "http_calculation_result"):
-        derived, _audit = parity._derive_arc_minimum_result(current_results[case_id][key], case)
-        derived["guide_prompts"] = retained_results[case_id][key]["guide_prompts"]
-        assert not parity._differences(derived, retained_results[case_id][key]), (case_id, key)
-
-
-# Former null-group scores that do not return to the recorded reference value
-# under the current rules: (reference, current). Each is the ventilation-rate
-# measurement interval of the detection revision (D45), not D139 -- the
-# independent oracle expects the same value (test above) and cpr_4's 31 was
-# already visible before D139 (its ventilation group was never null).
-NULL_GROUP_REVISION_DIFFERENCES = {
-    ("recorded/cpr_1", "score_vent_rate"): (100, 0),
-    ("recorded/cpr_2", "score_vent_rate"): (15, 0),
-    ("recorded/cpr_4", "score_vent_rate"): (65, 31),
-}
-
-
-def test_former_arc_minimum_null_groups_return_to_the_reference_scores(current_results):
-    # The 27 approved exceptions nulled these group scores. Without the policy
-    # they must be the recorded reference numbers again (not the current output
-    # pinned as its own expectation). score_ccf/overall are outside the null
-    # groups and follow the D45 timeline revision for every guideline alike.
-    observed = {}
-    for case_id in APPROVED_BY_ID:
-        for key in ("main_result", "http_calculation_result"):
-            reference = REFERENCE_BY_ID[case_id][key]["cpr_score"]["total_score"]
-            current = current_results[case_id][key]["cpr_score"]["total_score"]
-            assert current["overall"] is not None, case_id
-            for name in parity.CHEST_NULL_KEYS + parity.VENT_NULL_KEYS:
-                if parity._differences(reference[name], current[name]):
-                    assert observed.setdefault((case_id, name), (reference[name], current[name])) == \
-                        (reference[name], current[name])
-        assert current_results[case_id]["main_result"]["action_count"] == \
-            REFERENCE_BY_ID[case_id]["main_result"]["action_count"]
-    assert observed == NULL_GROUP_REVISION_DIFFERENCES
-
-
-@pytest.mark.parametrize("reference,current", [(1, True), (1, 1.0), (None, 0), (-0.0, 0.0), ({}, {"x": None})])
-def test_parity_assertions_do_not_collapse_json_types(reference, current):
+@pytest.mark.parametrize("reference,current", [
+    (1, True), (1, 1.0), (None, 0), (-0.0, 0.0), ({}, {"x": None}),
+    ({"a": 1, "b": 2}, {"b": 2, "a": 1}),
+])
+def test_parity_assertions_preserve_types_order_and_float_bits(reference, current):
     assert parity._differences(reference, current)
+    assert parity._json_bytes(reference) != parity._json_bytes(current)
+
+
+def test_serialization_retains_original_key_order():
+    value = {"z": -0.0, "a": 1.0, "b": True, "c": None}
+    assert parity._json_bytes(value) == b'{"z": -0.0, "a": 1.0, "b": true, "c": null}'

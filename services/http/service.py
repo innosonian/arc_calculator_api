@@ -35,6 +35,10 @@ def parse_body(request_body: str) -> RequestBody:
     except Exception:
         req_body["vp_event_list"] = []
 
+    # D143: only present when sent, so existing bodies keep their exact keys.
+    if "hand_position_board" in body:
+        req_body["hand_position_board"] = _get_body_value(body, "hand_position_board")
+
     req_body["hstm_document"] = _get_json_body_value(body, "hstm_document")
     if not req_body["hstm_document"]:
         req_body["hstm_document"] = _get_json_body_value(body, "hstm_document_b64", is_base64=True)

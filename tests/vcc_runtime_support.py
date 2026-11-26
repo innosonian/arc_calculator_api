@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import uuid
 
 from mock_journey.course_contracts import StartCommand
+from mock_journey.projection import DEFINITION_SETTING_KEYS
 from mock_journey.course_fixture import FixtureCourseProvider
 from mock_journey.course_settings import fixture_course_settings
 from tests.vcc_support import load_fixture, mapping_document
@@ -42,19 +43,40 @@ def seed_session(client, table, *, session_id, principal, token, now, expires_at
             raise
     session = {"PK": f"SESSION#{session_id}", "SK": "AUTH", "session_id": session_id, "principal": principal,
                "token_hash": hashlib.sha256(token.encode()).hexdigest(), "issued_at": now,
-               "expires_at": expires_at, "status": "active", "revision": 0}
+               "expires_at": expires_at, "status": "active", "revision": 0,
+               "organizations": [{"id": "fixture-org", "name": "Fixture organization"}]}
     client.put_item(TableName=table, Item=encode_item(session), ConditionExpression="attribute_not_exists(PK)")
+
+
+def current_mapping_document():
+    """Keep frozen VCC IDs/DTOs while new runtime calculations use the full current definition."""
+    from tests.legacy_dummy_catalog import LegacyCatalog, legacy_execution_catalog
+
+    document = mapping_document()
+    catalog = LegacyCatalog(legacy_execution_catalog())
+    for mapping in document["mappings"].values():
+        previous = mapping["execution"]
+        definition = json.loads(catalog.definition(mapping["program_id"], mapping["target"]))
+        definition["catalog_version"] = previous["catalog_version"]
+        assert all(key in definition for key in DEFINITION_SETTING_KEYS)
+        mapping["execution"] = definition
+    return document
 
 
 def runtime(client, table, *, objects=None, legacy_bindings=None, existing_token=None, legacy_slots=None):
     """The assigned fixture learner's application on ``HARNESS_VCC_*`` values (tests/journey_support.compose)."""
     now = [HARNESS_START]
     clock = lambda: now[0]  # noqa: E731
-    provider = FixtureCourseProvider(document=load_fixture("course_bundle.json"),
-        settings=fixture_course_settings(), mapping_document=mapping_document())
+    mapping = current_mapping_document()
+    document = load_fixture("course_bundle.json")
+    for placement in document["placements"]:
+        if placement["source_id"] in mapping["mappings"]:
+            placement["execution"] = mapping["mappings"][placement["source_id"]]["execution"]
+    provider = FixtureCourseProvider(document=document,
+        settings=fixture_course_settings(), mapping_document=mapping)
     composition = compose(
         JourneyStore(client, table), provider=provider, objects=objects, bindings=legacy_bindings,
-        keys=HARNESS_VCC_KEYS, environment=HARNESS_VCC_ENVIRONMENT, mapping_document=mapping_document(),
+        keys=HARNESS_VCC_KEYS, environment=HARNESS_VCC_ENVIRONMENT, mapping_document=mapping,
         clock=clock,
     )
     rebuild = composition.build_api
@@ -69,10 +91,8 @@ def runtime(client, table, *, objects=None, legacy_bindings=None, existing_token
     auth = app.auth.authenticate(token)
     if existing_token is None:
         app.course_service.refresh_for_session(auth)
-    # The hooked adapter is the one registered under the fixture course definitions' adapter version
-    # (execution_mapping.json: the retained pending-v3 adapter); build_worker registers the rest of the
-    # registry as plain bundled calculators (tests/journey_support.with_registry_adapters).
-    fixture_version = next(iter(mapping_document()["mappings"].values()))["execution"]["adapter_version"]
+    # The frozen mapping stays a compatibility fixture; this runtime explicitly selects current definitions.
+    fixture_version = next(iter(mapping["mappings"].values()))["execution"]["adapter_version"]
     adapter = next(a for a in composition.default_adapters() if a.version == fixture_version)
 
     def make_worker(adapters=None):
@@ -91,9 +111,12 @@ def start_attempt(env, link_id):
 
 def measurement_event(attempt, *, count=None):
     definition = json.loads(attempt["definition_json"])
-    # Adult ventilation 520mL, one breath per 6 seconds; otherwise 60
-    # compressions (tests/journey_support.synthetic_measurement).
-    data = synthetic_measurement(ventilation=definition["goal"]["kind"] == "ventilations", count=count)
+    # Use the current definition minimum; explicit counts still exercise undersized attempts.
+    ventilation = definition["goal"]["kind"] == "ventilations"
+    if count is None and "minimumQuantity" in definition:
+        field = "ventilations" if ventilation else "compressions"
+        count = max(definition["goal"]["required"], definition["minimumQuantity"][field])
+    data = synthetic_measurement(ventilation=ventilation, count=count)
     return {"httpMethod": "POST", "headers": {"Content-Type": "multipart/form-data; boundary=arc-integration-boundary"},
             "body": multipart(definition["condition"], data=data), "isBase64Encoded": True}
 

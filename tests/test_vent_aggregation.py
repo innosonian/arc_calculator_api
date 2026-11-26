@@ -1,4 +1,3 @@
-# 원본: hstm_v2 tests/test_vent_aggregation.py (ARC 각색 이식 — guideline만 ARC2020으로 교체)
 from unittest import TestCase
 
 from calculators.cycle_evaluator import Cycle, CycleWithScore
@@ -49,12 +48,12 @@ class TestVentAggregationDenominator(TestCase):
                 "mode": "training",
                 "target": "adult",
                 "training_type": "cpr",
-                "guideline": "ARC2020",
+                "guideline": "AHA2020",
                 "cpr_cycle_type": "302",
                 "is_2rescuers": True,
             }
         )
-        sw = ScoreWeightFactory.create("adult", "cpr", "ARC2020")
+        sw = ScoreWeightFactory.create("adult", "cpr", "AHA2020")
 
         # 사용자 압박 차례(VP_VENT): 환기는 VP가 해 채점 안 됨
         def comp_cycle():

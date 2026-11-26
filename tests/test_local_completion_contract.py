@@ -8,7 +8,9 @@ committed row is read through the public /api/v2 attempt and calculation routes
 /cpr-analysis alias and programs view are not carried over (D103).
 """
 
+import base64
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +22,8 @@ from main import run_calculator
 from mock_journey import typed
 from mock_journey.auth import AuthManager
 from mock_journey.calculation import CalculationService
-from mock_journey.catalog import Catalog, PROGRAMS, TARGETS, definition_keys
+from mock_journey.catalog import Catalog, TARGETS, definition_keys
+from tests.legacy_dummy_catalog import LEGACY_PROGRAMS as PROGRAMS
 from mock_journey.contracts import VerifiedCalculation
 from mock_journey.course_settings import fixture_course_settings
 from mock_journey.course_wiring import COURSE_MODE, bind_course_http
@@ -29,7 +32,7 @@ from mock_journey.handler import handle
 from mock_journey.internal_calculator import InternalCalculator
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.legacy_bridge import parse_measurement
-from mock_journey.projection import LoadedInput, ProjectionSchema, project_input, typed_identity
+from mock_journey.projection import LoadedInput, ProjectedInput, ProjectionSchema, project_input, typed_identity
 from mock_journey.service import JourneyService
 from mock_journey.state import DynamoStateRepository
 from mock_journey.worker import evaluate
@@ -44,7 +47,7 @@ PROJECTION = "local-contract-test-projection-v1"
 
 
 def _versions(pending):
-    """(adapter, profile): the current adapter (D136 cycle rule, D138/D139 options) or the retained pending-v3 adapter."""
+    """New calculations use v6; historical pending definitions keep their stored meaning."""
     from mock_journey.contracts import (
         CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
         PENDING_GOAL_PROFILE_VERSION,
@@ -56,6 +59,11 @@ def _versions(pending):
 
 def _definition(program, target, *, pending=False):
     ident, _, kind, required = program
+    if not pending:
+        from tests.legacy_dummy_catalog import LegacyCatalog, legacy_execution_catalog
+        definition = json.loads(LegacyCatalog(legacy_execution_catalog()).definition(ident, target))
+        definition["projection_version"] = PROJECTION
+        return definition
     adapter_version, profile_version = _versions(pending)
     training = {"compressions": "compression_only", "ventilations": "ventilation_only"}.get(kind, "cpr")
     return {
@@ -160,7 +168,7 @@ def _read_world(case, core, verified):
     jobs = SimpleNamespace(get_job=lambda ident: deepcopy(job))
     snapshot = json.dumps(final).encode("utf-8")
     storage = _CommittedStorage(snapshot, case.binding)
-    calculation = CalculationService(state, jobs, storage, {PROJECTION: case.schema},
+    calculation = CalculationService(state, jobs, storage, {case.schema.version: case.schema},
                                      payload_limit=1_000_000, clock=lambda: 1000)
     journey = JourneyService(state, auth, calculation)
     http = bind_course_http(journey, SimpleNamespace(), fixture_course_settings(), clock=lambda: 1000,
@@ -176,7 +184,8 @@ def _request(world, case, operation="calculation", *, retry=False, other=False, 
     if retry:
         data = case.body["cpr_b64_data"]
         if changed:
-            data = data[:-1] + bytes((data[-1] ^ 1,))
+            # Change a depth sample while preserving the validated zero trailer.
+            data = data[:1] + bytes((data[1] ^ 1,)) + data[2:]
         event = multipart_event({"rawHexBPfile": data, "aedHexBPfile": case.body["aed_b64_data"],
                                  "condition": json.dumps(case.body["condition"])})
     else:
@@ -228,7 +237,13 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
                               case.body["condition"], [], stage="test")
     raw = case.adapter.calculate(case.loaded, case.binding, lambda: None)
     verified = case.adapter.validate_response(raw, case.projected, case.binding)
-    assert typed.canonical_bytes(verified.core_result) == typed.canonical_bytes(expected)
+    comparable = deepcopy(verified.core_result)
+    # The v6 result adds the existing Round 2 AED outcome alongside unchanged core scores.
+    for part in comparable["aed_score"]["part_scores"]:
+        assert part.pop("outcome") in {"shock", "no_shock"}
+    assert typed.canonical_bytes(comparable) == typed.canonical_bytes(expected)
+    from calculators.gate_evaluator import valid_gate_results
+    assert valid_gate_results(verified.gates, case.definition, verified.observed)
     assert case.adapter.get_chart(verified, case.binding, lambda: None).data
     world = _read_world(case, verified.core_result, verified)
     before_rows, before_snapshot = deepcopy(world.state.attempts), world.storage.snapshot
@@ -254,8 +269,10 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
     # compressions; 6 ventilations) to pass. cpr_1.bin holds 48 compressions and 2 ventilations,
     # so every CPR definition here fails by the minimum whatever its displayed score is.
     counts = world.final["action_count"]
-    minimum_met = program[2] != "cycles" or (counts["comp"] >= (45 if target == "infant" else 90)
-                                             and counts["vent"] >= 6)
+    minimum = case.definition["minimumQuantity"]
+    counted = verified.learner_counts if case.definition["condition"]["is_2rescuers"] else counts
+    minimum_met = (counted["comp"] >= minimum["compressions"]
+                   and counted["vent"] >= minimum["ventilations"])
     passed = score_passed and minimum_met
     assert world.evaluation["score"]["decision"] == ("pass" if passed else "fail")
     assert ("MINIMUM_QUANTITY_NOT_MET" in world.evaluation["reason_codes"]) is (not minimum_met)
@@ -284,12 +301,52 @@ def test_all_15_explicit_definitions_preserve_real_core_and_separate_http_comple
     assert world.storage.snapshot == before_snapshot
 
 
-def test_catalog_still_exposes_five_programs_and_three_targets_without_claiming_runtime_configured():
+def test_catalog_still_requires_explicit_runtime_configuration():
     catalog = Catalog()
-    assert len(PROGRAMS) == 5 and TARGETS == ("adult", "child", "infant") and len(definition_keys()) == 15
-    assert [program[3] for program in PROGRAMS] == [3, 60, 8, 8, 10]
+    assert len(definition_keys()) == 18
     # L1 is not the L3 product runtime: a bare catalog still cannot invent an
     # execution definition merely because it advertises the approved programs.
     with pytest.raises(JourneyError) as error:
         catalog.definition("mock-cpr", "adult")
     assert error.value.code == "CALCULATOR_CONTRACT_MISMATCH"
+
+
+@pytest.mark.parametrize("stored", json.loads((Path(__file__).parent / "fixtures" /
+    "retained_v2_candidates.json").read_text())["cases"], ids=lambda stored: stored["id"])
+def test_historical_committed_candidate_stays_readable_without_new_calculation(stored, monkeypatch):
+    from mock_journey.assembly import internal_calculator
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A historical result read attempted a new calculation or heartbeat.")
+
+    monkeypatch.setattr("main.run_calculator", forbidden)
+    projected = ProjectedInput(base64.b64decode(stored["cpr_base64"]),
+                               base64.b64decode(stored["aed_base64"]), deepcopy(stored["payload"]))
+    raw = base64.b64decode(stored["candidate_base64"])
+    assert hashlib.sha256(raw).hexdigest() == stored["candidate_sha256"]
+    assert typed_identity(projected) == stored["binding"]["input_digest"]
+    definition = projected.payload["definition"]
+    adapter = internal_calculator(definition["adapter_version"],
+                                  projection=definition["projection_version"], stage="local-validation")
+    assert adapter.can_calculate is False
+    with pytest.raises(JourneyError) as rejected:
+        adapter.calculate(None, None, forbidden)
+    assert rejected.value.code == "TEMPORARILY_UNAVAILABLE"
+    verified = adapter.validate_response(raw, projected, stored["binding"])
+    assert typed.canonical_bytes(verified.core_result) == typed.canonical_bytes(typed.parse_json(raw)["core_result"])
+    case = SimpleNamespace(program=next(program for program in PROGRAMS if program[0] == stored["id"]),
+        definition=definition, projected=projected, binding=stored["binding"],
+        schema=ProjectionSchema(definition["projection_version"], {}),
+        body={"condition": definition["condition"], "cpr_b64_data": projected.cpr_bytes,
+              "aed_b64_data": projected.aed_bytes})
+    world = _read_world(case, verified.core_result, verified)
+    before_rows, before_snapshot = deepcopy(world.state.attempts), world.storage.snapshot
+    first = _request(world, case)
+    assert first["statusCode"] == 200
+    data = json.loads(first["body"])["data"]
+    assert typed.canonical_bytes(data["calculation"]) == typed.canonical_bytes(world.final)
+    assert data["evaluation"] == world.evaluation
+    assert _request(world, case)["body"] == first["body"]
+    assert _request(world, case, other=True)["statusCode"] == 404
+    assert world.state.attempts == before_rows and world.storage.snapshot == before_snapshot
+    assert hashlib.sha256(raw).hexdigest() == stored["candidate_sha256"]

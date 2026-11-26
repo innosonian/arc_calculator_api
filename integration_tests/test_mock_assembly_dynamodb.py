@@ -18,9 +18,9 @@ import uuid
 import pytest
 
 from mock_journey.assembly import ExecutionCatalog
-from mock_journey.catalog import PROGRAMS, TARGETS
+from mock_journey.catalog import program_targets
 from mock_journey.contracts import CURRENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION
-from mock_journey.dev_course import DummyDevCourseProvider
+from tests.legacy_dummy_catalog import LegacyDummyCourseProvider
 from mock_journey.execution_definitions import PROJECTION_VERSION
 from mock_journey.projection import ProjectionSchema
 from mock_journey.worker import handle as worker_handle
@@ -73,7 +73,8 @@ def assembled(dynamodb_client, request):
     calculator = getattr(request, "param", "internal")
     with dynamodb_local_store(dynamodb_client) as store:
         h = V2Journey(store)
-        adapter = CountingAdapter(TypedProbeCalculator() if calculator == "typed_probe" else h.default_adapters()[0])
+        bundled = next(adapter for adapter in h.default_adapters() if adapter.version == CURRENT_ADAPTER_VERSION)
+        adapter = CountingAdapter(TypedProbeCalculator() if calculator == "typed_probe" else bundled)
         h.adapters = [adapter]
         h.worker = h.build_worker()
         relay = h.build_relay(page_size=10, max_pages=2)
@@ -81,13 +82,14 @@ def assembled(dynamodb_client, request):
         yield SimpleNamespace(h=h, store=store, adapter=adapter, relay=relay, calculator=calculator)
 
 
-def deliver(journey, job_id):
+def deliver(journey, job_id, *, available=True):
     assert journey.relay.dispatch(job_id) is True
     body = journey.h.queue.messages[-1]  # QueueCapture accepts exactly QueueUrl + MessageBody.
     assert json.loads(body) == {"job_id": job_id}
     event = {"Records": [{"messageId": "test-local-delivery", "body": body}]}
-    assert worker_handle(event, None, journey.h.worker) == {"batchItemFailures": []}
-    assert worker_handle(event, None, journey.h.worker) == {"batchItemFailures": []}
+    expected = {"batchItemFailures": [] if available else [{"itemIdentifier": "test-local-delivery"}]}
+    assert worker_handle(event, None, journey.h.worker) == expected
+    assert worker_handle(event, None, journey.h.worker) == expected
 
 
 def leaf_types(value):
@@ -123,7 +125,7 @@ def test_separate_assembled_roles_share_durable_result_and_epoch_state(assembled
     assert accepted["calculationStatus"] == "pending" and accepted["calculation"] is None
     saved = journey.store.row(f"ATTEMPT#{attempt_id}", "META")
     if reset:
-        h.logout(other.token)
+        h.reset(other.token)
         h.advance(31)
     deliver(journey, saved["job_id"])
     assert len(journey.adapter.calls) == 1
@@ -163,11 +165,10 @@ def test_separate_assembled_roles_share_durable_result_and_epoch_state(assembled
 def next_execution(current):
     """Every definition moves to a new adapter/projection; the old projection stays readable."""
     definitions = {}
-    for program, *_ in PROGRAMS:
-        for target in TARGETS:
-            definition = deepcopy(current.get_definition(program, target))
-            definition.update(adapter_version="next-adapter", projection_version="next-projection")
-            definitions[f"{program}:{target}"] = definition
+    for program, target in program_targets():
+        definition = deepcopy(current.get_definition(program.id, target))
+        definition.update(adapter_version="next-adapter", projection_version="next-projection")
+        definitions[f"{program.id}:{target}"] = definition
     return ExecutionCatalog(definitions, {
         PROJECTION_VERSION: ProjectionSchema(PROJECTION_VERSION, {}),
         "next-projection": ProjectionSchema("next-projection", {}),
@@ -184,12 +185,11 @@ def test_reassembled_api_and_worker_keep_expired_attempt_versions(assembled, ori
         started = h.start(old.token, course, course.practice_link_id)
         attempt_id, credential = started["attemptId"], started["resumeCredential"]
     else:
-        # Stored by /mock/v1 before its removal (D103: re-authorize and finish).
+        # Stored by /mock/v1 before its removal: reauthorize/upload remain supported.
         seeded = seed_legacy_rows(journey.store, objects=h.objects)
         attempt_id = seeded.attempts["created"]["attempt_id"]
         credential = legacy_resume_credential(seeded, "created")
-        # The legacy fixture attempt was stored under the retained pending-v3 adapter; the
-        # reassembled Worker keeps calculating it with that adapter's meaning (D136, 3A).
+        # A retained adapter verifies stored candidates but refuses a new calculation.
         adapter = CountingAdapter(next(a for a in h.default_adapters() if a.version == PENDING_GOAL_ADAPTER_VERSION))
     before = journey.store.row(f"ATTEMPT#{attempt_id}", "META")
     h.advance(86400 + 60)  # The creating session has expired.
@@ -197,7 +197,7 @@ def test_reassembled_api_and_worker_keep_expired_attempt_versions(assembled, ori
     assert (old_version["adapter_version"], old_version["projection_version"]) == (
         adapter.version, adapter.projection_version)
     h.execution = next_execution(h.execution)
-    h.provider = DummyDevCourseProvider(settings=h.course_settings, execution=h.execution)
+    h.provider = LegacyDummyCourseProvider(settings=h.course_settings, execution=h.execution)
     h.api = h.build_api()
     next_adapter = LocalCalculator()
     next_adapter.version, next_adapter.projection_version = "next-adapter", "next-projection"
@@ -217,9 +217,15 @@ def test_reassembled_api_and_worker_keep_expired_attempt_versions(assembled, ori
     job = journey.store.row(f"JOB#{saved['job_id']}", "STATE")
     assert (job["adapter_version"], job["projection_version"]) == (
         old_version["adapter_version"], old_version["projection_version"])
-    deliver(journey, saved["job_id"])
-    assert len(adapter.calls) == 1 and next_adapter.calls == []
-    assert h.result(session.token, attempt_id)["calculationStatus"] == "succeeded"
+    deliver(journey, saved["job_id"], available=(origin == "course"))
+    assert len(adapter.calls) == (1 if origin == "course" else 0) and next_adapter.calls == []
+    if origin == "course":
+        assert h.result(session.token, attempt_id)["calculationStatus"] == "succeeded"
+    else:
+        assert h.result(session.token, attempt_id, expected=202)["calculationStatus"] == "pending"
+        blocked = journey.store.row(f"JOB#{saved['job_id']}", "STATE")
+        assert blocked["state"] == "running" and blocked["candidate_ref"] is None
+        assert journey.store.row(f"ATTEMPT#{attempt_id}", "META")["evaluation"] is None
     # Newly started work uses the reassembled definitions.
     fresh_course = dummy_course("mock-compression-only", "child")
     fresh = h.start(session.token, fresh_course, fresh_course.practice_link_id,

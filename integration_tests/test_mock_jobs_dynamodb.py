@@ -275,11 +275,11 @@ def test_later_fail_or_short_goal_cannot_erase_another_completion(jobs_world, as
     assert w.progress()["slots"][SLOT]["completed"]
 
 
-def test_logout_during_final_commit_saves_result_without_new_epoch_completion(jobs_world):
+def test_reset_during_final_commit_saves_result_without_new_epoch_completion(jobs_world):
     w = jobs_world
     auth = w.session()
     _, job, publication = w.ready(auth)
-    jobs = w.job_repo(OneTransactionInterruption(w.client, before=lambda: w.repository.logout(auth)))
+    jobs = w.job_repo(OneTransactionInterruption(w.client, before=lambda: w.repository.reset_dummy_progress(auth, "reset-request")))
     result = w.finalize(job, publication, jobs=jobs)
     assert result["evaluation"]["program_completed"] is True
     assert result["progress_application"] == {"applied": False, "applied_epoch": None, "reason": "PROGRESS_RESET"}

@@ -3,7 +3,7 @@
 The rows are the captured legacy (v1 API) fixture (tests/fixtures/legacy_mock_v1_rows):
 a queued compression-only job whose private input files exist, an evaluated
 attempt with its final result and chart, and a USER row with slots. A current
-Worker (real bundled calculator) finishes the queued job through the legacy
+Worker validates a pre-port saved candidate for the queued job through the legacy
 write-set (slot progress, terminal STORED_INPUT_INVALID on confirmed input
 loss) and the /api/v2 routes read the legacy results. Moved from the legacy
 paths of integration_tests/test_mock_journey.py. A slot that an earlier
@@ -18,10 +18,10 @@ import pytest
 
 from integration_tests.legacy_slot_support import PREVIOUS_ATTEMPT, complete_legacy_slot, other_slots
 from integration_tests.worker_journey_support import (  # noqa: F401 (store fixture)
-    LEGACY_SUBMISSION, ScriptedCalculator, attempt_row, calculation, chart_link, job_row, seeded_legacy, store,
+    LEGACY_SUBMISSION, ScriptedCalculator, attempt_row, calculation, chart_link, job_row, seeded_current_legacy, seeded_legacy, store,
     user_row,
 )
-from mock_journey.contracts import CalculatorRegistry, PENDING_GOAL_ADAPTER_VERSION
+from mock_journey.contracts import CalculatorRegistry
 from mock_journey.errors import JourneyError
 from mock_journey.worker import call_binding
 from tests.journey_support import encode_item
@@ -45,7 +45,7 @@ def assert_slot_applied(h, attempt_id):
 
 
 def test_legacy_saved_candidate_recovers_without_recalculation_and_applies_the_slot(store, monkeypatch):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_legacy(store, saved_candidate=True)
     attempt_id, job_id = queued(seeded)
     assert user_row(h)["slots"][SLOT]["open_attempts"] == 1
     monkeypatch.setattr(h.worker.jobs, "mark_calculation_saved", unavailable)
@@ -63,7 +63,7 @@ def test_legacy_saved_candidate_recovers_without_recalculation_and_applies_the_s
     assert stored["state"] == "evaluated" and stored.get("error_code") is None
     assert stored["evaluation"]["program_completed"] is True
     assert stored["progress_application"]["reason"] == "APPLIED"
-    assert job_row(h, job_id)["call_id"] == job["call_id"] and len(h.calculator.calls) == 1
+    assert job_row(h, job_id)["call_id"] == job["call_id"] and len(h.calculator.calls) == 0
     assert_slot_applied(h, attempt_id)
     reply = calculation(h, token, attempt_id)
     assert reply.status == 200 and reply.data["submit_arc"] == LEGACY_SUBMISSION
@@ -72,7 +72,7 @@ def test_legacy_saved_candidate_recovers_without_recalculation_and_applies_the_s
 def test_legacy_missing_candidate_rotates_call_and_old_late_write_is_isolated(store):
     # A scripted adapter whose score changes between calls, so a late write of the
     # old call's candidate would be visible (the removed v1 test changed overall to 91).
-    h, seeded, token = seeded_legacy(store, ScriptedCalculator(version=PENDING_GOAL_ADAPTER_VERSION))
+    h, seeded, token = seeded_current_legacy(store, ScriptedCalculator())
     attempt_id, job_id = queued(seeded)
     h.calculator.timeout = True
     assert h.work(job_id=job_id) is False
@@ -144,7 +144,7 @@ def test_legacy_missing_adapter_then_tampered_raw_never_invoke_a_fallback(store)
 
 
 def test_legacy_committed_candidate_loss_is_an_integrity_failure_not_endless_unknown(store, monkeypatch):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_legacy(store, saved_candidate=True)
     attempt_id, job_id = queued(seeded)
     monkeypatch.setattr(h.worker.storage, "save_final", unavailable)
     assert h.work(job_id=job_id) is False
@@ -157,11 +157,11 @@ def test_legacy_committed_candidate_loss_is_an_integrity_failure_not_endless_unk
     failed = attempt_row(h, attempt_id)
     assert failed["state"] == "failed" and failed["error_code"] == "STORED_INPUT_INVALID"
     assert user_row(h)["slots"][SLOT]["completed"] is False
-    assert len(h.calculator.calls) == 1
+    assert len(h.calculator.calls) == 0
 
 
 def test_legacy_chart_snapshot_loss_cannot_refetch_or_publish_new_data(store, monkeypatch):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_legacy(store, saved_candidate=True)
     attempt_id, job_id = queued(seeded)
     monkeypatch.setattr(h.worker.storage, "publish_selected_chart", unavailable)
     assert h.work(job_id=job_id) is False
@@ -175,7 +175,7 @@ def test_legacy_chart_snapshot_loss_cannot_refetch_or_publish_new_data(store, mo
     failed = attempt_row(h, attempt_id)
     assert failed["state"] == "failed" and failed["error_code"] == "STORED_INPUT_INVALID"
     assert failed["evaluation"] is None and failed["active_counted"] is False
-    assert len(h.calculator.calls) == 1 and h.calculator.chart_calls == 1
+    assert len(h.calculator.calls) == 0 and h.calculator.chart_calls == 1
 
 
 @pytest.mark.parametrize("artifact", ["final", "chart"])
@@ -196,9 +196,10 @@ def test_legacy_confirmed_result_loss_returns_fixed_error_without_rewriting_comp
     assert not h.calculator.calls
 
 
-def test_legacy_result_after_legacy_session_logout_is_stored_without_slot_progress(store):
-    h, seeded, token = seeded_legacy(store)
+def test_legacy_result_after_legacy_session_reset_is_stored_without_slot_progress(store):
+    h, seeded, token = seeded_legacy(store, saved_candidate=True)
     attempt_id, job_id = queued(seeded)
+    h.reset(token)
     h.logout(token)
     reset = user_row(h)
     assert reset["epoch"] != seeded.rows[("USER#dummy-tester", "STATE")]["epoch"]
@@ -263,7 +264,7 @@ def test_legacy_input_loss_keeps_a_slot_completed_by_a_concurrent_attempt(store)
 
 
 def test_legacy_success_on_a_slot_completed_by_a_concurrent_attempt_is_already_completed(store):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_legacy(store, saved_candidate=True)
     attempt_id, job_id = queued(seeded)
     completed = complete_slot_concurrently(h)
     assert h.work(job_id=job_id) is True
@@ -276,7 +277,7 @@ def test_legacy_success_on_a_slot_completed_by_a_concurrent_attempt_is_already_c
     reply = calculation(h, token, attempt_id)
     assert reply.status == 200 and reply.data["submit_arc"] == LEGACY_SUBMISSION
     assert h.work(job_id=job_id) is True and user_row(h) == user
-    assert len(h.calculator.calls) == 1
+    assert len(h.calculator.calls) == 0
 
 
 def test_legacy_terminal_failure_keeps_an_existing_slot_completion_and_closes_only_the_count(store):

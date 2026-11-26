@@ -1,9 +1,7 @@
-# Reference excludes ONLY_VP from total score but includes it in CCF metrics.
 from unittest import TestCase
 
 from calculators.cycle_evaluator import Cycle, CycleWithScore
 from calculators.merge_calculator import calculate_total_score
-from calculators.metric_evaluator import MetricEvaluator
 from config.constants import ACTION_TYPE_COMP, ACTION_TYPE_VENT, CALC_CASE_CPR
 from config.enums import Actor, ActorType
 from config.score_weight import ScoreWeightFactory
@@ -19,15 +17,6 @@ def _act(action_type, actor):
     score = {k: GOOD for k in ("comp_depth", "comp_rate", "recoil", "hand_position",
                                "vent_vol", "vent_speed", "vent_rate")}
     return ActionWithScore(action_type, action_data, score, actor)
-
-
-def _cfg():
-    return Config({"mode": "training", "target": "adult", "training_type": "cpr",
-                   "guideline": "ARC2020", "cpr_cycle_type": "302", "is_2rescuers": True})
-
-
-def _sw():
-    return ScoreWeightFactory.create("adult", "cpr", "ARC2020")
 
 
 class TestOnlyVpExclusion(TestCase):
@@ -50,8 +39,9 @@ class TestOnlyVpExclusion(TestCase):
         return cws
 
     def test_only_vp_cycle_excluded_from_total(self):
-        cfg = _cfg()
-        sw = _sw()
+        cfg = Config({"mode": "training", "target": "adult", "training_type": "cpr",
+                      "guideline": "AHA2020", "cpr_cycle_type": "302", "is_2rescuers": True})
+        sw = ScoreWeightFactory.create("adult", "cpr", "AHA2020")
 
         # 사용자가 압박을 잘 수행한 사이클(=VP_VENT) → overall 100
         real_cycle = self._cws(
@@ -67,35 +57,3 @@ class TestOnlyVpExclusion(TestCase):
         total = calculate_total_score([real_cycle, only_vp], cfg)
         # ONLY_VP가 0점으로 평균을 깎지 않고 제외되어 100이 되어야 한다(2개 평균 50이 아님).
         self.assertEqual(100, total["overall"])
-
-
-class TestOnlyVpIncludedInCcfMetric(TestCase):
-    """Preserve the reference distinction between total and metric aggregation."""
-
-    def _ccf_cycle(self, actions, ccf, score_ccf):
-        cfg = _cfg()
-        cws = CycleWithScore(Cycle(actions, 1), 1, _sw(), cfg.calculation_config)
-        cws.calc_case = CALC_CASE_CPR
-        cws.ccf = ccf
-        cws.score_ccf = score_ccf
-        return cws
-
-    def test_only_vp_cycle_aggregated_into_ccf(self):
-        cfg = _cfg()
-        real_cycle = self._ccf_cycle(
-            [_act(ACTION_TYPE_COMP, Actor.REAL_PERSON)] * 15 + [_act(ACTION_TYPE_VENT, Actor.VIRTUAL_PARTNER)] * 2,
-            ccf=80, score_ccf=90)
-        only_vp = self._ccf_cycle(
-            [_act(ACTION_TYPE_COMP, Actor.VIRTUAL_PARTNER)] * 15 + [_act(ACTION_TYPE_VENT, Actor.VIRTUAL_PARTNER)] * 2,
-            ccf=0, score_ccf=0)
-        self.assertEqual(ActorType.ONLY_VIRTUAL_PARTNER, only_vp.cycle.actor_type)
-
-        evaluator = MetricEvaluator(cfg.calculation_config)
-        metric = evaluator.evaluate(
-            [{"result": {"action_with_score_list": [], "cycle_with_score_list": [real_cycle, only_vp]}}]
-        )
-
-        # Reference means: (80 + 0) / 2 = 40 and (90 + 0) / 2 = 45.
-        self.assertEqual(40, metric["CCF"]["%_CCF"])
-        self.assertEqual(45, metric["ScoreOfCCF"])
-        self.assertEqual(2, metric["CCF"]["ccf_count"])

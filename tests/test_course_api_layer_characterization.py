@@ -15,7 +15,8 @@ import pytest
 
 from mock_journey import course_contracts, course_errors, course_http, course_response, course_schema
 from mock_journey.course_contracts import (
-    APP_ROUTES, ATTEMPT_STATES, CALCULATION_STATUSES, ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE,
+    APP_ROUTES, ATTEMPT_STATES, CALCULATION_STATUSES, ENROLLMENT_ADDITIONAL_FIELDS, ENROLLMENT_FIELDS,
+    ENROLLMENT_NULLABLE,
     FILE_DETAIL_FIELDS, RECEIPT_FORBIDDEN_KEYS, START_ROLES, SUBMIT_ARC_STATUSES, Placement,
     StartReceipt, StoredProgressReceipt, WritePlan,
 )
@@ -311,7 +312,7 @@ class TestRfc3339:
 
 
 RECEIPT_KEYS = {
-    "resumeCredential", "resume_credential", "accessToken", "access_token", "password",
+    "resumeCredential", "resume_credential", "accessToken", "access_token", "idToken", "id_token", "password",
     "Authorization", "authorization", "cookie", "Cookie", "signedUrl", "signed_url",
     "chartUrl", "chart_url", "chart_dataset_url",
 }
@@ -462,7 +463,9 @@ class TestAvailabilityFallback:
         data = body_of(refresh(http))["data"]
         assert calls == ["session_check", "refresh"]
         assert data == {"sessionId": SESSION_ID, "expiresAt": "2027-01-16T08:00:00Z",
-                        "learningAvailability": {"state": "waiting", "reason": "contract_pending"}}
+                        "learningAvailability": {"state": "waiting", "reason": "contract_pending"},
+                        "organizations": [], "organizationId": None,
+                        "inactivityLogoutSeconds": None, "hardCapSeconds": None}
         calls.clear()
         data = body_of(http.dispatch(event("GET", "/api/v2/session/", token=TOKEN)))["data"]
         assert calls == ["session_reader"]
@@ -493,8 +496,9 @@ class TestAvailabilityFallback:
 
     def test_session_reader_absorbs_unexpected_but_not_journey_or_auth_errors(self):
         from mock_journey.course_wiring import _session_reader
+        from mock_journey.settings import SessionSettings
 
-        journey = SimpleNamespace(check_session=lambda auth: None)
+        journey = SimpleNamespace(check_session=lambda auth: None, auth=SimpleNamespace(settings=SessionSettings()))
 
         def read(error):
             service = SimpleNamespace(stored_refresh=lambda auth: _raise(error))
@@ -538,7 +542,7 @@ class TestErrorTables:
         from mock_journey import errors
         assert course_errors.REUSED_JOURNEY_CODES == literal
         assert frozenset(errors._ERRORS) == literal
-        assert len(COURSE_ERROR_CODES) == 32  # D130 removed ITEM_ALREADY_COMPLETED and ASSESSMENT_ALREADY_PASSED
+        assert len(COURSE_ERROR_CODES) == 34  # D130 removed ITEM_ALREADY_COMPLETED and ASSESSMENT_ALREADY_PASSED
         assert COURSE_ERROR_CODES == literal | frozenset(course_errors._COURSE_ERRORS)
 
     def test_unknown_code_is_a_key_error(self):
@@ -705,7 +709,7 @@ class TestAttemptRoutesAndEnums:
         assert ATTEMPT_STATES == {"created", "queued", "processing", "evaluated", "cancelled", "failed",
                                   "outcome_unknown"}
         assert CALCULATION_STATUSES == {"pending", "succeeded"}
-        assert SUBMIT_ARC_STATUSES == {"disabled", "excluded"}
+        assert SUBMIT_ARC_STATUSES == {"disabled", "excluded", "pending", "sent", "acknowledged", "failed"}
         assert START_ROLES == {"training", "final_assessment"}
 
 
@@ -718,7 +722,7 @@ class TestWireSchemaAgreement:
                "finishedAt": "b", "elapsedSeconds": 1, "centerName": "c", "enrollStatusCode": "d"}
         assert tuple(row) == ENROLLMENT_FIELDS
         accepted = set()
-        for key in ENROLLMENT_FIELDS:
+        for key in ENROLLMENT_FIELDS + ENROLLMENT_ADDITIONAL_FIELDS:
             try:
                 course_schema.validate_enrollment({**row, key: None}, enrollment_id=301, course_id=101)
             except CourseError as error:
@@ -726,7 +730,8 @@ class TestWireSchemaAgreement:
             else:
                 accepted.add(key)
         assert accepted == set(ENROLLMENT_NULLABLE) == {
-            "loginAt", "finishedAt", "elapsedSeconds", "centerName", "enrollStatusCode"}
+            "loginAt", "finishedAt", "elapsedSeconds", "centerName", "enrollStatusCode",
+            "sku", "dueDate", "organizationId", "organizationName"}
 
     def test_file_detail_nullables_match_the_serializer(self):
         row = {"id": 1, "fileName": "f", "order": 1, "url": "u", "contentUrl": "c"}
@@ -747,7 +752,8 @@ class TestWireSchemaAgreement:
         assert tuple(detail) == ("courseItems", "enrollment", "progressId", "definitionHash",
                                  "learningAvailability")
         assert tuple(detail["enrollment"]) == ("id", "status", "courseTitle", "courseId", "loginAt",
-                                               "finishedAt", "elapsedSeconds", "centerName", "enrollStatusCode")
+                                               "finishedAt", "elapsedSeconds", "centerName", "enrollStatusCode",
+                                               "sku", "dueDate", "organizationId", "organizationName")
         row = course_list_data([view], count=1, page=1, page_size=100)["results"][0]
         assert tuple(row) == ("courseId", "courseName", "status", "summary", "certificationType",
                               "enrollmentId", "progressId", "learningAvailability")

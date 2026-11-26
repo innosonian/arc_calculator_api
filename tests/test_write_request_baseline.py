@@ -28,6 +28,10 @@ Relay budget/cap that no scripted flow reaches -- passes this baseline and the
 Worker call-order baseline alike. Such conditions need their own unit test
 with an explicit negative case (tests/test_job_restart_limit.py,
 tests/test_relay_backlog_throughput.py).
+
+Recaptured 2026-11-26 for D142 (user-reviewed, D125): scripts/capture_baselines.py --check on
+feature/hp-v2-app-parity (base 81252de). Only the adapter/profile version strings
+(detection-v6->v7, tester-goal-cycles-v3->v4) and the digests derived from them changed.
 """
 
 from copy import deepcopy
@@ -45,7 +49,7 @@ H64 = r"[0-9a-f]{64}"
 # ARCHITECTURE §4 row table and the existing USER/SESSION/ATTEMPT/JOB/OUTBOX rows.
 KEY_LAYOUT = [
     (rf"USER#.+", r"STATE"),
-    (rf"SESSION#{UUID}", rf"AUTH|COURSE_CREATE#{UUID}"),
+    (rf"SESSION#{UUID}", rf"AUTH|COURSE_CREATE#{UUID}|PROGRESS_RESET#{UUID}"),
     (rf"ATTEMPT#{UUID}", r"META"),
     (rf"JOB#{UUID}", r"STATE"),
     (rf"OUTBOX#{UUID}", r"DISPATCH"),

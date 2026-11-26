@@ -13,9 +13,12 @@ import uuid
 from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.exceptions import BotoCoreError, ClientError
 
+from mock_journey.auth import session_is_dummy, session_organization
 from mock_journey.errors import JourneyError
 from mock_journey.settings import MAX_CONFLICT_RETRIES
-from mock_journey.storage_keys import attempt_key, course_final_key, course_head_key, row_key, session_key, user_key
+from mock_journey.storage_keys import (
+    attempt_key, course_final_key, course_head_key, progress_reset_receipt_key, row_key, session_key, user_key,
+)
 from services.operational_logs import record_event
 
 
@@ -312,7 +315,7 @@ class DynamoStateRepository:
         if not session or session.get("session_id") != auth.session_id or session.get("principal") != auth.principal:
             raise JourneyError("SESSION_REQUIRED")
         if session.get("status") == "revoked":
-            if allow_revoked and session.get("logout_epoch"):
+            if allow_revoked and (session.get("logout_epoch") or session.get("logout_receipt") is True):
                 return
             raise JourneyError("SESSION_REVOKED")
         if session.get("status") != "active":
@@ -442,6 +445,11 @@ class DynamoStateRepository:
     def create_session(self, session):
         if any(key not in session for key in _SESSION_FIELDS) or session["status"] != "active":
             raise _unavailable()
+        session_is_dummy(session)
+        _, organization_id = session_organization(session)
+        metadata = {key: session[key] for key in ("is_dummy", "organizations") if key in session}
+        if organization_id is not None:
+            metadata["organization_id"] = organization_id
         now = self._now()
         # A new USER row has no slots (Q10). An existing row, legacy slots
         # included, is never replaced here (conditional put).
@@ -458,7 +466,7 @@ class DynamoStateRepository:
                 raise _unavailable() from None
         except BotoCoreError:
             raise _unavailable() from None
-        stored = {**session_key(session["session_id"]), **{key: session[key] for key in _SESSION_FIELDS}}
+        stored = {**session_key(session["session_id"]), **{key: session[key] for key in _SESSION_FIELDS}, **metadata}
         if not self._write([self._put(stored)]):
             raise _unavailable()
 
@@ -478,37 +486,84 @@ class DynamoStateRepository:
         self._check_attempt(attempt, auth)
         return attempt
 
-    def logout(self, auth):
+    def _replace_session(self, auth, now, updated):
+        action = self._session_condition(auth, now)["ConditionCheck"]
+        action.pop("Key")
+        action["Item"] = _encode(updated)
+        return {"Put": action}
+
+    def select_organization(self, auth, organization_id):
         for _ in range(self.max_conflict_retries):
-            try:
-                session, user = self._read([
-                    session_key(auth.session_id), user_key(auth.principal),
-                ])
-            except _ReadConflict:
-                continue
-            self._check_session(session, auth, self._now(), allow_revoked=True)
-            if session["status"] == "revoked":
-                return
-            self._require_user(user, auth.principal)
-            # Legacy (pre-D103 v1) row only (R3): its slots are reset as before. A
-            # row without slots never gains them.
-            legacy_slots = "slots" in user
-            if legacy_slots and type(user["slots"]) is not dict:
-                raise _unavailable()
+            session = self.get_session(auth.session_id)
             now = self._now()
             self._check_session(session, auth, now)
-            epoch = str(uuid.uuid4())
-            updated = {**session, "status": "revoked", "revision": session["revision"] + 1,
-                       "revoked_at": now, "logout_epoch": epoch}
-            new_user = deepcopy(user)
-            new_user.update(epoch=epoch, revision=user["revision"] + 1, updated_at=now)
-            if legacy_slots:
-                new_user["slots"] = {key: empty_legacy_slot() for key in user["slots"]}
-            session_action = self._session_condition(auth, now)["ConditionCheck"]
-            session_action.pop("Key")
-            session_action["Item"] = _encode(updated)
-            if self._write([{"Put": session_action}, self._user_action(user, new_user)]):
-                record_event("progress_reset", session_id=auth.session_id, progress_epoch=epoch)
+            options, current = session_organization(session)
+            if not session_is_dummy(session) and not any(key == organization_id for key, _ in options):
+                raise JourneyError("NOT_FOUND")
+            if current == organization_id:
+                return organization_id
+            updated = {**session, "organization_id": organization_id, "revision": session["revision"] + 1}
+            if self._write([self._replace_session(auth, now, updated)]):
+                return organization_id
+        raise _unavailable()
+
+    def _reset_user(self, user, now):
+        # Legacy (pre-D103 v1) row only (R3): its slots are reset as before. A
+        # row without slots never gains them.
+        legacy_slots = "slots" in user
+        if legacy_slots and type(user["slots"]) is not dict:
+            raise _unavailable()
+        updated = deepcopy(user)
+        updated.update(epoch=str(uuid.uuid4()), revision=user["revision"] + 1, updated_at=now)
+        if legacy_slots:
+            updated["slots"] = {key: empty_legacy_slot() for key in user["slots"]}
+        return updated
+
+    def logout(self, auth):
+        self._end_or_reset(auth, logout=True)
+
+    def reset_dummy_progress(self, auth, request_id):
+        receipt_key = progress_reset_receipt_key(auth.session_id, request_id)
+        self._end_or_reset(auth, logout=False, receipt_key=receipt_key)
+
+    def _end_or_reset(self, auth, *, logout, receipt_key=None):
+        keys = [session_key(auth.session_id), user_key(auth.principal)]
+        if receipt_key is not None:
+            keys.append(receipt_key)
+        for _ in range(self.max_conflict_retries):
+            try:
+                session, user, *receipts = self._read(keys)
+            except _ReadConflict:
+                continue
+            now = self._now()
+            self._check_session(session, auth, now, allow_revoked=logout)
+            if session["status"] == "revoked":
+                return
+            is_dummy = session_is_dummy(session)
+            if not logout and not is_dummy:
+                raise JourneyError("NOT_FOUND")
+            self._require_user(user, auth.principal)
+            if receipts and receipts[0] is not None:
+                if receipts[0].get("principal") != auth.principal:
+                    raise _unavailable()
+                return
+            # Recheck expiry immediately before the guarded write (R3).
+            now = self._now()
+            self._check_session(session, auth, now)
+            new_user = self._reset_user(user, now) if not logout else None
+            if logout:
+                updated = {**session, "status": "revoked", "revision": session["revision"] + 1,
+                           "revoked_at": now, "logout_receipt": True}
+                actions = [self._replace_session(auth, now, updated)]
+            else:
+                actions = [self._session_condition(auth, now)]
+            if new_user is not None:
+                actions.append(self._user_action(user, new_user))
+            if receipt_key is not None:
+                actions.append(self._put({**receipt_key, "principal": auth.principal}))
+            if self._write(actions):
+                if new_user is not None:
+                    record_event("progress_reset", session_id=auth.session_id, progress_epoch=new_user["epoch"])
                 return
         raise _unavailable()
 

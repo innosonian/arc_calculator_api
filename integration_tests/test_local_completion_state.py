@@ -50,11 +50,11 @@ MINIMUM = "MINIMUM_QUANTITY_NOT_MET"
     # minimum quantity (90 compressions and 6 ventilations for an adult) is scored, not nulled, but
     # does not pass: decision "fail" with MINIMUM_QUANTITY_NOT_MET (the score itself is no reason).
     ("mock-cpr", cpr_session([(30, 2)] * 3), 3, True, "pass", True, []),                       # 90 / 6
-    ("mock-cpr", cpr_session([(30, 2)]), 1, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),    # 30 / 2, overall 99
+    ("mock-cpr", cpr_session([(30, 2)]), 1, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),    # 30 / 2, overall 100
     ("mock-cpr", cpr_session([(30, 2)] * 2 + [(30, 0)]), 2, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),  # 90 / 4
-    # Compression Only has no CPR minimum: 60 (and 59) compressions are judged by goal and score alone.
+    # Current v6 requires the configured compression minimum as well as the goal and score.
     ("mock-compression-only", comp_session(60), 60, True, "pass", True, []),
-    ("mock-compression-only", comp_session(59), 59, False, "pass", False, ["GOAL_NOT_MET"]),
+    ("mock-compression-only", comp_session(59), 59, False, "fail", False, ["GOAL_NOT_MET", MINIMUM]),
     ("mock-compression-only", comp_session(60, WEAK_RAMP), 60, True, "fail", False, ["SCORE_NOT_PASS"]),
 ], ids=("cpr-three-cycles-complete", "cpr-one-cycle-incomplete", "cpr-open-last-group-incomplete",
         "only-pass-complete", "only-short-incomplete", "only-fail-incomplete"))
@@ -85,13 +85,12 @@ def test_real_scores_and_completion_commit_once(store, program, data, observed, 
     assert response.status == 200
     body = response.data["calculation"]
     assert response.data["submit_arc"] == DUMMY_SUBMISSION and "submit_arc" not in body
-    assert response.data["evaluation"] == assessment and "evaluation" not in body
+    assert response.data["evaluation"] == {**assessment, "gates": json.loads(stored["evaluation_gates_json"])}
+    assert "evaluation" not in body
     assert body["chart_dataset_url"]
     if program == "mock-cpr" and observed == 1:
-        # D139: below the ARC minimum the score is shown (99), not null, although the decision is
-        # "fail". The null path of the retained v4 adapter is covered by
-        # integration_tests/test_eof_truncated_ventilation_dynamodb.py.
-        assert body["cpr_score"]["total_score"]["overall"] == 99
+        # HSTM R00 gives this one-cycle input 100; the ARC minimum still prevents completion.
+        assert body["cpr_score"]["total_score"]["overall"] == 100
     for _ in range(2):
         assert h.work(job_id=job_id) is True
         assert calculation(h, token, attempt_id).body == response.body
@@ -155,13 +154,13 @@ def test_unstored_pending_candidate_rotates_call_and_old_late_write_is_isolated(
     assert len(h.calculator.calls) == 2
 
 
-def test_logout_at_final_transaction_keeps_pending_result_without_applying_to_new_epoch(store, monkeypatch):
+def test_reset_at_final_transaction_keeps_pending_result_without_applying_to_new_epoch(store, monkeypatch):
     h = journey(store)
     token, other = h.login().token, h.login().token
     token, attempt, job_id = accepted(h, CPR, token=token, data=CPR_DATA)
     original_epoch = user_row(h)["epoch"]
     original_rows = course_rows(h, attempt["attemptId"])
-    wrapped = OneTransactionInterruption(h.store.client, before=lambda: h.logout(other))
+    wrapped = OneTransactionInterruption(h.store.client, before=lambda: h.reset(other))
     monkeypatch.setattr(h.worker.jobs, "finalize", jobs_over(h, wrapped).finalize)
     assert h.work(job_id=job_id) is True
     assert wrapped.used
@@ -247,7 +246,7 @@ def _finalize_legacy_on_completed_slot(h, token, attempt_id, reason, *, program_
 
 
 def _legacy_on_completed_slot(store, label):
-    h, seeded, token = seeded_legacy(store)
+    h, seeded, token = seeded_legacy(store, saved_candidate=(label == "queued"))
     attempt_id = seeded.attempts[label]["attempt_id"]
     attempt = attempt_row(h, attempt_id)
     assert attempt.get("course_binding") is None
@@ -271,24 +270,17 @@ def test_legacy_finalize_preserves_preexisting_completed_slot(store):
                                        before=before, slot=slot, slot_key=slot_key)
 
 
-def test_legacy_created_upload_pending_finalize_preserves_completed_slot(store):
-    """A pending-policy (cycles goal) legacy finalize keeps an already completed USER slot.
-
-    The captured fixture's only CPR (cycles goal) legacy attempt is ``created``
-    and its only queued job is compression-only, whose goal is never
-    pending_policy (worker.evaluate / jobs._evaluation reject that). So the
-    pending branch of the legacy finalize can only be reached by first
-    uploading to the legacy created attempt through /api/v2. That first upload
-    is allowed (2026-09-28 user decision recorded under D103, same intent as
-    D23: data measured before the switch can still be submitted to its
-    attempt); it stays in this separate test so the finalize property above
-    does not depend on it.
-    """
+def test_legacy_created_upload_refuses_new_calculation_and_preserves_completed_slot(store):
+    """An old created attempt accepts its upload but cannot start a new historical calculation."""
     h, token, attempt_id, slot_key, slot, before = _legacy_on_completed_slot(store, "created")
     assert attempt_row(h, attempt_id)["state"] == "created"
-    h.upload(token, attempt_id, h.attempt(token, attempt_id)["condition"])  # expects 202
+    h.upload(token, attempt_id, h.attempt(token, attempt_id)["condition"])
     assert attempt_row(h, attempt_id)["state"] == "queued"
-    assert user_row(h) == before, "Accepting input must not touch the completed slot or the USER row."
-    _finalize_legacy_on_completed_slot(h, token, attempt_id, "GOAL_POLICY_UNRESOLVED", program_completed=False,
-                                       before=before, slot=slot, slot_key=slot_key)
-    assert attempt_row(h, attempt_id)["evaluation"]["goal"]["status"] == "pending_policy"
+    assert user_row(h) == before
+    assert h.work(attempt_id) is False
+    stored = attempt_row(h, attempt_id)
+    assert stored["state"] == "processing" and stored["evaluation"] is None
+    assert job_row(h, stored["job_id"])["state"] == "running"
+    assert user_row(h) == before and user_row(h)["slots"][slot_key] == slot
+    assert h.calculator.calls == []
+    assert calculation(h, token, attempt_id).status == 202
