@@ -1,0 +1,214 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "records": 1065,
+  "ventilations": [
+    {
+      "id": 1,
+      "count_record": 28,
+      "action_start": 0,
+      "action_end": 28,
+      "volume_ml": 50,
+      "interval_ms": null,
+      "inflation_ms": 569
+    },
+    {
+      "id": 2,
+      "count_record": 65,
+      "action_start": 28,
+      "action_end": 65,
+      "volume_ml": 46,
+      "interval_ms": 1800,
+      "inflation_ms": 717
+    },
+    {
+      "id": 3,
+      "count_record": 104,
+      "action_start": 65,
+      "action_end": 104,
+      "volume_ml": 43,
+      "interval_ms": 1921,
+      "inflation_ms": 600
+    },
+    {
+      "id": 4,
+      "count_record": 146,
+      "action_start": 104,
+      "action_end": 146,
+      "volume_ml": 39,
+      "interval_ms": 2099,
+      "inflation_ms": 899
+    },
+    {
+      "id": 5,
+      "count_record": 192,
+      "action_start": 146,
+      "action_end": 192,
+      "volume_ml": 39,
+      "interval_ms": 2249,
+      "inflation_ms": 600
+    },
+    {
+      "id": 6,
+      "count_record": 243,
+      "action_start": 192,
+      "action_end": 243,
+      "volume_ml": 38,
+      "interval_ms": 2520,
+      "inflation_ms": 781
+    },
+    {
+      "id": 7,
+      "count_record": 292,
+      "action_start": 243,
+      "action_end": 292,
+      "volume_ml": 41,
+      "interval_ms": 2430,
+      "inflation_ms": 689
+    },
+    {
+      "id": 8,
+      "count_record": 345,
+      "action_start": 292,
+      "action_end": 345,
+      "volume_ml": 41,
+      "interval_ms": 2610,
+      "inflation_ms": 871
+    },
+    {
+      "id": 9,
+      "count_record": 393,
+      "action_start": 345,
+      "action_end": 393,
+      "volume_ml": 40,
+      "interval_ms": 2340,
+      "inflation_ms": 900
+    },
+    {
+      "id": 10,
+      "count_record": 446,
+      "action_start": 393,
+      "action_end": 446,
+      "volume_ml": 39,
+      "interval_ms": 2609,
+      "inflation_ms": 838
+    },
+    {
+      "id": 11,
+      "count_record": 498,
+      "action_start": 446,
+      "action_end": 498,
+      "volume_ml": 38,
+      "interval_ms": 2580,
+      "inflation_ms": 749
+    },
+    {
+      "id": 12,
+      "count_record": 551,
+      "action_start": 498,
+      "action_end": 551,
+      "volume_ml": 37,
+      "interval_ms": 2640,
+      "inflation_ms": 809
+    },
+    {
+      "id": 13,
+      "count_record": 603,
+      "action_start": 551,
+      "action_end": 603,
+      "volume_ml": 38,
+      "interval_ms": 2580,
+      "inflation_ms": 689
+    },
+    {
+      "id": 14,
+      "count_record": 660,
+      "action_start": 603,
+      "action_end": 660,
+      "volume_ml": 38,
+      "interval_ms": 2818,
+      "inflation_ms": 869
+    },
+    {
+      "id": 15,
+      "count_record": 718,
+      "action_start": 660,
+      "action_end": 718,
+      "volume_ml": 40,
+      "interval_ms": 2879,
+      "inflation_ms": 809
+    },
+    {
+      "id": 16,
+      "count_record": 775,
+      "action_start": 718,
+      "action_end": 775,
+      "volume_ml": 40,
+      "interval_ms": 2821,
+      "inflation_ms": 961
+    },
+    {
+      "id": 17,
+      "count_record": 831,
+      "action_start": 775,
+      "action_end": 831,
+      "volume_ml": 39,
+      "interval_ms": 2790,
+      "inflation_ms": 869
+    },
+    {
+      "id": 18,
+      "count_record": 886,
+      "action_start": 831,
+      "action_end": 886,
+      "volume_ml": 40,
+      "interval_ms": 2730,
+      "inflation_ms": 900
+    },
+    {
+      "id": 19,
+      "count_record": 945,
+      "action_start": 886,
+      "action_end": 945,
+      "volume_ml": 41,
+      "interval_ms": 2910,
+      "inflation_ms": 900
+    },
+    {
+      "id": 20,
+      "count_record": 1005,
+      "action_start": 945,
+      "action_end": 1005,
+      "volume_ml": 40,
+      "interval_ms": 2970,
+      "inflation_ms": 1048
+    },
+    {
+      "id": 21,
+      "count_record": 1064,
+      "action_start": 1005,
+      "action_end": 1064,
+      "volume_ml": 43,
+      "interval_ms": 2909,
+      "inflation_ms": 1138
+    }
+  ],
+  "cycles": [
+    {
+      "part": 1,
+      "cycle": 1,
+      "comp": 0,
+      "vent": 21,
+      "calc_case": "only_vent",
+      "actor_type": "ONLY:RP"
+    }
+  ],
+  "closed_cycles": 0,
+  "learner_counts": {
+    "comp": 0,
+    "vent": 21
+  },
+  "action_count": {
+    "comp": 0,
+    "vent": 21
+  }
+}

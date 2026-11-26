@@ -242,7 +242,8 @@ class MetricEvaluator:
         # 호출부(collect_cycle_metrics)가 압박 채점 사이클의 액션만 전달한다.
         if action.action_data["action_type"] == ACTION_TYPE_COMP and action.actor == Actor.REAL_PERSON:
             comp_rate = action.score["comp_rate"]["criterion"]
-            hand_position = action.score["hand_position"]["criterion"]
+            # D144: 손 위치 표본이 없는 압박은 hand_position 키가 없고 집계하지 않는다.
+            hand_position = action.score.get("hand_position", {}).get("criterion")
 
             if action.action_data["compression_count"] > 1:
                 if comp_rate == "good":

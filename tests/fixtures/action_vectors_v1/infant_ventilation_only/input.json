@@ -1,0 +1,11 @@
+{
+  "condition": {
+    "mode": "training",
+    "target": "infant",
+    "training_type": "ventilation_only",
+    "guideline": "ARC2025",
+    "cpr_cycle_type": "302",
+    "is_2rescuers": false
+  },
+  "vp_event_list": []
+}

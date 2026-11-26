@@ -5,6 +5,7 @@ import time
 import uuid
 from types import MappingProxyType
 
+from calculators.hand_position import normalize_board
 from mock_journey.errors import JourneyError
 from services.operational_logs import record_event, bind_identifiers, write_diagnostic
 from mock_journey.contracts import call_binding
@@ -45,7 +46,11 @@ class CalculationService:
         # Fixed diagnostic value kept for operational-record compatibility (Q3);
         # it is not a route; the old alias route itself was removed (D103).
         write_diagnostic("info", "request_start", {"path": "/cpr-analysis"})
-        projected = project_input(parse_measurement(event), definition, schema)
+        body = parse_measurement(event)
+        if not normalize_board(body.get("hand_position_board"))[1]:
+            # Calculated as "unknown" so the measurement is kept; the value itself is never logged.
+            write_diagnostic("info", "hand_position_board_unrecognized", {})
+        projected = project_input(body, definition, schema)
         write_diagnostic("info", "parse_complete", {
             "cpr_bytes": len(projected.cpr_bytes), "aed_bytes": len(projected.aed_bytes),
             "parse_ms": max(0, int((time.monotonic() - parse_started) * 1000)),

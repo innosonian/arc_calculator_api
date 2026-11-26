@@ -25,6 +25,11 @@ canonical outputs were byte-identical before they were written. Canonical
 form: tests/worker_trace_support.canonical (UUID/hex/nonce labels by first
 appearance, wall-clock key parts, diagnostic durations; worker stack frames
 collapse to one entry because moving code inside the worker changes them).
+
+memory_traces.json was recaptured 2026-11-26 for D142 (user-reviewed, D125) with
+scripts/capture_baselines.py --check on feature/hp-v2-app-parity (base 81252de): only the
+adapter/profile version strings and the digests derived from them changed; spy_traces.json is
+byte-identical.
 """
 
 from copy import deepcopy

@@ -1,7 +1,7 @@
 """Atomic finalize write-set and launch-only ARC intent. No SDK commit or network."""
 
 from config.guideline_registry import ARC_GUIDELINES as REGISTRY_ARC_GUIDELINES
-from mock_journey.contracts import ROUND2_ADAPTER_VERSION
+from mock_journey.contracts import uses_round2_gates
 from mock_journey.course_contracts import (
     CONTRACT_VERSION, EXCLUSION_REASON_ORDER, EXECUTION_KEYS, FINAL_PHASES, POLICY_VERSION, SUBMIT_ARC_STATUSES,
     PRODUCIBLE_SUBMIT_STATUSES,
@@ -455,7 +455,7 @@ class CourseCompletionPlan:
             ))
         definition = _json_object(_get(attempt, "definition_json"))
         course_only = (binding is not None and definition is not None
-                       and definition.get("adapter_version") == ROUND2_ADAPTER_VERSION)
+                       and uses_round2_gates(definition.get("adapter_version")))
         policy_version = COURSE_SUBMISSION_POLICY_VERSION if course_only else SUBMISSION_POLICY_VERSION
         intent_id = submission_intent_id(attempt_id, input_digest, result_digest, policy_version=policy_version)
         reset = attempt_epoch != user_epoch

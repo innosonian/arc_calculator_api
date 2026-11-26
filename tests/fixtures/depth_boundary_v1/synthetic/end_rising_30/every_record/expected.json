@@ -14,7 +14,12 @@
       "action_start": 0,
       "action_end": 1,
       "hp_window": [],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": null,
+        "esp32c6": null
+      }
     }
   ],
   "count": 1

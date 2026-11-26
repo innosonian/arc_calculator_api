@@ -17,6 +17,7 @@ from mock_journey import typed
 from mock_journey.contracts import (
     PENDING_GOAL_ADAPTER_VERSIONS,
     CALL_BINDING_FIELDS,
+    CURRENT_ADAPTER_VERSION,
     VerifiedCalculation,
     VerifiedChart,
     adapter_features,
@@ -37,7 +38,8 @@ _BINDING = frozenset(CALL_BINDING_FIELDS)
 # adapter writes the schema of its contracts.ADAPTER_FEATURES row: the pending
 # adapters arc-internal-calculation-v2, arc-internal-detection-v4 (D136)
 # arc-internal-calculation-v3, arc-internal-detection-v5 (D138)
-# arc-internal-calculation-v4, and v6 arc-internal-calculation-v5. Stored
+# arc-internal-calculation-v4, v6 arc-internal-calculation-v5 and v7 (D142)
+# arc-internal-calculation-v6. Stored
 # candidates keep their schema.
 _SCHEMA = "arc-internal-calculation-v1"
 _VERSION = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
@@ -103,12 +105,12 @@ class InternalCalculator:
         self.round2 = uses_round2_gates(version)
         features = adapter_features(version)
         self.candidate_schema = _SCHEMA if features is None else features.candidate_schema
-        # Stored candidates retain their versioned schema; only v6 calculates.
+        # Stored candidates retain their versioned schema; only the current adapter calculates.
         self.calculation_options = calculation_options(version)
 
     @property
     def can_calculate(self):
-        return uses_round2_gates(self.version)
+        return self.version == CURRENT_ADAPTER_VERSION
 
     def _validate_input(self, projected, binding):
         try:
@@ -217,7 +219,7 @@ class InternalCalculator:
                 projected.cpr_bytes, projected.aed_bytes, deepcopy(inputs["condition"]),
                 deepcopy(inputs["vp_event_list"]), usage=deepcopy(response_context.get("Usage")),
                 stage=self.stage, organization=deepcopy(response_context.get("Organization")),
-                execution_context=context,
+                execution_context=context, hand_position_board=inputs.get("hand_position_board"),
             )
         except JourneyError:
             raise

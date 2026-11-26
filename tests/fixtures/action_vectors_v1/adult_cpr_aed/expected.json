@@ -1,0 +1,94 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "records": 2103,
+  "ventilations": [
+    {
+      "id": 1,
+      "count_record": 414,
+      "action_start": 321,
+      "action_end": 414,
+      "volume_ml": 660,
+      "interval_ms": null,
+      "inflation_ms": null
+    },
+    {
+      "id": 2,
+      "count_record": 472,
+      "action_start": 414,
+      "action_end": 472,
+      "volume_ml": 700,
+      "interval_ms": 2854,
+      "inflation_ms": null
+    },
+    {
+      "id": 3,
+      "count_record": 948,
+      "action_start": 860,
+      "action_end": 948,
+      "volume_ml": 700,
+      "interval_ms": 23924,
+      "inflation_ms": null
+    },
+    {
+      "id": 4,
+      "count_record": 1002,
+      "action_start": 948,
+      "action_end": 1002,
+      "volume_ml": 600,
+      "interval_ms": 2632,
+      "inflation_ms": null
+    },
+    {
+      "id": 5,
+      "count_record": 1914,
+      "action_start": 1824,
+      "action_end": 1914,
+      "volume_ml": 480,
+      "interval_ms": 45902,
+      "inflation_ms": null
+    }
+  ],
+  "cycles": [
+    {
+      "part": 1,
+      "cycle": 1,
+      "comp": 30,
+      "vent": 2,
+      "calc_case": "cpr",
+      "actor_type": "ONLY:RP"
+    },
+    {
+      "part": 1,
+      "cycle": 2,
+      "comp": 30,
+      "vent": 1,
+      "calc_case": "cpr",
+      "actor_type": "ONLY:RP"
+    },
+    {
+      "part": 2,
+      "cycle": 1,
+      "comp": 30,
+      "vent": 1,
+      "calc_case": "cpr",
+      "actor_type": "ONLY:RP"
+    },
+    {
+      "part": 2,
+      "cycle": 2,
+      "comp": 9,
+      "vent": 0,
+      "calc_case": "not_calc",
+      "actor_type": "ONLY:RP"
+    }
+  ],
+  "closed_cycles": 3,
+  "learner_counts": {
+    "comp": 99,
+    "vent": 5
+  },
+  "action_count": {
+    "comp": 99,
+    "vent": 5
+  }
+}

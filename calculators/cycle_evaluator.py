@@ -316,7 +316,7 @@ class CycleWithScore:
             self.score_hand_position = self.comp_scores["hp"]
             return
         sum_comp_rate_score = 0
-        sum_hand_position_score = 0
+        hand_position_grades = []
 
         # count와 동일하게 가짜 압박(깊이≈0 경계 마커)을 제외한 실제 압박만으로 평균낸다.
         comp_actions = self._real_comp_actions()
@@ -326,11 +326,14 @@ class CycleWithScore:
 
         # rate/hand는 (아직) 액션 기반으로 평균낸다. depth/recoil은 아래에서 파형 이벤트 기반.
         for i, action in enumerate(comp_actions):
-            sum_hand_position_score += action.score["hand_position"]["grade"]
+            if "hand_position" in action.score:
+                hand_position_grades.append(action.score["hand_position"]["grade"])
             if i != 0:
                 sum_comp_rate_score += action.score["comp_rate"]["grade"]
 
-        self.score_hand_position = custom_round(sum_hand_position_score / total_action_count)
+        # D144: 손 위치 표본이 없는 압박은 분모에서 뺀다. 전부 없으면 이완 미관측과 같이 패널티 없이 100.
+        self.score_hand_position = (custom_round(sum(hand_position_grades) / len(hand_position_grades))
+                                    if hand_position_grades else 100)
         if total_action_count > 1:
             self.score_comp_rate = custom_round(sum_comp_rate_score / (total_action_count - 1))
         else:

@@ -4,6 +4,8 @@ Worker calls carry an execution context for verified input, evidence and private
 chart storage. Local tools and trusted helpers use the direct diagnostic path.
 """
 
+from calculators import hand_position
+from config.constants import ACTION_TYPE_COMP
 from services.operational_logs import write_diagnostic
 
 from services.calculate_cpr import make_calculate_result
@@ -24,9 +26,12 @@ def run_calculator(
     organization: dict | None = None,
     *,
     execution_context: CalculationExecutionContext | None = None,
+    hand_position_board: str | None = None,
 ) -> dict:
     # initialize
     config = Config(condition)
+    # D143: the board is an upload field, not a condition key; ActionEvaluator reads it here.
+    config.hand_position_board = hand_position.normalize_board(hand_position_board)[0]
 
     # 차트·바이너리·메타가 공유할 stem과 org prefix를 먼저 만든다(1:1 연결)
     if execution_context is None:
@@ -63,6 +68,11 @@ def run_calculator(
         aed_part_list,
         config,
     )
+
+    infant = condition.get("target") == "infant"
+    if any(hand_position.is_unsupported_legacy(action["hand_position"], config.hand_position_board, infant)
+           for action in prepared_data.get("whole_cpr_action_list", ()) if action["action_type"] == ACTION_TYPE_COMP):
+        write_diagnostic("info", "hand_position_code_unsupported", {})
 
     if execution_context is not None and execution_context.options.collect_gates:
         prepared_data["raw_aed_events"] = parsed_data["aed_data_list"]

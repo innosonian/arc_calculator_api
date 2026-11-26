@@ -11,7 +11,9 @@ from calculators.gate_evaluator import collect_action_evidence, evaluate_gates
 from mock_journey.course_contracts import validate_assessment_policy
 from mock_journey import typed
 from mock_journey.assembly import internal_calculator
-from mock_journey.contracts import EOF_VENT_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION, expected_profile_version
+from mock_journey.contracts import (
+    CURRENT_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, expected_profile_version, uses_round2_gates,
+)
 from mock_journey.errors import JourneyError
 from mock_journey.jobs import DynamoJobRepository
 from mock_journey.projection import LoadedInput, ProjectionSchema, project_input, typed_identity
@@ -29,7 +31,7 @@ GATE = "GATE_NOT_PASSED"
 GOAL = "GOAL_NOT_MET"
 
 
-def definition(*, adapter=ROUND2_ADAPTER_VERSION, target="adult", kind="cycles", ratio="302",
+def definition(*, adapter=CURRENT_ADAPTER_VERSION, target="adult", kind="cycles", ratio="302",
                required=3, minimum=(90, 6), two_rescuers=False, course_type="BLS", aed=False,
                pass_rule="composite", thresholds=None):
     condition = {
@@ -42,7 +44,7 @@ def definition(*, adapter=ROUND2_ADAPTER_VERSION, target="adult", kind="cycles",
         "profile_version": expected_profile_version(adapter), "projection_version": PROJECTION,
         "catalog_version": "round2-test-v1", "goal": {"kind": kind, "required": required},
     }
-    if adapter == ROUND2_ADAPTER_VERSION:
+    if uses_round2_gates(adapter):
         result.update(
             courseType=course_type, requiresAed=aed,
             minimumQuantity={"compressions": minimum[0], "ventilations": minimum[1]},

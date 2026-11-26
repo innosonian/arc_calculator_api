@@ -34,13 +34,21 @@ AED_REAL_COUNTS = {"19148": 23, "19986": 29, "19994": 63, "20016": 44}
 REAL_COUNTS = {**ZIP_REAL_COUNTS, **AED_REAL_COUNTS}
 
 
-def compression(number, count, peak, depth, recoil, rate, start, end, window=(), hp="center", offset=0):
-    """Format an explicitly specified oracle row; do not detect or score anything."""
+HP_BOARDS = ("unknown", "nordic", "esp32c6")
+# An empty HP window: unknown board defaults to center, the sampled boards have no sample (D142).
+NO_SAMPLE = ("center", None, None)
+
+
+def compression(number, count, peak, depth, recoil, rate, start, end, window=(), hp=NO_SAMPLE, offset=0):
+    """Format an explicitly specified oracle row; do not detect or score anything.
+
+    ``hp`` is the handwritten (unknown, nordic, esp32c6) HP_V2 result; ``hp`` itself is the unknown one.
+    """
     return {
         "id": number, "count_record": count, "peak_record": peak,
         "peak_offset": offset, "depth_raw": depth, "recoil_raw": recoil,
         "rate": rate, "action_start": start, "action_end": end,
-        "hp_window": list(window), "hp": hp,
+        "hp_window": list(window), "hp": hp[0], "hp_by_board": dict(zip(HP_BOARDS, hp)),
     }
 
 
@@ -69,16 +77,18 @@ def raw_records(depths, codes, variant):
 def synthetic_cases():
     """§8 handwritten records, boundaries, rates, recoil and HP windows."""
     cases = [
+        # nordic: release Records 3..8 hold one 4 in six (< 25%); esp32c6: one 4 in eight.
         ("hold_jitter", [0, 100, 101, 100, 99, 100, 101, 100, 0, 0],
          [0, 1, 1, 1, 1, 1, 1, 1, 4, 0],
-         [compression(1, 8, 2, 101, 0, None, 0, 8, [1] * 7 + [4], "left")]),
+         [compression(1, 8, 2, 101, 0, None, 0, 8, [1] * 7 + [4], ("left", "center", "center"))]),
         # No falling Record: only finish confirms the held peak, with the first tied peak.
         ("hold_flat", [0, 100, 100, 100], [0, 1, 1, 1],
-         [compression(1, 3, 1, 100, 0, None, 0, 3, [1, 1])]),
+         [compression(1, 3, 1, 100, 0, None, 0, 3, [1, 1], ("center", "center", "center"))]),
+        # Each window ends at its peak Record, so nordic has no release sample.
         ("partial_recoil_x3", [0, 100, 30, 100, 30, 100, 0], [0, 1, 8, 1, 4, 1, 0], [
-            compression(1, 2, 1, 100, 30, None, 0, 2, [1]),
-            compression(2, 4, 3, 100, 30, 600, 2, 4, [8, 1], "right"),
-            compression(3, 6, 5, 100, 0, 600, 4, 6, [4, 1], "left"),
+            compression(1, 2, 1, 100, 30, None, 0, 2, [1], ("center", None, "center")),
+            compression(2, 4, 3, 100, 30, 600, 2, 4, [8, 1], ("right", None, "right")),
+            compression(3, 6, 5, 100, 0, 600, 4, 6, [4, 1], ("left", None, "left")),
         ]),
         ("shallow_pump", [10, 30] * 5 + [10], None, []),
         ("shallow_30_15", [30, 60] * 5 + [30], None, [
@@ -105,8 +115,9 @@ def synthetic_cases():
             compression(2, 4, 3, 110, 10, 600, 2, 4),
             compression(3, 6, 5, 100, 0, 600, 4, 6),
         ]),
+        # Infant: masked 4 on every board is direction-unknown (10), formerly left.
         ("infant_mask", [0, 100, 0, 0], [0, 0x44, 0x44, 0],
-         [compression(1, 2, 1, 100, 0, None, 0, 2, [0x44, 0x44], "left")]),
+         [compression(1, 2, 1, 100, 0, None, 0, 2, [0x44, 0x44], ("unknown", "unknown", "unknown"))]),
     ]
     for name, depths, codes, rows in cases:
         condition = dict(CONDITION)
@@ -140,12 +151,16 @@ def replay(raw, inputs, aed=b""):
     for action in actions:
         if action["action_type"] != ACTION_TYPE_COMP:
             continue
-        score = evaluator._evaluate_comp(action, config.border, action["actor"]).score
+        hp = []
+        for board in HP_BOARDS:
+            config.hand_position_board = board
+            score = evaluator._evaluate_comp(action, config.border, action["actor"]).score
+            hp.append(score.get("hand_position", {}).get("value"))
         row = compression(
             len(rows) + 1, action["count_record"], action["peak_record"], action["depth_raw"],
             action["recoil_raw"], score["comp_rate"]["value"] or None,
             action["action_start"], action["action_end"], action["hand_position"],
-            score["hand_position"]["value"], action["peak_offset"],
+            tuple(hp), action["peak_offset"],
         )
         if action["peak_record"] in aed_tail_peaks or (
             previous_peaks[action["peak_record"]] is not None and action["prev_peak_sample"] is None

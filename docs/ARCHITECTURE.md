@@ -137,23 +137,24 @@ v6은 저장된 프로그램 정의의 최소량과 `assessment.passRule`을 사
 
 새 공개 과정·배치 ID는 이전 카탈로그와 겹치지 않는다. `definitionHash`에는 최소량·과정 유형·AED 사용·합격 규칙을 포함한 실행 정의가 반영된다. API는 refresh나 새 로그인 때 새 목록을 읽는다. ATTEMPT에 고정한 이전 정의와 저장 결과는 그대로 읽는다. 이전 어댑터는 새 계산을 하지 않으며 유효한 저장 후보만 복구한다.
 
-현재 어댑터는 `arc-internal-detection-v6`, 프로파일은 `tester-goal-cycles-v3`다. projection은 `arc-local-projection-v1`이다. 보존 목록은 `arc-local-calculator-pending-v2`, `arc-internal-detection-pending-v3`, `arc-internal-detection-v4`, `arc-internal-detection-v5` 순서다. AWS와 로컬은 같은 레지스트리를 사용한다(D141).
+현재 어댑터는 `arc-internal-detection-v7`, 프로파일은 `tester-goal-cycles-v4`다(D142, HP_V2 손 위치). projection은 `arc-local-projection-v1`이다. 보존 목록은 `arc-local-calculator-pending-v2`, `arc-internal-detection-pending-v3`, `arc-internal-detection-v4`, `arc-internal-detection-v5`, `arc-internal-detection-v6` 순서다. AWS와 로컬은 같은 레지스트리를 사용한다(D141).
 
 버전별 의미는 `mock_journey/contracts.py`의 `ADAPTER_FEATURES` 표 한 곳에 있다.
 
 | adapter | CPR 목표 상태 | profile | 후보 형식 | 최소량 합격 조건 | 새 계산 |
 |---|---|---|---|---|---|
-| `arc-internal-detection-v6`(현재) | `evaluated` | `tester-goal-cycles-v3` | `arc-internal-calculation-v5` | 정의별 최소량·gate 결과 | 가능: HSTM `92f56dc` legacy |
+| `arc-internal-detection-v7`(현재) | `evaluated` | `tester-goal-cycles-v4` | `arc-internal-calculation-v6` | 정의별 최소량·gate 결과 | 가능: HSTM `92f56dc` legacy + HP_V2 손 위치(D142) |
+| `arc-internal-detection-v6`(보존) | `evaluated` | `tester-goal-cycles-v3` | `arc-internal-calculation-v5` | 정의별 최소량·gate 결과 | 불가: 검증 전용 |
 | `arc-internal-detection-v5`(보존) | `evaluated` | `tester-goal-cycles-v2` | `arc-internal-calculation-v4` | 저장 평가의 D07 고정 최소량 | 불가: 검증 전용 |
 | `arc-internal-detection-v4`(보존) | `evaluated` | `tester-goal-cycles-v1` | `arc-internal-calculation-v3` | 기존 저장 평가 유지 | 불가: 검증 전용 |
 | `arc-internal-detection-pending-v3`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 기존 저장 평가 유지 | 불가: 검증 전용 |
 | `arc-local-calculator-pending-v2`(보존) | `pending_policy` | `tester-goal-pending-v2` | `arc-internal-calculation-v2` | 기존 저장 평가 유지 | 불가: 검증 전용 |
 
-`CalculationOptions`에는 `collect_gates: bool = False`만 있다. v6 `InternalCalculator`가 이를 켜서 계산된 동작·이벤트에서 평가 근거를 수집한다. context 없는 직접 호출은 수집하지 않는다. 검출·점수 옵션은 없으며 `main.run_calculator`와 두 인자 `calculate_cpr`가 같은 HSTM legacy 코어를 실행한다. `serialize_result`에는 네 번째 인자로 prompt book을 전달한다.
+`CalculationOptions`에는 `collect_gates: bool = False`만 있다. 현재 어댑터의 `InternalCalculator`만 이를 켜서 계산된 동작·이벤트에서 평가 근거를 수집한다. context 없는 직접 호출은 수집하지 않는다. 검출·점수 옵션은 없으며 `main.run_calculator`와 두 인자 `calculate_cpr`가 같은 HSTM legacy 코어를 실행한다. `serialize_result`에는 네 번째 인자로 prompt book을 전달한다.
 
-v6 실행 정의는 공급·시작 경계에서 `minimumQuantity`를 필수로 검증한다. 값이 없거나 잘못된 정의는 시작을 허용하지 않는다. 실제 수행량은 평가 단계에서 검사한다. 보존 v5의 저장 평가 검증은 세션 전체 동작과 기존 ARC CPR 고정 기준을 사용한다. v6은 계산기가 검증한 동작 근거에서 2인 학습자 횟수를 읽고 시작 당시 정의의 `minimumQuantity`와 대조한다. 목표 사유 뒤에 최소량 사유를 두고 마지막에 `SCORE_NOT_PASS` 또는 `GATE_NOT_PASSED`를 둔다. gate 결과는 `ATTEMPT`의 `evaluation_gates_json`에 저장해 소수 값을 유지한다. 기존 정수 제어 DTO의 자료형 검사는 유지한다.
+v6·v7 실행 정의는 공급·시작 경계에서 `minimumQuantity`를 필수로 검증한다. 값이 없거나 잘못된 정의는 시작을 허용하지 않는다. 실제 수행량은 평가 단계에서 검사한다. 보존 v5의 저장 평가 검증은 세션 전체 동작과 기존 ARC CPR 고정 기준을 사용한다. v7(과 보존 v6의 저장 평가)은 계산기가 검증한 동작 근거에서 2인 학습자 횟수를 읽고 시작 당시 정의의 `minimumQuantity`와 대조한다. 목표 사유 뒤에 최소량 사유를 두고 마지막에 `SCORE_NOT_PASS` 또는 `GATE_NOT_PASSED`를 둔다. gate 결과는 `ATTEMPT`의 `evaluation_gates_json`에 저장해 소수 값을 유지한다. 기존 정수 제어 DTO의 자료형 검사는 유지한다.
 
-보존 어댑터 네 개는 모두 저장 후보 검증·결과 복구 전용(재계산 불가)이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. 계산 전 접수된 과정 작업은 `TEMPORARILY_UNAVAILABLE`로 연기되며 JOB은 `running`·`call_phase=not_started`를 유지한다. owner와 lease를 해제하고 다음 확인 시각을 잡으며, ATTEMPT는 `outcome_unknown`·평가/진도 null이다. 마지막 평가의 FINAL은 `recovery_required`다. 임의 실패·취소로 확정하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
+보존 어댑터 다섯 개는 모두 저장 후보 검증·결과 복구 전용(재계산 불가)이다. 후보 없는 이전 작업을 새 core로 계산하지 않는다. 계산 전 접수된 과정 작업은 `TEMPORARILY_UNAVAILABLE`로 연기되며 JOB은 `running`·`call_phase=not_started`를 유지한다. owner와 lease를 해제하고 다음 확인 시각을 잡으며, ATTEMPT는 `outcome_unknown`·평가/진도 null이다. 마지막 평가의 FINAL은 `recovery_required`다. 임의 실패·취소로 확정하지 않는다. v1 후보 `arc-internal-calculation-v1`의 의미와 resolver 요구도 유지한다. 원래 입력·binding·call·파일을 자동으로 새 버전으로 덮지 않는다.
 
 **현재 계산 규칙: HSTM `92f56dc` legacy(R00), DEPTH_V1r3.** 모든 지원 guideline에 같은 검출 규칙을 적용하며 점수 경계와 가중치는 guideline별 원본을 사용한다.
 

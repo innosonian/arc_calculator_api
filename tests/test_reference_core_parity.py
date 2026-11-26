@@ -202,6 +202,21 @@ def test_registered_sources_and_artifacts_keep_the_authorized_direct_pins():
                     expected = expected["sha256"]
                 syntax = ast.dump(function, include_attributes=False)
                 assert hashlib.sha256(syntax.encode()).hexdigest() == expected, (path, name)
+    # D142 (user-approved 2026-11-26): only the four HP_V2 files are re-pinned, recorded with both hashes.
+    deviation = manifest["hand_position_v2_reregistration"]
+    assert deviation["approved_on"] == "2026-11-26" and deviation["computed_with"].startswith("CPython 3.12.")
+    assert set(deviation["files"]) == {"calculators/action_evaluator.py", "calculators/cycle_evaluator.py",
+                                       "calculators/metric_evaluator.py", "data_handlers/action_data.py"}
+    assert set(deviation["files"]) <= set(manifest["repinned"]["exact_files"])
+    for path, pin in deviation["files"].items():
+        assert pin["sha256"] == manifest["preserved_sha256"][path] != pin["previous_sha256"]
+    assert set(deviation["functions"]) <= set(deviation["files"])
+    for path, functions in deviation["functions"].items():
+        for name, pin in functions.items():
+            assert manifest["preserved_function_ast_sha256"][path].get(name) == pin["sha256"] != pin["previous_sha256"]
+    assert set(deviation["unchanged_pins"]) <= set(manifest["preserved_sha256"]) - set(deviation["files"])
+    assert deviation["hstm_parity"]["case_count"] == 856
+    assert deviation["hstm_parity"]["core_difference_count_with_seam"] == 0
 
 
 def test_copied_result_json_core_presence_and_values_match_hstm_92f56dc():

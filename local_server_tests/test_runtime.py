@@ -161,7 +161,7 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
     from local_server.lease import LocalLeaseGuardFactory
     from mock_journey.contracts import (
         CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-        RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+        RETAINED_PENDING_GOAL_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION,
     )
     from mock_journey.cycle_goal import closed_cycle_count
     from mock_journey.internal_calculator import InternalCalculator
@@ -184,19 +184,21 @@ def test_local_api_and_worker_share_one_state_and_storage_scope_and_retain_adapt
         assert api_settings.state is worker_settings.state and api_settings.storage is worker_settings.storage
         assert worker_settings.storage.stage == runtime.STORAGE_STAGE
         # ... and accepted only internal calculators of the storage stage: the
-        # current adapter and retained v4/v5 bound to the D136
+        # current adapter and retained v4/v5/v6 bound to the D136
         # closed-cycle resolver, the retained pending adapters without one
         # (their cycles goal stays pending).
         registered = worker.adapters._registered
         assert set(registered) == {(CURRENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (CYCLE_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (EOF_VENT_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
+                                   (ROUND2_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION),
                                    (RETAINED_PENDING_GOAL_ADAPTER_VERSION, runtime.PROJECTION_VERSION)}
         for (version, projection), adapter in registered.items():
             assert type(adapter) is InternalCalculator and adapter.version == version
             assert adapter.stage == worker.storage.stage == runtime.STORAGE_STAGE
-            if version in (CURRENT_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION):
+            if version in (CURRENT_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION,
+                           CYCLE_GOAL_ADAPTER_VERSION):
                 assert adapter.cycle_goal_resolver is closed_cycle_count and adapter.allow_pending_cycle_goal is False
             else:
                 assert adapter.cycle_goal_resolver is None and adapter.allow_pending_cycle_goal is True

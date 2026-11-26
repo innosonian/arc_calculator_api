@@ -4,6 +4,8 @@
 
 **연결할 서버는 백엔드팀과 먼저 맞춘다.** `/api/v2`가 최종 버전이다(D103). 이 코드의 로컬·AWS Dev 조립은 아래 Dummy Dev 과정 4개를 제공한다. 이 명세 작성이나 로컬 검증 완료가 배포 완료를 뜻하지 않는다. 실제 ARC/MuleSoft 인증·자료 공급·결과 전송 계약, 실물 앱·AWS 인수는 남아 있다. ARC 송신은 비활성이다.
 
+**2026-11-26 변경(D142~D146):** 손 위치 판정 HP_V2와 업로드 part `hand_position_board`(5절), 계산 어댑터 `arc-internal-detection-v7`, 응답 `hand_position.value`의 `up`·`unknown`과 키 생략(6.1절), `cprGuideline` 5개 키(2.5절), `courseItems[].skill`(2.3절)을 추가했다. `skill`이 없는 서버에 새 앱을 연결하면 훈련 항목이 지원하지 않는 항목으로 보이므로 서버 Dev 배포가 앱보다 먼저다. 정의가 바뀌어 `definitionHash`도 바뀌므로 세션 refresh 또는 새 로그인 후 목록·상세를 다시 받는다.
+
 Round 2 Dummy Dev는 실제 업로드 바이너리를 계산하고 CPR 목표를 `evaluated`로 반환한다. 과정 유형별로 아래 연습을 순서대로 배치하고 마지막 skill의 평가를 한 개 붙인다. `PALS`는 유형만 예약한다. Dummy 과정에는 영상·문서가 없다. 아래 콘텐츠 계약은 콘텐츠를 제공하는 과정에 적용한다.
 
 | 과정 유형 | Dummy 과정 ID | skill 순서 |
@@ -267,6 +269,16 @@ OIDC 대안의 필수 키는 아래 세 개다. 두 토큰은 비어 있지 않�
 | `isCompleted` | boolean |
 | `isPassed` | boolean 또는 null. 영상·문서는 항상 null |
 | `completionKind` | `watched`, `skipped` 또는 null. 완료한 영상에만 값이 있다 |
+| `skill` | 아래 `Skill` object 또는 null. 영상·문서 항목과 실행 정의가 준비되지 않은(`ready`가 아닌) 항목은 null(D146) |
+
+`Skill`은 훈련·평가 항목의 실행 정의에서 만든다. 앱은 항목 제목으로 훈련 종류를 추측하지 않는다. 항목 상세의 표시 문자열 `trainingType`(`"chest compression only"` 등)과 다른 값이므로 섞어 쓰지 않는다.
+
+| `Skill` 필드 | 자료형 / 의미 |
+|---|---|
+| `trainingType` | `cpr`, `compression_only`, `ventilation_only`. 업로드 `condition.training_type`과 같은 값 |
+| `isTwoRescuers` | boolean. `condition.is_2rescuers` |
+| `requiresAed` | boolean. AED 스트림을 함께 보내는 skill이면 true |
+| `manikinType` | string. `condition.target`(`adult`, `child`, `infant`) |
 
 `Enrollment`:
 
@@ -304,7 +316,8 @@ Round 2 응답의 추가 키 예시다. `courseType`은 목록 행과 상세 최
         "description": null,
         "isCompleted": false,
         "isPassed": null,
-        "completionKind": null
+        "completionKind": null,
+        "skill": null
       },
       {
         "id": 202,
@@ -317,7 +330,8 @@ Round 2 응답의 추가 키 예시다. `courseType`은 목록 행과 상세 최
         "description": null,
         "isCompleted": false,
         "isPassed": null,
-        "completionKind": null
+        "completionKind": null,
+        "skill": null
       },
       {
         "id": 203,
@@ -330,7 +344,8 @@ Round 2 응답의 추가 키 예시다. `courseType`은 목록 행과 상세 최
         "description": null,
         "isCompleted": false,
         "isPassed": null,
-        "completionKind": null
+        "completionKind": null,
+        "skill": {"trainingType": "compression_only", "isTwoRescuers": false, "requiresAed": false, "manikinType": "adult"}
       },
       {
         "id": 204,
@@ -343,7 +358,8 @@ Round 2 응답의 추가 키 예시다. `courseType`은 목록 행과 상세 최
         "description": null,
         "isCompleted": false,
         "isPassed": null,
-        "completionKind": null
+        "completionKind": null,
+        "skill": {"trainingType": "compression_only", "isTwoRescuers": false, "requiresAed": false, "manikinType": "adult"}
       },
       {
         "id": 205,
@@ -356,7 +372,8 @@ Round 2 응답의 추가 키 예시다. `courseType`은 목록 행과 상세 최
         "description": null,
         "isCompleted": false,
         "isPassed": null,
-        "completionKind": null
+        "completionKind": null,
+        "skill": {"trainingType": "ventilation_only", "isTwoRescuers": false, "requiresAed": false, "manikinType": "adult"}
       }
     ],
     "enrollment": {
@@ -464,7 +481,7 @@ TrainingProgram의 모든 필드가 필수이며 **`training`, `assessment`, `co
 | 중첩 객체 | 모든 필수 하위 필드와 자료형 |
 |---|---|
 | `compressionVentilationRatio` | `title`: string 또는 null, `cvrVentilation`: integer 또는 null, `cvrCompression`: integer 또는 null |
-| `aed` | `id`: Id, `cprGuide`·`shockMode`·`language`: string, `scenarioNo`·`volume`: integer, `padsDetection`: boolean, `arrivalSeconds`: integer 또는 null. Round 2 AED skill에서 non-null |
+| `aed` | `id`: Id, `cprGuide`·`shockMode`·`language`: string, `scenarioNo`·`volume`: integer, `padsDetection`: boolean, `arrivalSeconds`: integer 또는 null. `arrivalMode=after_seconds`일 때만 integer이며 Round 2 AED skill(`at_start`·`after_cycle`)은 null이 정상이다 |
 | `aed` 추가 키 | `arrivalMode`: `at_start`, `after_cycle`, `after_seconds` 중 하나. `arrivalAfterCycle`: integer 또는 null. `cyclesAfterShock`: integer. `padsAttachedDetection`: boolean |
 | `twoRescuers` | `cycleChangeCount`: integer. null 불가 |
 | `assessment` | `passThreshold`: object. null 불가 |
@@ -504,6 +521,12 @@ prompt `id`는 프로그램 안에서 유일하다. `trigger`는 앱 enum `drill
 | `ventilationVolumeMax`, `ventilationVolumeMin` | 각각 integer 또는 null |
 | `ventilationRateMax`, `ventilationRateMin` | 각각 integer 또는 null |
 | `compressionDepthMaxInch`, `compressionDepthMinInch` | 각각 number 또는 null. 정수/소수 모두 가능 |
+| `recoilDepthMax` | integer(mm) 또는 null. 완전 이완으로 보는 최대 잔여 깊이. Round 2 5. 호흡 Only는 null |
+| `compressionFractionMin` | integer(%) 또는 null. 압박 비율(CCF) 하한. CPR 성인 70·영아 55, 압박 Only 100. 호흡 Only는 null |
+| `handsOffGraceMs` | integer(ms) 또는 null. 압박 창 중 손 뗌으로 세지 않는 시간 1000. 호흡 Only는 null |
+| `ventilationInflationTimeMin`, `ventilationInflationTimeMax` | 각각 integer(ms) 또는 null. 영아 흡기 시간 300·1200. 영아가 아니거나 압박 Only이면 null |
+
+아래 5개 키는 2026-11-26(D145)에 추가했다. 서버 채점 값(`config/borders.py`, `config/constants.py`)을 그대로 내려 주며 이전 정의에서는 키 자체가 생략될 수 있다: `recoilDepthMax`, `compressionFractionMin`, `handsOffGraceMs`, `ventilationInflationTimeMin`, `ventilationInflationTimeMax`.
 
 실제 ARC 공급 자료의 표시 설정 단위, 제한값의 0/null 의미, 여러 종료 조건의 우선순위는 공식 계약 확인 대상이다. 일반 공급 스키마는 위 표처럼 nullable을 유지한다. 앱이 이 설정으로 업로드용 `condition`을 재구성하지 않는다.
 
@@ -718,10 +741,13 @@ CPR의 `compressionVentilationRatio`는 1인 30:2(영아 포함), 2인 성인 30
 | `condition` | 예 | 위 객체를 JSON 문자열로 직렬화 |
 | `aedHexBPfile` | 아니요 | 수집한 AED binary 파일 bytes |
 | `vp_event_list` | 아니요 | 기존 VP 이벤트 JSON array 문자열. 없으면 생략 또는 `[]` |
+| `hand_position_board` | 아니요 | 손 위치 보드 text: `nordic`, `esp32c6`, `unknown`(D143). JSON 문자열이 아닌 그대로의 값. `condition`에는 넣지 않는다 |
+
+`hand_position_board`가 없거나 위 세 값이 아니면 `unknown`으로 계산한다. 알 수 없는 값도 거절하지 않으며 서버는 값 없이 진단 기록 1건만 남긴다. 생략·`unknown`·알 수 없는 값은 같은 입력이다. 같은 파일을 다른 보드 값으로 다시 보내면 condition이 다를 때와 같이 `409 ATTEMPT_INPUT_CONFLICT`다. base64 form에도 같은 이름의 필드로 보낸다.
 
 boundary는 HTTP 라이브러리가 만들게 한다. `Content-Type` 헤더는 하나만 보낸다. 대소문자만 다른 중복 헤더, 여러 값, 서로 다른 두 표현처럼 모호하거나 값이 비어 있거나 쉼표·줄바꿈(CR/LF)을 포함하면 파서와 시도 조회 전에 `400 INVALID_REQUEST`다(D103). 파일을 hex 문자열이나 일반 JSON body로 바꾸지 않는다. VP 이벤트는 압박 시작/종료 `0/1`, 호흡 `10/11`, AED `20/21`이며 `timestamp`·`last_timestamp` 단위는 ms다. 기존 우선순위는 truthy인 `last_timestamp`다. `last_timestamp`가 `0`, `null`이거나 없으면 `timestamp`를 사용한다.
 
-호환용 base64 form도 유지한다. 파일 bytes를 URL-safe base64 `cpr_b64_data`/선택 `aed_b64_data`로 만들고, `condition`·선택 `vp_event_list`의 JSON 문자열과 함께 **form URL 인코딩 → 전체 percent 인코딩 → 전체 URL-safe base64 인코딩**한다. 이 최종 문자열을 `application/x-www-form-urlencoded`로 보낸다. 일반 form body·일반 JSON·Swagger의 자동 form 생성과 다르다. 새 앱은 multipart를 사용한다. 기존 파서의 추가 호환 입력이 필요한 경우 [상세 계산 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)을 확인한다.
+호환용 base64 form도 유지한다. 파일 bytes를 URL-safe base64 `cpr_b64_data`/선택 `aed_b64_data`로 만들고, `condition`·선택 `vp_event_list`의 JSON 문자열, 선택 `hand_position_board` 값과 함께 **form URL 인코딩 → 전체 percent 인코딩 → 전체 URL-safe base64 인코딩**한다. 이 최종 문자열을 `application/x-www-form-urlencoded`로 보낸다. 일반 form body·일반 JSON·Swagger의 자동 form 생성과 다르다. 새 앱은 multipart를 사용한다. 기존 파서의 추가 호환 입력이 필요한 경우 [상세 계산 계약](ARC_MOCK_IMPLEMENTED_API_CONTRACT_KO.md)을 확인한다.
 
 **현재 계산 규칙: HSTM `92f56dc` legacy(R00), DEPTH_V1r3.** 모든 지원 guideline에 같은 검출 규칙을 적용하며 점수 경계와 가중치는 guideline별 원본을 사용한다.
 
@@ -730,9 +756,27 @@ boundary는 HTTP 라이브러리가 만들게 한다. `Content-Type` 헤더는 �
 - 호흡은 패킷의 호흡량 최대값(10mL 미만은 0)이 직전 비교값보다 작고, 현재 패킷의 호흡량 최소값도 10mL 미만일 때 확정한다. 압박 또는 호흡 확정 시 비교값과 관측 버퍼를 초기화한다.
 - 하강 없이 끊긴 파일 끝 호흡은 마지막 비교값이 10mL 이상이고, 패킷 처리 중 직전 압박·호흡 확정 Record부터 남은 버퍼가 15패킷 이상일 때만 1회 추가한다. 확정 Record를 포함하며 이전 확정이 없으면 파일 시작부터 센다. 15패킷은 50ms 주기 기준 750ms이며, timestamp 차이로 검사하는 조건은 아니다.
 - 호흡과 같은 Record에서 확정된 압박은 시간 0 창이다. AED 창 뒤 첫 압박의 하강 구간은 복원한다(R6).
-- 손 위치는 하강·이완 표본 전체로 판정한다. 복부 `2`를 우선하고 좌우 `4/8` 중 다수, 동수면 right다. 영아는 하위 4비트를 사용한다.
+- 손 위치는 HP_V2(D142~D144, 앱 `HandPositionReleaseTracker`와 같은 규칙)로 판정한다. 표본 창 W는 이번 압박의 하강 구간과 다음 버퍼 선두의 이완 구간이다(기존 DEPTH_V1r3 창). 영아는 판정 직전에만 코드에 `& 0x0F`를 적용한다.
+  - **보드 `unknown` 또는 영아:** W에서 처음 나오는 0·1이 아닌 코드로 판정하고 없으면 정위치다. 영아는 그런 코드가 있으면 방향 불명(10)이다. 성인은 그 코드를 그대로 쓰며 원본 코드 10은 방향 불명(앱의 오류 마커·"Check position")이다. 그 코드가 2·4·8·16·10 밖(3, 32 등 앱이 마커를 그리지 않는 코드)일 때만 표본 없음(None)이다.
+  - **`nordic`·`esp32c6`(영아 아님):** W에 복부 `2`가 있으면 복부다. 아니면 표본 S(esp32c6는 W 전체, nordic은 정점 Record보다 뒤의 이완 표본)가 비었거나 전부 0이면 표본 없음, 0·1·2·4·8·16 밖의 코드가 있으면 방향 불명, 4·8·16 개수 합×4 ≥ 표본 수(정확히 25% 포함)이면 가장 많은 방향(동수면 방향 불명), 그 외 정위치다.
+  - 결과는 `center`(100점), `left`·`right`·`up`·`unknown`(20점, `n_IncorrectLR`), `down`(0점, `n_IncorrectStomach`)이다. 표본 없음인 압박은 채점·집계하지 않는다(6.1절). 이전 규칙과 달리 영아의 복부 압박은 방향 불명 20점이다.
 
-**앱 기록 권고:** 종료 신호 뒤에도 호흡량이 0으로 돌아올 때까지 또는 최소 2패킷을 더 기록한다. 앱 로컬 Count Limit(`Ccnt`)과 서버 `action_count`·`minimumQuantity`는 기준이 다르다. 서버가 정본이며 로컬 카운트는 종료용이다. 앱팀은 [DEPTH_V1r3 공통 벡터 54건](../tests/fixtures/depth_boundary_v1/)으로 같은 파일의 압박·호흡·차트를 대조한다.
+**앱 기록 권고:** 종료 신호 뒤에도 호흡량이 0으로 돌아올 때까지 또는 최소 2패킷을 더 기록한다. 앱 로컬 Count Limit(`Ccnt`)과 서버 `action_count`·`minimumQuantity`는 기준이 다르다. 서버가 정본이며 로컬 카운트는 종료용이다. 앱팀은 [DEPTH_V1r3 공통 벡터 54건](../tests/fixtures/depth_boundary_v1/)으로 같은 파일의 압박과 보드별 손 위치(`hp_by_board`)를, [ACTION_VECTORS_V1 6건](../tests/fixtures/action_vectors_v1/)으로 호흡(확정 Record·창·호흡량·간격·영아 흡기 시간)과 사이클·닫힌 사이클·학습자 몫을 대조한다.
+
+ACTION_VECTORS_V1(D142 S4)은 `tests/dataset/`의 실측 파일을 바이트 그대로 복사한 6건이다: 파일 끝에서 끊긴 성인 CPR(`cpr_eof_truncated_vent_1`), 성인 CPR+AED(`cpr_2`+`aed_2`), 두 번째 cycle 전체를 VP가 수행한 2인 CPR(`cpr_4`+VP 이벤트), 영아 CPR(`infant_cpr_idle_flag_pause`), 성인·영아 호흡 Only(`adult_vo_1`, `vo_1`). 조건은 `ARC2025`, `cpr_cycle_type="302"`다. 각 폴더의 `expected.json`은 다음 필드를 담는다.
+
+| 필드 | 뜻 |
+|---|---|
+| `records` | 28바이트 Record 수 |
+| `ventilations[].count_record` | 호흡을 확정한 Record = 그 호흡 창의 `action_end`(제외 인덱스, 다음 창의 선두). 파일 끝 호흡은 Record 수 |
+| `ventilations[].action_start`, `action_end` | 호흡 창 `[action_start, action_end)` |
+| `ventilations[].volume_ml` | 채점 호흡량(mL, 정수) |
+| `ventilations[].interval_ms` | 직전 호흡을 확정한 Record의 timestamp부터 이번 호흡 창 마지막 Record의 timestamp까지(ms). 첫 호흡은 null. 호흡 Only에서는 서버가 호흡 속도를 채점하는 창 길이와 같다 |
+| `ventilations[].inflation_ms` | 영아만 흡기 시간(ms, 영아 `vent_speed` 채점값). 영아가 아니면 null |
+| `cycles[]` | 계산기 사이클 묶음 `part`, `cycle`, `comp`, `vent`, `calc_case`, `actor_type`(`ONLY:RP`, `ONLY:VP` 등) |
+| `closed_cycles` | `calc_case="cpr"`인 사이클 수(D136 완료 사이클) |
+| `learner_counts` | VP를 뺀 학습자 압박·호흡 수(최소량 판정) |
+| `action_count` | 응답 `action_count`와 같은 전체 압박·호흡 수 |
 
 CPR 원본은 다음 순서로 검사한다. 길이는 bytes 단위다. 접수 시에는 패킷 목록을 만들지 않고 같은 검사를 수행하며 Worker가 저장 파일을 읽을 때도 다시 검사한다.
 
@@ -744,7 +788,7 @@ CPR 원본은 다음 순서로 검사한다. 길이는 bytes 단위다. 접수 �
 | 헤더 | 첫 바이트가 `0xA8`이 아님 | `422 MEASUREMENT_INPUT_INVALID` |
 | 끝 20 bytes | +20 형식의 trailer에 0이 아닌 값이 있음 | `422 MEASUREMENT_INPUT_INVALID` |
 
-외부 요청/저장 크기 한도는 이 검사보다 먼저 적용될 수 있다. 저장된 입력에서 같은 원본 오류가 확인되면 Worker는 `STORED_INPUT_INVALID`로 처리한다.
+4,000,000 bytes는 계산기 파서의 CPR 원본 상한이다. 서버에는 그보다 작은 업로드 한도(AWS Dev: CPR+AED 원본 합계 2,097,152 bytes = 2 MiB, 맨 위 연결 정보 표)가 먼저 적용되고 같은 `413 PAYLOAD_TOO_LARGE`를 반환하므로, 앱은 연결한 환경의 업로드 한도를 실제 상한으로 쓴다. 저장된 입력에서 같은 원본 오류가 확인되면 Worker는 `STORED_INPUT_INVALID`로 처리한다.
 
 **AED 스트림과 VP 이벤트.** AED를 사용할 때 앱이 도착 시점에 AED 스트림 `ARRIVED(0)`을 기록한다. 서버는 첫 AED 이벤트부터 shock/no-shock까지 AED part의 압박을 CPR cycle에서 제외한다. 첫 이벤트가 `ARRIVED(0)`이면 bridge 전체를 제외하며, 전원 이벤트부터 기록하면 전원 전 압박이 CPR 묶음에 남을 수 있다. 2인 AED는 6번째 cycle 뒤 도착하고 shock/no-shock 뒤 2 cycle을 수행한다. `vp_event_list`의 `20(START_AED)`, `21(END_AED)`는 2인 bridge의 VP 구간 표지다. 이 스트림의 21을 AED 스트림의 21과 혼동하지 않는다.
 
@@ -781,7 +825,7 @@ curl --request POST "$VCC_API_BASE/api/v2/attempts/$ATTEMPT_ID/calculation/" \
 
 ## 6. 결과·완료·차트
 
-v5 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수 없다. 상세를 다시 받아 새 시도로 시작한다. 필요하면 `POST /api/v2/session/refresh/` 또는 새 로그인 후 목록·상세를 조회한다. 기존 저장 결과와 유효한 저장 후보의 복구는 유지하며 재계산하지 않는다. 후보 없는 구버전 작업은 자동 실패·취소되지 않는다. 해당 과정 시도는 `outcome_unknown`으로 보류되고 계산 GET은 `503 CALCULATION_OUTCOME_UNKNOWN`이다. 마지막 평가라면 별도 FINAL 상태가 `recovery_required`가 된다.
+v6 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수 없다(v7부터 HP_V2). 상세를 다시 받아 새 시도로 시작한다. 필요하면 `POST /api/v2/session/refresh/` 또는 새 로그인 후 목록·상세를 조회한다. 기존 저장 결과와 유효한 저장 후보의 복구는 유지하며 재계산하지 않는다. 후보 없는 구버전 작업은 자동 실패·취소되지 않는다. 해당 과정 시도는 `outcome_unknown`으로 보류되고 계산 GET은 `503 CALCULATION_OUTCOME_UNKNOWN`이다. 마지막 평가라면 별도 FINAL 상태가 `recovery_required`가 된다.
 
 업로드가 영속 접수되면 `202`다. GET도 처리 중에는 같은 형태를 반환한다.
 
@@ -840,8 +884,9 @@ v5 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수
 | `cycle_with_score_list` | ScoreFields[] |
 | `score` | ScoreFields object |
 | ActionMetric의 `criterion`, `grade`, `value` | 각각 string, number, number/string/boolean/null. 동작 종류별 키 존재 여부 유지 |
+| 압박 동작의 `hand_position` | `value`는 `center`, `left`, `right`, `down`, `up`, `unknown` 중 하나인 string. `criterion`은 `good`, `side`, `down`. 손 위치 표본이 없는 압박은 이 키 자체가 없다(v7). 앱은 있는 키만 검사한다 |
 
-`aed_score.part_scores[]`는 조건별 객체 배열이며 비어 있을 수 있다. v6 AED part는 끝 이벤트에 따른 `outcome`(`"shock"` 또는 `"no_shock"`)을 포함한다. 이전 결과에서는 생략될 수 있다.
+`aed_score.part_scores[]`는 조건별 객체 배열이며 비어 있을 수 있다. v6·v7 AED part는 끝 이벤트에 따른 `outcome`(`"shock"` 또는 `"no_shock"`)을 포함한다. 이전 결과에서는 생략될 수 있다.
 
 **Metrics**는 이름별 값이 number, 분포 object 또는 null인 객체다. 분포 object 안의 값은 number 또는 null이며 빈 object도 유효하다.
 
@@ -856,7 +901,7 @@ v5 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수
 | `ScoreOfCCF` | number. 점수 |
 | `CCF` | `%_CCF`, `ccf_count`, `score`, `sum_ccf`, `sum_score` 등의 집계 object |
 
-`Evaluation`의 기존 키는 필수다. 과거 결과에서 `goal.status`가 생략될 수 있다. `gates`는 v6 결과에 추가한다.
+`Evaluation`의 기존 키는 필수다. 과거 결과에서 `goal.status`가 생략될 수 있다. `gates`는 v6·v7 결과에 추가한다.
 
 | 필드 | 자료형 |
 |---|---|
@@ -864,17 +909,17 @@ v5 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수
 | `goal.required` | 1 이상 integer |
 | `goal.observed` | 0 이상 integer 또는 null |
 | `goal.met` | boolean 또는 null |
-| `goal.status` | v6·v5·v4의 결과는 항상 `evaluated`. 더 이전 어댑터로 시작한 CPR 계열 시도는 `pending_policy`일 수 있고 과거 결과는 키 생략 가능 |
+| `goal.status` | v7·v6·v5·v4의 결과는 항상 `evaluated`. 더 이전 어댑터로 시작한 CPR 계열 시도는 `pending_policy`일 수 있고 과거 결과는 키 생략 가능 |
 | `score.decision` | `pass` 또는 `fail` |
 | `program_completed` | boolean |
 | `reason_codes` | 해당 사유의 string[]. 목표 사유, 최소량 사유, 합격 규칙 사유 순서 |
-| `gates` | 아래 GateResult 객체 배열. v6 결과에 포함 |
+| `gates` | 아래 GateResult 객체 배열. v6·v7 결과에 포함 |
 
 | `reason_codes` 값 | 의미 |
 |---|---|
 | `GOAL_POLICY_UNRESOLVED` | 목표 정책 대기(이전 pending 어댑터로 시작한 CPR 시도만). 완료 아님 |
 | `GOAL_NOT_MET` | 목표 횟수·사이클 미달(`goal.met=false`) |
-| `MINIMUM_QUANTITY_NOT_MET` | 최소 수행량 미달. v6은 고정한 프로그램 정의를, v5는 ARC CPR의 성인·소아 90/6, 영아 45/6을 사용한다. 총점이 80 이상이어도 합격하지 않는다 |
+| `MINIMUM_QUANTITY_NOT_MET` | 최소 수행량 미달. v7·v6은 고정한 프로그램 정의를, v5는 ARC CPR의 성인·소아 90/6, 영아 45/6을 사용한다. 총점이 80 이상이어도 합격하지 않는다 |
 | `SCORE_NOT_PASS` | composite 점수가 기존 tester 합격 기준에 못 미침. 최소량 때문에만 불합격이면 이 값은 없다 |
 | `GATE_NOT_PASSED` | gates 모드에서 적용하는 gate 중 하나 이상 실패. 실패 ID는 `passed=false`인 행으로 확인 |
 
@@ -894,7 +939,7 @@ v5 이하 정의로 시작해 아직 계산하지 않은 시도는 계산할 수
 
 CPR skill의 `ventilation_interval_score`는 비적용이다. CPR의 호흡 간격 gate는 ARC Science band 확정(U-4) 뒤 별도 ID(예: `breath_interval_seconds`)로 추가할 대상으로 남기며 지금은 구현하지 않는다. 성인 호흡 Only의 기존 범위는 8~12회/분(5.0~7.5초)이며 CPR Blow Timing 표시는 현재 gate 합격 근거가 아니다.
 
-v6은 비적용 행을 포함해 위 12개 행을 반환한다. 아래는 첫 행을 발췌한 예시다.
+v7·v6은 비적용 행을 포함해 위 12개 행을 반환한다. `hand_position_pct`는 표본 있는 압박의 `metrics.HandPosition.%_Good`이며, 모든 압박이 표본 없음이면 0이다. 아래는 첫 행을 발췌한 예시다.
 
 ```json
 {"gates":[{"id":"repetitions","applicable":true,"value":1,"threshold":1,"unit":"count","passed":true}]}
@@ -924,9 +969,9 @@ v5 최소 수행량 미달 예시(ARC CPR, 압박 61·호흡 6, 표시 총점 83
 }
 ```
 
-`goal.observed`는 압박·호흡 Only의 실제 동작 수 또는 닫힌 CPR cycle 수다. CPR에서는 압박 뒤 호흡이 이어진 cycle만 센다. 2인 VP cycle은 목표 횟수에 포함하며 AED part의 동작은 제외한다. `program_completed`는 목표를 충족하고 선택된 합격 규칙을 통과했을 때 true다. `composite`는 기존 tester 점수 판정을 쓰며 gate 행은 참고용이다. 따라서 composite에서 AED gate만 실패한 결과도 목표·최소량·점수 조건을 충족하면 완료될 수 있다. `gates`는 적용 gate의 실패 여부로 합격을 판정한다. v6은 프로그램 정의의 최소량을 사용하며 2인에서는 VP 동작을 최소량에서 제외한다.
+`goal.observed`는 압박·호흡 Only의 실제 동작 수 또는 닫힌 CPR cycle 수다. CPR에서는 압박 뒤 호흡이 이어진 cycle만 센다. 2인 VP cycle은 목표 횟수에 포함하며 AED part의 동작은 제외한다. `program_completed`는 목표를 충족하고 선택된 합격 규칙을 통과했을 때 true다. `composite`는 기존 tester 점수 판정을 쓰며 gate 행은 참고용이다. 따라서 composite에서 AED gate만 실패한 결과도 목표·최소량·점수 조건을 충족하면 완료될 수 있다. `gates`는 적용 gate의 실패 여부로 합격을 판정한다. v7·v6은 프로그램 정의의 최소량을 사용하며 2인에서는 VP 동작을 최소량에서 제외한다.
 
-보존 v5의 저장 평가는 기존 ARC CPR 고정 최소량으로 검증하고, v4·pending-v3의 저장된 점수 null도 그대로 읽는다. pending-v3·pending-v2의 저장 CPR 결과는 `observed=null`, `met=null`, `status=pending_policy`, `program_completed=false`일 수 있다. 네 보존 어댑터 모두 새 계산은 하지 않는다. 확정된 저장 결과는 완료 미정·불합격이어도 `200`으로 조회한다. 점수는 number 또는 null이며 정밀도, 누락, 0, 빈 객체는 그대로 읽는다. `certification.Target="baby"`는 업로드 `condition.target="infant"`에 대응한다.
+보존 v6의 저장 결과는 이전 손 위치 규칙의 값 그대로 조회한다. 보존 v5의 저장 평가는 기존 ARC CPR 고정 최소량으로 검증하고, v4·pending-v3의 저장된 점수 null도 그대로 읽는다. pending-v3·pending-v2의 저장 CPR 결과는 `observed=null`, `met=null`, `status=pending_policy`, `program_completed=false`일 수 있다. 다섯 보존 어댑터 모두 새 계산은 하지 않는다. 확정된 저장 결과는 완료 미정·불합격이어도 `200`으로 조회한다. 점수는 number 또는 null이며 정밀도, 누락, 0, 빈 객체는 그대로 읽는다. `certification.Target="baby"`는 업로드 `condition.target="infant"`에 대응한다.
 
 `progressApplication.reason`은 `APPLIED`, `PROGRESS_RESET`, `GOAL_POLICY_UNRESOLVED`, `ALREADY_COMPLETED`, `REQUIREMENTS_NOT_MET`, `PROGRESS_RECONCILIATION_REQUIRED`다. `APPLIED`일 때만 `applied=true`와 해당 epoch가 있고, 나머지는 false/null이다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나다(D117). 이미 완료한 항목을 다시 수행해 기준에 못 미쳐도 `ALREADY_COMPLETED`다. 평가가 교체되어 현재 과정에 반영을 보류하면 초기화 전 결과가 아닌 한 `PROGRESS_RECONCILIATION_REQUIRED`다. 이때도 원래 결과·합격 근거는 보존된다. 앱이 새 평가 합격을 복제하지 않는다.
 

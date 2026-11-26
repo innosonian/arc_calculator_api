@@ -71,7 +71,7 @@ iPad에서 `http://<Mac의_현재_내부_IP>:8000/healthz`를 확인한다. 이 
 | Dummy 과정 4개 | 기존 내부 계산기로 점수·통계·코칭·차트를 생성 |
 | Compression Only / Ventilation Only | 실제 횟수로 프로그램 정의의 목표·`minimumQuantity`를 충족하고 `assessment.passRule`을 통과하면 완료 |
 | CPR 계열 | 계산기가 `cpr`로 분류한 사이클 수가 프로그램 정의의 목표(1/3/8)를 충족하고, `minimumQuantity`와 `assessment.passRule`도 통과하면 완료. `composite`는 기존 tester 점수, `gates`는 적용 gate로 판정한다. 이전 pending 어댑터의 저장 결과에는 `pending_policy`가 남을 수 있으며 새 계산은 하지 않음 |
-| 파일 끝 마지막 호흡·ARC 최소량 | 현재 `arc-internal-detection-v6`은 HSTM `92f56dc` legacy 검출을 사용한다. 호흡은 패킷 최대량 하강과 현재 패킷 최소량 10mL 미만을 함께 검사한다. 하강 없는 파일 끝은 마지막 비교값이 10mL 이상이고 직전 압박·호흡 확정 Record부터 15패킷 이상 남아야 센다([검출 상세](APP_API.md#5-측정-시도와-업로드)). 최소량 미달도 점수를 표시하되 `MINIMUM_QUANTITY_NOT_MET`로 합격·완료를 거절한다. v5 이하 네 보존 어댑터는 저장 후보·결과 검증만 가능하다. 후보 없는 이전 시도는 상세를 다시 받아 새 시도로 시작한다. 직접 실행 도구는 계산만 하며 과정 합격 판정은 하지 않는다 |
+| 파일 끝 마지막 호흡·ARC 최소량 | 현재 `arc-internal-detection-v7`은 HSTM `92f56dc` legacy 검출과 HP_V2 손 위치(D142)를 사용한다. 호흡은 패킷 최대량 하강과 현재 패킷 최소량 10mL 미만을 함께 검사한다. 하강 없는 파일 끝은 마지막 비교값이 10mL 이상이고 직전 압박·호흡 확정 Record부터 15패킷 이상 남아야 센다([검출 상세](APP_API.md#5-측정-시도와-업로드)). 최소량 미달도 점수를 표시하되 `MINIMUM_QUANTITY_NOT_MET`로 합격·완료를 거절한다. v6 이하 다섯 보존 어댑터는 저장 후보·결과 검증만 가능하다. 후보 없는 이전 시도는 상세를 다시 받아 새 시도로 시작한다. 직접 실행 도구는 계산만 하며 과정 합격 판정은 하지 않는다 |
 | ARC 제출 | 전송하지 않음. 처리 중 응답은 `status=disabled`, Dummy 계산 결과는 `status=excluded`, `exclusionReasons=["dummy"]`(D90). `ok=false` |
 | 대기 | D54에 따라 앱의 파일 업로드 시작부터 최대30초. 이후에도 같은 시도의 결과를 조회 가능. 이미 접수된 작업을 자동 취소하는 시간이 아님 |
 | 차트 | 실제 로컬 JSON 파일을 서명 URL로 제공. 발급부터300초; 만료 시 인증된 API로 새 링크 발급 |

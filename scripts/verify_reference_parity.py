@@ -45,6 +45,23 @@ class ForbiddenSideEffect(BaseException):
     pass
 
 
+def hstm_hand_position(window, records, peak_record, board, infant):
+    """HSTM 92f56dc hand-position rule, pinned in the current worker only (harness seam, D142).
+
+    HP_V2 (calculators.hand_position.classify) deliberately diverges from HSTM by the
+    user-approved 2026-11-26 decision U1. Substituting the old rule here keeps every
+    other calculation, chart and legacy-conversion byte comparable with HSTM.
+    The board and Record numbers are ignored, as in HSTM.
+    """
+    codes = [code & 0x0F for code in window] if infant else list(window)
+    if 2 in codes:
+        return 2
+    left, right = codes.count(4), codes.count(8)
+    if left or right:
+        return 4 if left > right else 8
+    return 1
+
+
 class _DiscardLogs:
     def write(self, text):
         return len(text)
@@ -147,6 +164,11 @@ def _worker(repo, guard_only=False, reference=False):
             if not guard_only:
                 from main import run_calculator
                 import data_handlers.chart_data as chart_data
+
+                if not reference:
+                    import calculators.hand_position as hand_position
+
+                    hand_position.classify = hstm_hand_position
 
                 if reference:
                     # Compile only these two self-contained functions. Importing

@@ -284,3 +284,18 @@ def test_checker_rejects_other_changes_without_writing(tmp_path, monkeypatch, mu
     with pytest.raises(AssertionError):
         golden.main(["--check"])
     assert before == {path: path.read_bytes() for path in destination.rglob("*") if path.is_file()}
+
+
+def test_every_compression_carries_hp_by_board_after_hp_and_hp_is_the_unknown_board():
+    # Amendment 3 (D142, user-approved 2026-11-26): only hp moved to HP_V2 and hp_by_board was added.
+    values = {"center", "left", "right", "down", "up", "unknown", None}
+    rows = 0
+    for name in CASES:
+        for row in load_case(name)[2]["compressions"]:
+            keys = list(row)
+            assert keys.index("hp_by_board") == keys.index("hp") + 1
+            assert list(row["hp_by_board"]) == list(golden.HP_BOARDS)
+            assert row["hp"] == row["hp_by_board"]["unknown"]
+            assert set(row["hp_by_board"].values()) <= values
+            rows += 1
+    assert rows == 765

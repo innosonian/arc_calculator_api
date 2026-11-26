@@ -483,7 +483,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -495,7 +501,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -510,7 +522,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -543,7 +555,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -555,7 +573,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -570,7 +594,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -597,7 +621,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -637,7 +661,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -649,7 +679,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -664,7 +700,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -691,7 +727,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -725,7 +761,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -758,7 +794,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -803,7 +839,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:00Z",
     "role": "training",
     "condition": {
@@ -842,7 +878,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -854,7 +896,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -869,7 +917,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -896,7 +944,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {
@@ -1331,7 +1379,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": true,
-      "isPassed": true
+      "isPassed": true,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -1343,7 +1397,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": false,
-      "isPassed": null
+      "isPassed": null,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -1358,7 +1418,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -1385,7 +1445,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940042,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:04Z",
     "role": "final_assessment",
     "condition": {
@@ -1613,7 +1673,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": true,
-      "isPassed": true
+      "isPassed": true,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      },
      {
       "id": 950042,
@@ -1625,7 +1691,13 @@
       "contentType": null,
       "description": "Temporary Dummy Dev test only. Not an ARC course or certification.",
       "isCompleted": true,
-      "isPassed": true
+      "isPassed": true,
+      "skill": {
+       "trainingType": "compression_only",
+       "isTwoRescuers": false,
+       "requiresAed": false,
+       "manikinType": "adult"
+      }
      }
     ],
     "enrollment": {
@@ -1640,7 +1712,7 @@
      "enrollStatusCode": null
     },
     "progressId": 930004,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "learningAvailability": {
      "state": "ready",
      "reason": null
@@ -2188,7 +2260,7 @@
     "courseId": 910004,
     "enrollmentId": 920004,
     "courseItemLinkId": 940041,
-    "definitionHash": "1eef9502f0f9d6d9890e4f87bbe6011c942dcfa853e54d90e31f1ccd538e3f72",
+    "definitionHash": "199ec3c9af3d4ad9085478d4a7d1f4668348a8ed9b0ab2ff4eceb8ed00b9461a",
     "createdAt": "2027-01-15T08:00:02Z",
     "role": "training",
     "condition": {

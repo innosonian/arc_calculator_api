@@ -52,11 +52,11 @@
     ]
   },
   "preserved_sha256": {
-    "calculators/action_evaluator.py": "ef956e03cc7fbc37ae700d272b67d0ae946b89459d8c6a2cdfd002137ec08059",
+    "calculators/action_evaluator.py": "7ec37503515841d89b334f43ccc34b79f826efe7a706b0b58f6793424f2bbea0",
     "calculators/aed_evaluator.py": "aa41f4f947d398e09b7c78bd62557dd424ed1c9aeb2d1053202bbd76b35de7fa",
-    "calculators/cycle_evaluator.py": "0547f4fed3f17389c33538e742dd90970a877c0e0ef179dbbece9d5ae7c97dbb",
+    "calculators/cycle_evaluator.py": "88ad57d87c119215a2058435dcf27ef0143cdb9e143bc359ed56d431fdcb7a06",
     "calculators/merge_calculator.py": "382a5b32e3d3d8f92fd6dfdf306170f52d5f05320b573f798bf6ba63aa7a3d49",
-    "calculators/metric_evaluator.py": "1c85a8c5b879c21a2fbdb0d07d86d0a0d38a5b0942ef406a5776bff79fa4e658",
+    "calculators/metric_evaluator.py": "52f8f81965686dbacfd30e565eac9f212d8b06e54e661a8d74c8823dff81b7fd",
     "calculators/waveform.py": "2753dc4e3fdb0f4583531c03236740dad21b46d47c3512a15386f076149ec20e",
     "config/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "config/borders.py": "c61a2041489b5491025d33d936bc5b34497291c569338065196752ae595c1be7",
@@ -64,7 +64,7 @@
     "config/constants.py": "0a6762fba8d4a288fb710ee6bfbb126b0304120cb075b7bf4762aaecf526c25b",
     "config/enums.py": "fdc49083b9e7b1540417bd0764606fa5cafe80c78b0970b8a90387d8287d11a9",
     "config/score_weight.py": "e26f8374e1f8d18fced7af2dea14b741c891ec9b8744a477a0ed7a869e2b1023",
-    "data_handlers/action_data.py": "7763bd1ffb8dbc9223429c4864334adefc87dc53ce1b70f0c9caec4f941c1f40",
+    "data_handlers/action_data.py": "c46929cf3ee29116b629c0b3f7e5b0a8df68459c563ba4e500c0563516ed51d0",
     "data_handlers/chart_data.py": "dfa2b6f9da6983004f18cd556573a5f2b1358252304b533f384a684454021a02",
     "data_handlers/data_parser.py": "786021f13794322049241fa5a5a6a0fdf4cdb0e56390394b87dbea58990bfe65",
     "data_handlers/vp_action.py": "3f52f786e0dd79479a0f6dde8c20714021ce8850c52f907688dcc3236a5282c7",
@@ -132,10 +132,8 @@
       "ActionEvaluator.__init__": "2556fd4b5e59ff7d4decd84d4fad75fe5cc5a924ab628d337bf6574248646130",
       "ActionEvaluator.evaluate_action": "45059ebdc2b1773ad1f64e15d764e40026146b8c5ddec0e65b8e39f3a9b42d18",
       "ActionEvaluator._evaluate": "764a7d05d3f19d41d7939772473fac692eb254d3982f2e93c2d5ead61ddd0231",
-      "ActionEvaluator._evaluate_comp": "9c537443475adf701fb2c42c2d6099ffd705391682d4901a51a104e56d21e0ec",
-      "ActionEvaluator._get_vent_rate_key": "803692134737f7e56c6d6ea9d5dfdecd9e029ce550033ef243efa14efde69747",
-      "ActionEvaluator.get_hand_position_spot": "7569fbd5b8d88f0c2c0924d513f7cee12cdbb34ab5b3feae2aa33226637e9a3c",
-      "ActionEvaluator.get_finger_position_spot": "63bb53bd136602848007a46e4ce3e638105c53feefd2371bea5a588b1981d724"
+      "ActionEvaluator._evaluate_comp": "e60c29764234fccb290a127b6e5993a0ad646e2fdd5b4a53ff9c9fd56f8355b0",
+      "ActionEvaluator._get_vent_rate_key": "803692134737f7e56c6d6ea9d5dfdecd9e029ce550033ef243efa14efde69747"
     },
     "calculators/cycle_evaluator.py": {
       "Cycle.__init__": "0e037b46c630ce289937a2190ad6dc37d011462e93584676f2f0dc8e83ee5873",
@@ -159,7 +157,7 @@
       "CycleWithScore._count_compression_peaks": "2a9925dc7508b4c4a09bf9d1dae6ee50e5074dae752fe6212fae9176c8600ab5",
       "CycleWithScore._compression_events": "f75a0bac0165ba75fbae0ddc5d469a9c14cf404f77a116968c242e9309483d30",
       "CycleWithScore._real_comp_actions": "5f5b671bfbbaba24a98cee1776137b80f44bbfd7576e471216ea4515f8863850",
-      "CycleWithScore._embed_comp_score": "953dd4c7413dffea04bc8480e30010aa011947b0b6ff9c71242299b67a6d4158",
+      "CycleWithScore._embed_comp_score": "5fad691a9d5684f0488d979bb879c55b3671544f0e91ff1a8b6e3fe31f0f9f38",
       "CycleWithScore._embed_comp_depth_recoil_score": "f3df2710bbc75a00ae4f1f066d9a507b7d6e9f99e1386c8373aca1b4b2f280a1",
       "CycleWithScore._comp_event_score": "1d92821ab415a09a27f80363f7add46a493a369a1c77a3cae204c4ff9afa1009",
       "CycleWithScore._embed_vent_score": "fee96615eafc336a5970e2c5d924d8a08c7d0947c78b8629671f2d75af4da6ad",
@@ -184,7 +182,7 @@
       "MetricEvaluator.evaluate": "e8908e2cd1832f244e34912596cfc472993aba3213c830fb24e017867ec1745e",
       "MetricEvaluator.collect_cycle_metrics": "c6bda67d133f5d9ee4ff4fafa6a472d5e1a1be66de7999f5e22d7f4fd98316c3",
       "MetricEvaluator._collect_comp_event_metrics": "a274be8eb6a1789edf835ade9b3299e6af2b2b0acde30cc9df173c993b74df03",
-      "MetricEvaluator._collect_comp_metrics": "47cb124bb603db20d91faeb6e7c3a44d3c98f622128ec5967a052d2268da95e7",
+      "MetricEvaluator._collect_comp_metrics": "e6adecf619ac3830805ee057c6b0a83e96c7226782ffbc0a8571ed7de5a126d8",
       "MetricEvaluator._collect_vent_metrics": "cc31e662862243532187ae13e36b6180e8e32a9f946393c2bbc00fd6e3689a8c",
       "MetricEvaluator._collect_time_metrics": "4fd586b318153aaf9e514ac8edebce826db4e90bf7b30425f575ed643169732c",
       "MetricEvaluator.calculate_metrics": "eb92cd6b2ad604cef4780554ca3bee03fc6ec839cf74ac7f5d7848b8fbc530eb",
@@ -222,5 +220,71 @@
       "result_vo_1.json": "a46d14a9d3991932577847b235fde8216d2931293f2986d0302be07c31836d23"
     },
     "note": "The seven reference JSON files remain byte-for-byte historical files. They contain cpr_score, metrics and aed_score but no action_count; absence is hashed. Live action counts are covered by the 856-case parity. Their score_comp_rate values for cpr_1/4/5 remain 93/100/100; test_result.py independently uses RATE_SCORES 92/97/98 from raw depth intervals."
+  },
+  "hand_position_v2_reregistration": {
+    "decision": "D142 (user-approved 2026-11-26, U1~U3): HP_V2 hand position deliberately diverges from HSTM 92f56dc. Following the D102/D125 precedent, only the four files that U1/U2 force to change are re-pinned; their repinned.exact_files membership is superseded.",
+    "approved_on": "2026-11-26",
+    "computed_with": "CPython 3.12.16",
+    "files": {
+      "calculators/action_evaluator.py": {
+        "previous_sha256": "ef956e03cc7fbc37ae700d272b67d0ae946b89459d8c6a2cdfd002137ec08059",
+        "sha256": "7ec37503515841d89b334f43ccc34b79f826efe7a706b0b58f6793424f2bbea0"
+      },
+      "calculators/cycle_evaluator.py": {
+        "previous_sha256": "0547f4fed3f17389c33538e742dd90970a877c0e0ef179dbbece9d5ae7c97dbb",
+        "sha256": "88ad57d87c119215a2058435dcf27ef0143cdb9e143bc359ed56d431fdcb7a06"
+      },
+      "calculators/metric_evaluator.py": {
+        "previous_sha256": "1c85a8c5b879c21a2fbdb0d07d86d0a0d38a5b0942ef406a5776bff79fa4e658",
+        "sha256": "52f8f81965686dbacfd30e565eac9f212d8b06e54e661a8d74c8823dff81b7fd"
+      },
+      "data_handlers/action_data.py": {
+        "previous_sha256": "7763bd1ffb8dbc9223429c4864334adefc87dc53ce1b70f0c9caec4f941c1f40",
+        "sha256": "c46929cf3ee29116b629c0b3f7e5b0a8df68459c563ba4e500c0563516ed51d0"
+      }
+    },
+    "functions": {
+      "calculators/action_evaluator.py": {
+        "ActionEvaluator._evaluate_comp": {
+          "previous_sha256": "9c537443475adf701fb2c42c2d6099ffd705391682d4901a51a104e56d21e0ec",
+          "sha256": "e60c29764234fccb290a127b6e5993a0ad646e2fdd5b4a53ff9c9fd56f8355b0"
+        },
+        "ActionEvaluator.get_hand_position_spot": {
+          "previous_sha256": "7569fbd5b8d88f0c2c0924d513f7cee12cdbb34ab5b3feae2aa33226637e9a3c",
+          "sha256": null
+        },
+        "ActionEvaluator.get_finger_position_spot": {
+          "previous_sha256": "63bb53bd136602848007a46e4ce3e638105c53feefd2371bea5a588b1981d724",
+          "sha256": null
+        }
+      },
+      "calculators/cycle_evaluator.py": {
+        "CycleWithScore._embed_comp_score": {
+          "previous_sha256": "953dd4c7413dffea04bc8480e30010aa011947b0b6ff9c71242299b67a6d4158",
+          "sha256": "5fad691a9d5684f0488d979bb879c55b3671544f0e91ff1a8b6e3fe31f0f9f38"
+        }
+      },
+      "calculators/metric_evaluator.py": {
+        "MetricEvaluator._collect_comp_metrics": {
+          "previous_sha256": "47cb124bb603db20d91faeb6e7c3a44d3c98f622128ec5967a052d2268da95e7",
+          "sha256": "e6adecf619ac3830805ee057c6b0a83e96c7226782ffbc0a8571ed7de5a126d8"
+        }
+      }
+    },
+    "unchanged_pins": [
+      "config/borders.py",
+      "config/constants.py",
+      "config/score_weight.py",
+      "services/calculators.py",
+      "services/config.py",
+      "services/preparers.py",
+      "services/serializers.py"
+    ],
+    "hstm_parity": {
+      "harness_seam": "scripts/verify_reference_parity.py hstm_hand_position, applied to the current worker only",
+      "case_count": 856,
+      "core_difference_count_with_seam": 0,
+      "cases_changed_by_hp_v2": 84
+    }
   }
 }

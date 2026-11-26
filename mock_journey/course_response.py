@@ -12,7 +12,7 @@ pass that code explicitly. A succeeded calculation missing a stored component is
 from mock_journey.course_contracts import (
     APP_ROUTES, ATTEMPT_STATES, ATTEMPT_VIEW_FIELDS, AVAILABILITY_FIELDS, CALCULATION_STATUSES,
     CALCULATION_VIEW_FIELDS, CHART_LINK_FIELDS, CONDITION_KEYS, CONTENT_START_VIEW_FIELDS,
-    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_LIST_ROW_FIELDS, COURSE_STATUSES,
+    COURSE_DETAIL_FIELDS, COURSE_ITEM_FIELDS, COURSE_ITEM_SKILL_FIELDS, COURSE_LIST_ROW_FIELDS, COURSE_STATUSES,
     ENROLLMENT_ADDITIONAL_FIELDS, ENROLLMENT_FIELDS, ENROLLMENT_NULLABLE, EXCLUSION_REASON_ORDER, FILE_DETAIL_FIELDS,
     FILE_DETAIL_NULLABLE, ITEM_DETAIL_OUTER_FIELDS, LOGIN_EXTRA_FIELDS, PAGE_DEFAULT,
     PROGRESS_APPLICATIONS, PROGRESS_RECEIPT_FIELDS, RECEIPT_FORBIDDEN_KEYS, SESSION_VIEW_FIELDS,
@@ -269,6 +269,26 @@ def summary_item(placement):
     })
 
 
+def _skill(placement):
+    """Video/document items and executions that are not ready have no skill (null)."""
+    if placement.kind not in ("training", "assessment") or placement.execution_status != "ready":
+        return None
+    definition = parse_owned(placement.execution_json)
+    condition = definition["condition"] if type(definition) is dict else None
+    if type(condition) is not dict:
+        _fail()
+    skill = {
+        "trainingType": condition.get("training_type"), "isTwoRescuers": condition.get("is_2rescuers"),
+        # Definitions before Round 2 carry no requiresAed and no AED part.
+        "requiresAed": definition.get("requiresAed", False), "manikinType": condition.get("target"),
+    }
+    if (skill["trainingType"] not in ("cpr", "compression_only", "ventilation_only")
+            or any(type(skill[key]) is not bool for key in ("isTwoRescuers", "requiresAed"))
+            or type(skill["manikinType"]) is not str):
+        _fail()
+    return _ordered(COURSE_ITEM_SKILL_FIELDS, skill)
+
+
 def course_item(placement, progress_items):
     mapping = item_type_wire(placement.kind)
     title, icon, detail = _title_and_icon(placement)
@@ -288,7 +308,8 @@ def course_item(placement, progress_items):
         "isCompleted": completed,
         "isPassed": passed,
         "completionKind": completion_kind,
-    }, nullable=("contentType", "description", "isPassed", "completionKind"))
+        "skill": _skill(placement),
+    }, nullable=("contentType", "description", "isPassed", "completionKind", "skill"))
 
 
 def enrollment_data(course_json, enrollment_id, *, course_id=None):

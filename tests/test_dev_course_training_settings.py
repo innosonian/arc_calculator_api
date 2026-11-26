@@ -27,6 +27,20 @@ LIMITS = {
 }
 GUIDELINE = {"adult": (50, 60, 400, 600, 8, 12, 1.97, 2.36),
              "infant": (33, 40, 20, 40, 20, 30, 1.3, 1.57)}
+# D145, written out independently of config/borders.py: recoilDepthMax, compressionFractionMin,
+# handsOffGraceMs, ventilationInflationTimeMin, ventilationInflationTimeMax.
+SCORING_LIMITS = {
+    ("compression_only", "adult"): (5, 100, 1000, None, None),
+    ("compression_only", "infant"): (5, 100, 1000, None, None),
+    ("cpr", "adult"): (5, 70, 1000, None, None),
+    ("cpr", "infant"): (5, 55, 1000, 300, 1200),
+    ("ventilation_only", "adult"): (None, None, None, None, None),
+    ("ventilation_only", "infant"): (None, None, None, 300, 1200),
+}
+SCORING_KEYS = ("recoilDepthMax", "compressionFractionMin", "handsOffGraceMs",
+                "ventilationInflationTimeMin", "ventilationInflationTimeMax")
+TRAINING_TYPES = {"bls-compressions-60": "compression_only", "lay-compressions-30": "compression_only",
+                  "bls-ventilations-12": "ventilation_only", "lay-breaths-5x2": "ventilation_only"}
 
 
 @pytest.fixture
@@ -102,11 +116,60 @@ def test_skills_and_final_assessment_have_round_two_settings(source, course_inde
             "ventilationVolumeMax": vol_max, "ventilationVolumeMin": vol_min,
             "ventilationRateMax": rate_max, "ventilationRateMin": rate_min,
             "compressionDepthMaxInch": inch_max, "compressionDepthMinInch": inch_min,
+            **dict(zip(SCORING_KEYS, SCORING_LIMITS[TRAINING_TYPES.get(program, "cpr"), target])),
         }
+        assert condition["training_type"] == TRAINING_TYPES.get(program, "cpr")
         assert detail["assessment"] == {
             "passThreshold": {"cpr": 80, "aed": None}, "passRule": "composite", "gates": {},
         }
         assert detail["trainingMode"] == ("assessment" if placement.kind == "assessment" else "practice")
+
+
+def test_course_items_carry_the_skill_of_every_program_and_age(source):
+    # D146: 9 programs x adult/infant, read through the normal course detail route.
+    from types import SimpleNamespace
+
+    h = V2Journey(JourneyStore.memory(), provider=source, execution=execution_catalog())
+    token = h.login().token
+    seen = set()
+    for course_id, skills in ((911001, BLS), (911002, BLS), (911003, CPR_AED), (911004, CPR_AED)):
+        target = "adult" if course_id in (911001, 911003) else "infant"
+        detail = h.course(token, SimpleNamespace(course_id=course_id, enrollment_id=course_id + 10000))
+        for item, program in zip(detail["courseItems"], (*skills, skills[-1]), strict=True):
+            assert list(item)[-1] == "skill"
+            assert item["skill"] == {
+                "trainingType": TRAINING_TYPES.get(program, "cpr"),
+                "isTwoRescuers": program in ("bls-2r-cpr-8", "bls-2r-cpr-aed-8"),
+                "requiresAed": program in ("bls-2r-cpr-aed-8", "lay-aed-cpr-1"),
+                "manikinType": target,
+            }
+            seen.add((program, target))
+    assert len(seen) == 18
+
+
+@pytest.mark.parametrize("change,valid", [
+    ({}, True),
+    ({"recoilDepthMax": None, "handsOffGraceMs": None}, True),
+    ({"recoilDepthMax": 5.0}, False),
+    ({"ventilationInflationTimeMax": "1200"}, False),
+    ({"compressionFractionMin": True}, False),
+])
+def test_cpr_guideline_scoring_limits_are_optional_integers_or_null(source, change, valid):
+    from mock_journey.course_errors import CourseError
+
+    binding = source.list_assignments(source.learner)[1]
+    detail = json.loads(source.fetch_bundle(binding).placements[2].detail_json)["detail"]
+    detail["training"]["cprGuideline"].update(change)
+    if valid:
+        assert validate_training_detail(detail) == detail
+        # Earlier definitions omit the five keys.
+        legacy = deepcopy(detail)
+        for key in SCORING_KEYS:
+            del legacy["training"]["cprGuideline"][key]
+        assert validate_training_detail(legacy) == legacy
+    else:
+        with pytest.raises(CourseError, match="UPSTREAM_CONTRACT_MISMATCH"):
+            validate_training_detail(detail)
 
 
 @pytest.mark.parametrize("reviewed", [True, False])
@@ -150,7 +213,7 @@ def test_course_type_and_frozen_minimum_quantity_reach_normal_http_entrypoints(s
     assert h.work(started["attemptId"])
 
 
-def test_existing_v6_attempt_finishes_after_refresh_switches_to_new_catalog(source):
+def test_existing_current_attempt_finishes_after_refresh_switches_to_new_catalog(source):
     from tests.journey_support import dummy_course
 
     h = V2Journey(JourneyStore.memory())
@@ -160,7 +223,7 @@ def test_existing_v6_attempt_finishes_after_refresh_switches_to_new_catalog(sour
     attempt_id = started["attemptId"]
     key = f"ATTEMPT#{attempt_id}"
     old_definition = h.store.row(key, "META")["definition_json"]
-    assert json.loads(old_definition)["adapter_version"] == "arc-internal-detection-v6"
+    assert json.loads(old_definition)["adapter_version"] == "arc-internal-detection-v7"
 
     h.provider, h.mapping_document, h.execution = source, source.mapping_document, execution_catalog()
     h.restart()

@@ -36,7 +36,7 @@ AWS_EC2_METADATA_DISABLED=true AWS_ACCESS_KEY_ID=testing AWS_SECRET_ACCESS_KEY=t
 
 앱은 `raw.bin`을 그대로 재생하고 `expected.json`의 모든 필드를 비교해야 한다. 첫 압박 속도는
 `null`, 정점 동률은 앞 Record·앞 샘플, action 창은 `[action_start, action_end)`다. infant HP window는 원본
-코드를 보존하고 판정할 때만 `& 0x0F`를 적용한다.
+코드를 보존하고 판정할 때만 `& 0x0F`를 적용한다. 손 위치는 보드별 `hp_by_board`를 비교한다(정정 3).
 
 경계 정정 이전에 생성한 벡터는 `/tmp/depth_v1_before_boundary_correction`에 보존한 뒤,
 정정된 수기 합성 오라클과 기존 CONFIRM 좌표·raw 위치 코드를 사용한 독립 HP 창 계산을 먼저
@@ -59,6 +59,17 @@ action 창에서도 RP→VP→RP 다수결을 유지하도록 VP 시작 이벤�
 옵션을 지정해도 거부한다. `--check`는 이 옵션과 함께 사용해도 변경을 거부하고 쓰지 않는다.
 이미 정정한 뒤 다시 실행하면 파일을 쓰지 않는다.
 
+**정정 3: HP_V2 손 위치(2026-11-26 사용자 결정 U1, D142), 이유: 앱 11/25 규칙으로 판정을 통일.**
+압박 분절과 `hp_window`는 그대로이고, 각 압박의 `hp`만 HP_V2의 unknown 보드 값으로 바꾸고 바로 뒤에
+`hp_by_board: {"unknown", "nordic", "esp32c6"}`를 추가했다. 값은 `center`·`left`·`right`·`down`·`up`·`unknown`
+또는 `null`(표본 없음, 채점·집계 제외)이다. nordic은 정점 Record 뒤(이완) 표본만, esp32c6는 창 전체를 본다.
+합성 39건의 HP_V2 기대값은 `scripts/check_depth_boundary_golden.py`의 수기 오라클에 적었다.
+사용자 승인 조건대로 `raw.bin`·`input.json`과 `hp` 외 expected 필드는 바이트 단위로 보존했고, manifest는
+`sha256.expected.json`만 바꿨다. 이행 전후를 git HEAD와 대조해 위반 0건을 확인했다. 압박이 있는 45건의
+`expected.json`·`manifest.json`만 바뀌었고 압박 0건인 9건은 그대로다. 전체 765압박 중 `hp`가 바뀐 것은 8건(6개 벡터)이다.
+infant_mask 세 변형은 `left`→`unknown`(영아는 방향을 구분하지 않음), 실측 `1793164406` id 3과 `1793164539` id 5는
+`down`→`right`(창의 첫 오류 코드가 8), `19986` id 18~20은 `down`→`left`다. nordic 보드에서는 창에 2가 있으면 여전히 `down`이다.
+
 ## 합성 케이스
 
 모든 케이스를 `zero`(Ccnt 0), `every_record`(매 Record 증가), `hold_jitter`(유지 중 반복 증가를
@@ -79,7 +90,7 @@ action 창에서도 RP→VP→RP 다수결을 유지하도록 VP 시작 이벤�
 | amp_boundary_fall_29 | 0 | 시작 정점에서 29 raw 하강만으로는 미확정 |
 | amp_boundary_fall_30 | 1 | 시작 정점에서 30 raw 하강하면 확정 |
 | two_rescuer_vp | 3 | RP→VP→RP 전체 분절; RP 채점 이벤트 2, 첫 recoil 50 raw |
-| infant_mask | 1 | HP window는 0x44 유지, 판정은 4로 마스킹해 left |
+| infant_mask | 1 | HP window는 0x44 유지, 판정은 4로 마스킹해 영아 규칙상 unknown(정정 3 전 left) |
 
 ## 실세션과 대조 근거
 

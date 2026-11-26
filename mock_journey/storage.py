@@ -167,6 +167,8 @@ class JourneyStorage:
             base = legacy_layout.object_base(self.directory, self.stage, org, self.legacy.date_prefix(stem), stem)
             self._planned(base + legacy_layout.RAW_SUFFIX)
             meta = self.legacy.build_raw_input_meta(calculation["condition"], calculation["vp_event_list"], organization)
+            if "hand_position_board" in calculation:
+                meta["hand_position_board"] = calculation["hand_position_board"]
             actual = self.legacy.upload_raw_input(projected.cpr_bytes, projected.aed_bytes, meta,
                 stage=self.stage, key_stem=stem, org=org, directory=self.directory)
             if actual != base:

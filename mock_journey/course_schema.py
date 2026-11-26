@@ -28,6 +28,11 @@ _GUIDELINE_INTS = (
     "ventilationVolumeMax", "ventilationVolumeMin", "ventilationRateMax", "ventilationRateMin",
 )
 _GUIDELINE_NUMBERS = ("compressionDepthMaxInch", "compressionDepthMinInch")
+# D145: Round 2 scoring limits; earlier definitions may omit them.
+_GUIDELINE_OPTIONAL_INTS = (
+    "recoilDepthMax", "compressionFractionMin", "handsOffGraceMs",
+    "ventilationInflationTimeMin", "ventilationInflationTimeMax",
+)
 
 
 # Every schema failure is 503 UPSTREAM_CONTRACT_MISMATCH, including the shared
@@ -102,10 +107,10 @@ def _training_domain(value):
                 _mismatch()
     guideline = value["cprGuideline"]
     if guideline is not None:
-        _object(guideline, _GUIDELINE_TEXT + _GUIDELINE_INTS + _GUIDELINE_NUMBERS)
+        _object(guideline, _GUIDELINE_TEXT + _GUIDELINE_INTS + _GUIDELINE_NUMBERS, optional=_GUIDELINE_OPTIONAL_INTS)
         for key in _GUIDELINE_TEXT:
             _scalar(guideline[key], str, nullable=True)
-        for key in _GUIDELINE_INTS:
+        for key in _GUIDELINE_INTS + tuple(key for key in _GUIDELINE_OPTIONAL_INTS if key in guideline):
             _scalar(guideline[key], int, nullable=True)
         for key in _GUIDELINE_NUMBERS:
             number = guideline[key]

@@ -24,7 +24,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 2,
@@ -46,7 +51,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 3,
@@ -67,7 +77,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 4,
@@ -89,7 +104,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 5,
@@ -111,7 +131,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 6,
@@ -132,7 +157,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 7,
@@ -153,7 +183,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 8,
@@ -174,7 +209,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 9,
@@ -195,7 +235,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 10,
@@ -216,7 +261,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 11,
@@ -237,7 +287,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 12,
@@ -258,7 +313,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 13,
@@ -280,7 +340,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 14,
@@ -301,7 +366,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 15,
@@ -322,7 +392,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 16,
@@ -344,7 +419,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 17,
@@ -365,7 +445,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 18,
@@ -386,7 +471,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 19,
@@ -405,7 +495,12 @@
         1,
         1
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 20,
@@ -427,7 +522,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 21,
@@ -453,6 +553,11 @@
         4
       ],
       "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      },
       "aed_part_first": true
     },
     {
@@ -475,7 +580,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 23,
@@ -497,7 +607,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 24,
@@ -519,7 +634,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 25,
@@ -540,7 +660,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 26,
@@ -561,7 +686,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 27,
@@ -582,7 +712,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 28,
@@ -603,7 +738,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 29,
@@ -624,7 +764,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 30,
@@ -645,7 +790,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 31,
@@ -666,7 +816,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 32,
@@ -687,7 +842,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 33,
@@ -709,7 +869,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 34,
@@ -730,7 +895,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 35,
@@ -750,7 +920,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 36,
@@ -771,7 +946,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 37,
@@ -791,7 +971,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "left"
+      }
     },
     {
       "id": 38,
@@ -815,7 +1000,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 39,
@@ -838,7 +1028,12 @@
         4,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 40,
@@ -859,7 +1054,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 41,
@@ -881,7 +1081,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 42,
@@ -902,7 +1107,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 43,
@@ -923,7 +1133,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "left",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 44,
@@ -945,7 +1160,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     }
   ],
   "count": 44

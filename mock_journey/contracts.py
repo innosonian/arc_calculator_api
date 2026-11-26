@@ -26,6 +26,12 @@ from mock_journey.typed import canonical_bytes
 #   Verify-only under the cycles-v2 profile. Stored scores remain visible;
 #   their evaluations enforce the ARC minimum quantity (D07) as a pass
 #   condition (D139: decision "fail" with MINIMUM_QUANTITY_NOT_MET).
+# * arc-internal-detection-v6 (ROUND2_ADAPTER_VERSION): the Round 2 adapter
+#   (definition minimum quantity, gates). Verify-only since D142: its stored
+#   results keep the HSTM-equivalent hand-position meaning.
+# * arc-internal-detection-v7 (HAND_POSITION_V2_ADAPTER_VERSION): the current
+#   adapter. Same candidate shape as v6; hand position follows HP_V2 with the
+#   uploaded hand_position_board (D142, D143).
 RETAINED_PENDING_GOAL_ADAPTER_VERSION = "arc-local-calculator-pending-v2"
 PENDING_GOAL_ADAPTER_VERSION = "arc-internal-detection-pending-v3"
 PENDING_GOAL_ADAPTER_VERSIONS = frozenset({PENDING_GOAL_ADAPTER_VERSION, RETAINED_PENDING_GOAL_ADAPTER_VERSION})
@@ -36,6 +42,8 @@ EOF_VENT_ADAPTER_VERSION = "arc-internal-detection-v5"
 EOF_VENT_PROFILE_VERSION = "tester-goal-cycles-v2"
 ROUND2_ADAPTER_VERSION = "arc-internal-detection-v6"
 ROUND2_PROFILE_VERSION = "tester-goal-cycles-v3"
+HAND_POSITION_V2_ADAPTER_VERSION = "arc-internal-detection-v7"
+HAND_POSITION_V2_PROFILE_VERSION = "tester-goal-cycles-v4"
 GATE_REASON = "GATE_NOT_PASSED"
 # D139 evaluation reason: a group of the session is below the ARC minimum
 # quantity (D07). Fixed position: goal reason, this code, SCORE_NOT_PASS.
@@ -73,6 +81,8 @@ ADAPTER_FEATURES = MappingProxyType({
                                               "arc-internal-calculation-v4", True),
     ROUND2_ADAPTER_VERSION: AdapterFeatures("evaluated", ROUND2_PROFILE_VERSION,
                                             "arc-internal-calculation-v5", True),
+    HAND_POSITION_V2_ADAPTER_VERSION: AdapterFeatures("evaluated", HAND_POSITION_V2_PROFILE_VERSION,
+                                                      "arc-internal-calculation-v6", True),
 })
 # Every adapter whose goal carries a status (the versioned goal shape).
 VERSIONED_GOAL_ADAPTER_VERSIONS = frozenset(ADAPTER_FEATURES)
@@ -86,11 +96,13 @@ CYCLE_RULE_ADAPTER_VERSIONS = frozenset(
 # candidates only and never start a calculation.
 # execution_definitions re-exports PROJECTION_VERSION.
 PROJECTION_VERSION = "arc-local-projection-v1"
-CURRENT_ADAPTER_VERSION = ROUND2_ADAPTER_VERSION
+CURRENT_ADAPTER_VERSION = HAND_POSITION_V2_ADAPTER_VERSION
 CURRENT_PROFILE_VERSION = ADAPTER_FEATURES[CURRENT_ADAPTER_VERSION].profile
 RETAINED_ADAPTER_VERSIONS = (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-                             CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION)
+                             CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION)
 VERIFY_ONLY_ADAPTER_VERSIONS = frozenset(RETAINED_ADAPTER_VERSIONS)
+# Adapters whose definitions and candidates carry the Round 2 shape (minimum quantity, gates).
+ROUND2_SHAPE_ADAPTER_VERSIONS = frozenset((ROUND2_ADAPTER_VERSION, HAND_POSITION_V2_ADAPTER_VERSION))
 
 # Input/call binding (S6-07): the arc-binding metadata digest of stored input,
 # candidate and final objects is typed.digest over exactly these fields (the
@@ -149,11 +161,11 @@ def expected_profile_version(adapter_version):
 def calculation_options(adapter_version):
     """Collect ARC gate evidence only for the current calculation adapter."""
     from services.calculation_context import CalculationOptions
-    return CalculationOptions(collect_gates=uses_round2_gates(adapter_version))
+    return CalculationOptions(collect_gates=adapter_version == CURRENT_ADAPTER_VERSION)
 
 
 def uses_round2_gates(adapter_version):
-    return adapter_version == ROUND2_ADAPTER_VERSION
+    return adapter_version in ROUND2_SHAPE_ADAPTER_VERSIONS
 
 
 def gates_pass_on_minimum_quantity(adapter_version):

@@ -64,13 +64,16 @@ def reference_hand(raw, action, following, infant):
     window = trimmed[last_zero + 1:]
     if own and after and own[-1] and after[0] and 0 in after:
         window += after[:after.index(0)]
+    # HP_V2 unknown board (D142, written out here): the first code that is not 0/1. Infants
+    # mask with 0x0F and any such code is direction-unknown; an adult code outside 2/4/8/16/10 has no sample.
     judged = [code & 15 for code in window] if infant else window
-    if 2 in judged:
-        spot = "down"
-    elif 4 in judged or 8 in judged:
-        spot = "left" if judged.count(4) > judged.count(8) else "right"
-    else:
+    wrong = next((code for code in judged if code not in (0, 1)), None)
+    if wrong is None:
         spot = "center"
+    elif infant:
+        spot = "unknown"
+    else:
+        spot = {2: "down", 4: "left", 8: "right", 16: "up", 10: "unknown"}.get(wrong)
     return window, spot
 
 
@@ -119,14 +122,17 @@ def assert_dataset_depth_contract(raw, config, prepared, calculation, result, ch
             sample = by_peak[data["peak_record"]]["peak_sample"]
             rate = 0 if previous is None else rounded(60000 / ((sample - previous) * 5))
             assert action.score["comp_rate"]["value"] == rate
-            assert action.score["hand_position"]["value"] == hand[data["peak_record"]]
+            spot = hand[data["peak_record"]]
+            assert action.score.get("hand_position", {}).get("value") == spot
             if previous is not None:
                 rate_grades.append(trapezium_get_point(config.border, "comp_rate", rate)["grade"])
-            hand_grades.append(dart_get_point(config.border, "hand_position", hand[data["peak_record"]])["grade"])
+            if spot is not None:
+                row = "left" if spot in ("up", "unknown") else spot
+                hand_grades.append(dart_get_point(config.border, "hand_position", row)["grade"])
             previous = sample
         if cycle.can_calc_comp():
             expected_rate = rounded(sum(rate_grades) / len(rate_grades)) if rate_grades else 0
-            expected_hand = rounded(sum(hand_grades) / len(hand_grades))
+            expected_hand = rounded(sum(hand_grades) / len(hand_grades)) if hand_grades else 100
             assert cycle.score_comp_rate == expected_rate
             assert cycle.score_hand_position == expected_hand
             rate_cycle_scores.append(expected_rate)

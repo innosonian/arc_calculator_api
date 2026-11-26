@@ -1,0 +1,16 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "decision": "D142 S4 (user-approved 2026-11-26)",
+  "generation_commit": "81252de2605a0b4df5f8fc69bd9934c3e5deadba",
+  "generator": "tests/test_action_vectors.py replay()",
+  "source": {
+    "raw": "tests/dataset/cpr_2.bin",
+    "aed": "tests/dataset/aed_2.bin"
+  },
+  "sha256": {
+    "raw.bin": "6f6c7e649113492a2255f42783f82a8955d1958cb7c5b5966980d98a3b6d854f",
+    "input.json": "85e5cb2f8527a65f16be0ac2c29ac6140820648a086e01135230296dd5271d8f",
+    "expected.json": "3ee6d0c0be1bd24f7d292a83fe3fe24cc7325ec5ac70170e243016a61ef0cc0f",
+    "aed.bin": "bf0011d95bf747aecab5391d313914c4ad113c918af41c67f34af8b2fee4f322"
+  }
+}

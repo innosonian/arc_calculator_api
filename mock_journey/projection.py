@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 
 from calculators.gate_evaluator import GATE_RULES
+from calculators.hand_position import UNKNOWN_BOARD, normalize_board
 from mock_journey.errors import JourneyError
 from mock_journey import typed
 
@@ -140,7 +141,8 @@ def project_input(body, definition, schema):
             raise ValueError("Invalid projection input.")
         document_schema = {**_DOCUMENT, "ResultByCriteria": schema.metric_fields,
                            "ResultByCycle": {key: {"Overall": SCALAR, "ByCycle": [SCALAR]} for key in _METRICS}}
-        allowed = set(document_schema) | {"cpr_b64_data", "aed_b64_data", "condition", "vp_event_list", "hstm_document"} | _CREDENTIALS
+        allowed = set(document_schema) | {"cpr_b64_data", "aed_b64_data", "condition", "vp_event_list", "hstm_document",
+                                          "hand_position_board"} | _CREDENTIALS
         if set(body) - allowed:
             raise ValueError("Unknown top-level field.")
         cpr, aed = body.get("cpr_b64_data", b""), body.get("aed_b64_data", b"")
@@ -153,6 +155,11 @@ def project_input(body, definition, schema):
         if type(vp) is not list or any(type(item) is not dict for item in vp):
             raise ValueError("Invalid VP sequence.")
         calculation = {"condition": condition, "vp_event_list": [_project(item, _VP) for item in vp]}
+        # D143: absent, "unknown" and unrecognized values are the same input, so only a known
+        # board is stored; earlier inputs keep their exact payload and digest.
+        board = normalize_board(body.get("hand_position_board"))[0]
+        if board != UNKNOWN_BOARD:
+            calculation["hand_position_board"] = board
         response = {key: _project(body[key], document_schema[key]) for key in ("Custom", "Open_Skill", "Usage", "Organization") if key in body}
         if body.get("hstm_document"):
             source = "nested"

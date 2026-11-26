@@ -25,7 +25,7 @@ from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, CYCLE_GOAL_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION,
     EOF_VENT_ADAPTER_VERSION, EOF_VENT_PROFILE_VERSION, PENDING_GOAL_ADAPTER_VERSION,
     PENDING_GOAL_PROFILE_VERSION, RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
-    VerifiedCalculation,
+    ROUND2_ADAPTER_VERSION, ROUND2_PROFILE_VERSION, VerifiedCalculation, uses_round2_gates,
 )
 from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.errors import JourneyError
@@ -46,10 +46,12 @@ RAW_BASE = ("calculator_result/interpreted_rtdata/arc/test/_no_org/2023-11-14/"
 REQUIRED = {row[0]: row[3] for row in PROGRAMS if row[2] == "cycles"}  # mock-cpr 3, 2-rescuer 8, 2-rescuer AED 10
 MODES = (("mock-cpr", False, False), ("mock-two-rescuer-cpr", True, False), ("mock-two-rescuer-aed", True, True))
 # Versioned cycle-rule contracts: (adapter, profile, candidate schema).
-V6 = (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, "arc-internal-calculation-v5")
+V7 = (CURRENT_ADAPTER_VERSION, CURRENT_PROFILE_VERSION, "arc-internal-calculation-v6")
+V6 = (ROUND2_ADAPTER_VERSION, ROUND2_PROFILE_VERSION, "arc-internal-calculation-v5")
 V5 = (EOF_VENT_ADAPTER_VERSION, EOF_VENT_PROFILE_VERSION, "arc-internal-calculation-v4")
 V4 = (CYCLE_GOAL_ADAPTER_VERSION, CYCLE_GOAL_PROFILE_VERSION, "arc-internal-calculation-v3")
-CURRENT_CYCLE_ADAPTER = pytest.mark.parametrize("cycle_adapter", [V6], ids=["v6"])
+CURRENT_CYCLE_ADAPTER = pytest.mark.parametrize("cycle_adapter", [V7], ids=["v7"])
+# Pre-Round 2 retained adapters (their candidates carry no gates; v6 is covered by test_round2_evaluation).
 RETAINED_CYCLE_ADAPTERS = pytest.mark.parametrize("cycle_adapter", [V5, V4], ids=["v5", "v4"])
 
 
@@ -115,7 +117,7 @@ def _definition(cond, required, *, adapter=CURRENT_ADAPTER_VERSION, profile=CURR
     value = {"condition": deepcopy(cond), "calculation_profile": {}, "goal": {"kind": "cycles", "required": required},
              "catalog_version": "mock-catalog-v1", "profile_version": profile,
              "adapter_version": adapter, "projection_version": PROJECTION}
-    if adapter == CURRENT_ADAPTER_VERSION:
+    if uses_round2_gates(adapter):
         value.update(courseType="BLS", requiresAed=False,
                      minimumQuantity={"compressions": 45 if cond["target"] == "infant" else 90, "ventilations": 6},
                      assessment={"passRule": "composite", "gates": {}})
@@ -291,7 +293,7 @@ def test_virtual_partner_cycles_count_toward_the_goal_but_not_the_score():
 @CURRENT_CYCLE_ADAPTER
 def test_cycle_goal_adapter_rejects_the_pending_profile_and_pending_candidates(cycle_adapter):
     version, profile, schema = cycle_adapter
-    other_profile, other_schema = V5[1:]
+    other_profile, other_schema = V6[1:]
     cond = _condition("adult", False)
     adapter = internal_calculator(version, projection=PROJECTION, stage="test")
     # Neither the pending profile nor the other cycle-rule adapter's profile is this adapter's definition.
@@ -330,7 +332,8 @@ def test_retained_adapters_never_start_new_cycle_calculations(version, monkeypat
 
 
 def test_cycle_goal_adapter_is_never_built_without_the_rule():
-    for version in (CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, CURRENT_ADAPTER_VERSION):
+    for version in (CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION,
+                    CURRENT_ADAPTER_VERSION):
         for options in ({}, {"allow_pending_cycle_goal": True}, {"allow_pending_cycle_goal": True,
                                                                    "cycle_goal_resolver": closed_cycle_count}):
             with pytest.raises(ValueError):
@@ -374,11 +377,12 @@ def test_aws_settings_take_the_versions_from_the_code_registry_only():
     # older document still says under `execution` is ignored.
     from mock_journey.aws_settings import AwsSettings
     from tests.aws_runtime_support import configuration
-    assert CURRENT_ADAPTER_VERSION == "arc-internal-detection-v6"
+    assert CURRENT_ADAPTER_VERSION == "arc-internal-detection-v7"
     assert RETAINED_ADAPTER_VERSIONS == (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-                                         CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION)
+                                         CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION)
     assert RETAINED_ADAPTER_VERSIONS == ("arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
-                                         "arc-internal-detection-v4", "arc-internal-detection-v5")
+                                         "arc-internal-detection-v4", "arc-internal-detection-v5",
+                                         "arc-internal-detection-v6")
     expected = (CURRENT_ADAPTER_VERSION, "arc-local-projection-v1", RETAINED_ADAPTER_VERSIONS)
     for role in ("api", "worker"):
         config = configuration(role)

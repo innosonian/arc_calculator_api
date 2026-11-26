@@ -1,5 +1,26 @@
 # 검증 상태와 재현 방법
 
+## 2026-11-26 앱과 판정 통일(D142~D147)
+
+작업 브랜치 `feature/hp-v2-app-parity`(기준 `81252de`), commit 전. 이 Mac에는 Python 3.12와 Java가 없어 사용자 승인으로 Homebrew `python@3.12`(3.12.16)를 설치했다. 그 pyexpat가 macOS 기본 libexpat와 맞지 않아 keg-only `expat`도 설치하고 임시 venv에서만 `DYLD_LIBRARY_PATH`로 지정했다. 의존성은 `requirements-local.txt`·`requirements-ci.txt`·`constraints-lambda.txt`다. 해시·AST 고정값은 모두 이 3.12에서 계산했다. Java·DynamoDB Local은 없다.
+
+| 범위 | 결과 |
+|---|---|
+| CI 오프라인 부분집합 `scripts/run_actions_regression.py` | 검토 F1 반영 후 5,634 passed·51 subtests passed, 1분 38초, exit 0(F1 전 5,616). 같은 환경의 기준 커밋 `81252de`는 5,524 passed·51 subtests |
+| HSTM `92f56dc` 대조(`tests/test_reference_parity_regression.py`) | 856건 모두 계산·변환·차트 bytes 일치. 대조 worker에서만 손 위치를 HSTM 규칙(`hstm_hand_position`)으로 바꿔 끼웠고 나머지 차이는 0건이다. seam 없이 HP_V2 그대로 돌리면 856건 중 84건의 `main_result`가 다르다(recorded `infant_cco_idle_flag` 28, `infant_cpr_idle_flag_pause` 28, `cpr_3` 14, `cpr_eof_truncated_vent_1` 14; 성인·소아 대상에 영아 플래그 코드, 영아 대상에 좌우 코드가 있는 조합) |
+| 해시 고정 재등록 | `provenance.json`의 `hand_position_v2_reregistration`: 4개 파일과 함수 5개(변경 3, 삭제 2)의 이전·새 해시. `config/borders.py`·`score_weight.py`·`constants.py`와 `services/preparers.py`·`config.py`·`calculators.py`·`serializers.py`는 바뀌지 않았다 |
+| DEPTH_V1r3 54건(정정 3) | `scripts/check_depth_boundary_golden.py --check` 통과. 압박이 있는 45건의 `expected.json`·`manifest.json`만 바뀌었다. `raw.bin`·`input.json` 변경 0, `hp` 외 필드 위반 0(git HEAD와 독립 대조). 765압박 중 `hp`가 바뀐 것은 8건(6개 벡터) |
+| ACTION_VECTORS_V1 6건(신설) | `tests/test_action_vectors.py` 16건 통과. 원본 동일성, 호흡 수 = `action_count.vent`, 손으로 센 닫힌 cycle, 호흡 Only 간격 = 채점 창 길이, 파일 끝 호흡, 2인 VP 몫을 따로 확인 |
+| 특성화 baseline 재캡처(D125, 사용자 검토 후 복사) | `scripts/capture_baselines.py --check`에서 6개 파일만 달랐다. 전체 leaf 대조 결과는 `courseItems[].skill` 12개 추가(모두 압박 Only·성인), `arc-internal-detection-v6`→`v7` 575회, `tester-goal-cycles-v3`→`v4` 133회, 64-hex digest 43개의 일대일 재표기이며 그 밖의 차이는 0이다(`arc-internal-calculation-v5`는 이 파일들에 없다). `flow_events`·`user_slots`·`spy_traces`는 바이트 동일 |
+| DynamoDB Local 없이 실행한 `local_server_tests`·`http_pipeline_tests`·`integration_tests`·`transport_integration_tests` | 677 passed, 10 failed, 413 errors. 같은 환경의 기준 커밋과 실패 집합이 같다. 늘어난 4건은 새 v6 보존 파라미터의 DynamoDB Local setup 오류다. 원인은 모두 Java·DynamoDB Local·loopback TLS 부재 |
+| 메모리 저장소 대체 실행 | integration 쌍둥이인 EOF journey 3건을 `JourneyStore.memory()`로 실행해 통과 |
+| 형식 | `git diff --check` 통과 |
+| 검토 F1(원본 코드 10) | 성인 unknown 보드의 첫 오류 코드 10을 방향 불명(20점)으로 바꿨다. 2·4·8·16·10 밖만 None이다. 앱과 공유하는 사례 표 18건을 `tests/test_hand_position.py`에 넣었다. 수정 전후 `tests/fixtures/` 273개 파일 해시, 고정 파일 4개 해시, DEPTH_V1r3 54건 `--check`, baseline 9개 `capture_baselines.py --check`(모두 identical), HSTM 대조 84/856 변경 사례 목록이 모두 같다 |
+
+**새·바뀐 시험:** `tests/test_hand_position.py`(HP_V2로 교체: 보드 3종 × 영아 여부, 동수, 미지원 코드, 표본 없음, 25% 경계, 점수 행, 키 생략, 사이클 분모·전부 None이면 100, metrics 집계 제외, 미지원 코드 진단 기록 1건), `tests/test_hand_position_board_upload.py`(part 없음·세 값·알 수 없는 값·빈 값, 재전송 충돌 6종, Worker 재시작 뒤 저장 보드로 계산, 원본 meta, multipart/base64 form 파서, projection digest), `tests/test_dev_course_training_settings.py`(`cprGuideline` 5개 키의 연령·훈련 종류별 값과 null을 손으로 적은 표로 검사, 9개 프로그램 × 성인·영아 `skill`, 자료형 검사), `tests/test_retained_detection_version.py`(v6 저장 후보는 계속 검증되고 v6은 계산하지 않으며 v7만 계산, 서로의 후보 거절), `tests/test_action_vectors.py`, `tests/test_depth_boundary_golden.py`(`hp_by_board` 형식). v7 후보 형식 이름 `arc-internal-calculation-v6`은 `tests/test_cycle_goal.py`·`tests/test_storage_contract_characterization.py`·`tests/test_retained_detection_version.py`가 검사한다. 버전 문자열 기대값을 바꾼 기존 시험: `test_cycle_goal`, `test_round2_evaluation`, `test_storage_contract_characterization`, `test_shared_storage_rules`, `test_assembly_injection`, `test_retained_detection_version`, `test_vcc_calculation`, `test_vcc_contract`, `test_dev_course_training_settings`, `local_server_tests/test_runtime`, `local_server_tests/test_worker_assembly_characterization`.
+
+**실행하지 않은 것:** DynamoDB Local `integration`·`boundary` suite(PR CI에서 실행), GitHub Actions runner, AWS Dev 배포·스모크, 실물 앱·마네킨·보드별 실기 판정(기존 벡터 원본으로는 보드 종류를 구분할 수 없다), 앱 저장소의 같은 벡터 대조, 공식 ARC. commit·push·배포는 하지 않았다.
+
 ## 2026-11-05 ARC Round 2
 
 앞부분은 최초 Round 2와 C/D 후속 작업 당시 기록이다. 현재 계산·fixture·최종 검증은 같은 절의 **HSTM `92f56dc` legacy(R00) 재동기화** 결과를 따른다.

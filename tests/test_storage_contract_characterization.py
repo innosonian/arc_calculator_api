@@ -237,7 +237,9 @@ CURRENT_PROFILE = "tester-goal-cycles-v2"
 PROJECTION = "arc-local-projection-v1"
 ROUND2 = "arc-internal-detection-v6"
 ROUND2_PROFILE = "tester-goal-cycles-v3"
-REGISTRY_RETAINED = (RETAINED, PENDING, CYCLE_V4, CURRENT)
+HP_V2 = "arc-internal-detection-v7"
+HP_V2_PROFILE = "tester-goal-cycles-v4"
+REGISTRY_RETAINED = (RETAINED, PENDING, CYCLE_V4, CURRENT, ROUND2)
 
 
 def _resolver(*args):
@@ -247,21 +249,24 @@ def _resolver(*args):
 def test_version_constants():
     from mock_journey import contracts
     from mock_journey.execution_definitions import PROJECTION_VERSION
-    assert contracts.CURRENT_ADAPTER_VERSION == contracts.ROUND2_ADAPTER_VERSION == ROUND2
+    assert contracts.CURRENT_ADAPTER_VERSION == contracts.HAND_POSITION_V2_ADAPTER_VERSION == HP_V2
+    assert contracts.ROUND2_ADAPTER_VERSION == ROUND2
     assert contracts.EOF_VENT_ADAPTER_VERSION == CURRENT
     assert contracts.CYCLE_GOAL_ADAPTER_VERSION == CYCLE_V4
     assert contracts.PENDING_GOAL_ADAPTER_VERSION == PENDING
     assert contracts.RETAINED_PENDING_GOAL_ADAPTER_VERSION == RETAINED
     assert contracts.PENDING_GOAL_ADAPTER_VERSIONS == frozenset({PENDING, RETAINED})
     assert type(contracts.PENDING_GOAL_ADAPTER_VERSIONS) is frozenset
-    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED})
-    assert contracts.CYCLE_RULE_ADAPTER_VERSIONS == frozenset({ROUND2, CURRENT, CYCLE_V4})
+    assert contracts.VERSIONED_GOAL_ADAPTER_VERSIONS == frozenset({HP_V2, ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED})
+    assert contracts.CYCLE_RULE_ADAPTER_VERSIONS == frozenset({HP_V2, ROUND2, CURRENT, CYCLE_V4})
+    assert contracts.ROUND2_SHAPE_ADAPTER_VERSIONS == frozenset({HP_V2, ROUND2})
     assert contracts.RETAINED_ADAPTER_VERSIONS == REGISTRY_RETAINED
     assert contracts.VERIFY_ONLY_ADAPTER_VERSIONS == frozenset(REGISTRY_RETAINED)
     assert contracts.PENDING_GOAL_PROFILE_VERSION == PROFILE
     assert contracts.CYCLE_GOAL_PROFILE_VERSION == CYCLE_PROFILE
     assert contracts.EOF_VENT_PROFILE_VERSION == CURRENT_PROFILE
-    assert contracts.CURRENT_PROFILE_VERSION == contracts.ROUND2_PROFILE_VERSION == ROUND2_PROFILE
+    assert contracts.CURRENT_PROFILE_VERSION == contracts.HAND_POSITION_V2_PROFILE_VERSION == HP_V2_PROFILE
+    assert contracts.ROUND2_PROFILE_VERSION == ROUND2_PROFILE
     assert PROJECTION_VERSION == PROJECTION
 
 
@@ -277,14 +282,15 @@ def test_adapter_feature_table():
         CYCLE_V4: ("evaluated", CYCLE_PROFILE, "arc-internal-calculation-v3", False),
         CURRENT: ("evaluated", CURRENT_PROFILE, "arc-internal-calculation-v4", True),
         ROUND2: ("evaluated", ROUND2_PROFILE, "arc-internal-calculation-v5", True),
+        HP_V2: ("evaluated", HP_V2_PROFILE, "arc-internal-calculation-v6", True),
     }
     assert contracts.MINIMUM_QUANTITY_REASON == "MINIMUM_QUANTITY_NOT_MET"
     assert [contracts.gates_pass_on_minimum_quantity(version)
-            for version in (ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED, "arc-other-v9", None)] == [
-        True, True, False, False, False, False, False]
+            for version in (HP_V2, ROUND2, CURRENT, CYCLE_V4, PENDING, RETAINED, "arc-other-v9", None)] == [
+        True, True, True, False, False, False, False, False]
     assert contracts.calculation_options(CURRENT) == CalculationOptions()
-    assert contracts.calculation_options(ROUND2) == CalculationOptions(collect_gates=True)
-    for old in (CYCLE_V4, PENDING, RETAINED):
+    assert contracts.calculation_options(HP_V2) == CalculationOptions(collect_gates=True)
+    for old in (ROUND2, CYCLE_V4, PENDING, RETAINED):
         assert contracts.calculation_options(old) == CalculationOptions()
     # Only the current version collects Round 2 gate evidence.
     assert contracts.calculation_options("arc-other-v9") == CalculationOptions()
@@ -436,9 +442,9 @@ def test_aws_execution_block_is_ignored_and_the_registry_is_the_only_source(role
     if execution != "absent":
         config["execution"] = execution
     settings = AwsSettings.parse(json.dumps(config), role)
-    assert settings.execution == (ROUND2, PROJECTION, REGISTRY_RETAINED)
+    assert settings.execution == (HP_V2, PROJECTION, REGISTRY_RETAINED)
     current, projection, kept = settings.execution
-    assert (current, projection, kept) == (ROUND2, PROJECTION, REGISTRY_RETAINED) and type(kept) is tuple
+    assert (current, projection, kept) == (HP_V2, PROJECTION, REGISTRY_RETAINED) and type(kept) is tuple
     assert settings.execution_block_ignored is (execution != "absent")
 
 
@@ -488,9 +494,9 @@ def test_aws_timing_tuples_by_role():
     assert relay.relay_budget.reserve_ms == 500 + 40 + 20
     api = AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert api.timing is None and relay.execution is None
-    assert api.execution == worker.execution == (ROUND2, PROJECTION, REGISTRY_RETAINED)  # D141: the code registry
+    assert api.execution == worker.execution == (HP_V2, PROJECTION, REGISTRY_RETAINED)  # D141: the code registry
     assert api.execution_block_ignored is False and relay.execution_block_ignored is False
-    assert hash(api.execution) == hash((ROUND2, PROJECTION, REGISTRY_RETAINED))
+    assert hash(api.execution) == hash((HP_V2, PROJECTION, REGISTRY_RETAINED))
     assert api == AwsSettings.parse(json.dumps(configuration("api")), "api")
     assert json.dumps(worker.timing) == "[0.05, 0.1, 500]"
 

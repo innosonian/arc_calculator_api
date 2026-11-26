@@ -23,7 +23,12 @@
         1,
         4
       ],
-      "hp": "left"
+      "hp": "left",
+      "hp_by_board": {
+        "unknown": "left",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     }
   ],
   "count": 1

@@ -12,6 +12,6 @@
   "sha256": {
     "raw.bin": "8bcbf28d5913b14e6aca8d78904cc2e93a5005e49d4758a288ea3fab563f477a",
     "input.json": "8e020d2b06257d8edf1d0aa676e8448d87314142a4bccf71ee9161545af3c311",
-    "expected.json": "8acc7cbc7db25a8778017b9bca4d5dda87b8bce930461295138d6832410eac63"
+    "expected.json": "f24024bbbd0a470c98de45eaa04a4536a9dab14d44249bdb0bdb992d33f2bedc"
   }
 }

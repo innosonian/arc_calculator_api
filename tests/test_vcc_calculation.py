@@ -116,7 +116,7 @@ class TestV18ExecutionFreeze:
         for placement in document["placements"]:
             if placement.get("execution") is not None:
                 placement["execution"].update(
-                    adapter_version="arc-internal-detection-v6", profile_version="tester-goal-cycles-v3",
+                    adapter_version="arc-internal-detection-v7", profile_version="tester-goal-cycles-v4",
                 )
         _, bundle = source_bundle(document)
         view = _view(bundle)

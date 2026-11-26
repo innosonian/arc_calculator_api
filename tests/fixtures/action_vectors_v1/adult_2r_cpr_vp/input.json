@@ -1,0 +1,28 @@
+{
+  "condition": {
+    "mode": "training",
+    "target": "adult",
+    "training_type": "cpr",
+    "guideline": "ARC2025",
+    "cpr_cycle_type": "302",
+    "is_2rescuers": true
+  },
+  "vp_event_list": [
+    {
+      "event": 0,
+      "timestamp": 1727143782729
+    },
+    {
+      "event": 1,
+      "timestamp": 1727143800507
+    },
+    {
+      "event": 10,
+      "timestamp": 1727143800580
+    },
+    {
+      "event": 11,
+      "timestamp": 1727143808463
+    }
+  ]
+}

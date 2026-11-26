@@ -106,11 +106,11 @@
 }
 ```
 
-현재 v6의 평가와 보존 v5·v4의 저장 평가는 모든 훈련 종류에서 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR 계열의 `observed`는 계산기가 `cpr`로 분류한 사이클 수다(D136). 보존 pending-v3·pending-v2의 저장 CPR 결과는 `status="pending_policy"`, `observed=null`, `met=null`일 수 있다. 네 보존 어댑터는 모두 저장된 유효 후보 검증·복구만 지원하며 새 계산이나 재계산을 하지 않는다. 후보가 없는 구버전 과정 시도는 `outcome_unknown`으로 보류하며 계산 GET은 `503 CALCULATION_OUTCOME_UNKNOWN`이다. 상세를 다시 받아 현재 정의로 새 시도를 시작한다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
+현재 v7의 평가와 보존 v6·v5·v4의 저장 평가는 모든 훈련 종류에서 `goal.status="evaluated"`, `observed`는 int, `met`은 bool이다. CPR 계열의 `observed`는 계산기가 `cpr`로 분류한 사이클 수다(D136). 보존 pending-v3·pending-v2의 저장 CPR 결과는 `status="pending_policy"`, `observed=null`, `met=null`일 수 있다. 다섯 보존 어댑터는 모두 저장된 유효 후보 검증·복구만 지원하며 새 계산이나 재계산을 하지 않는다. 후보가 없는 구버전 과정 시도는 `outcome_unknown`으로 보류하며 계산 GET은 `503 CALCULATION_OUTCOME_UNKNOWN`이다. 상세를 다시 받아 현재 정의로 새 시도를 시작한다. `required`는 int, `program_completed`는 bool, 점수 `decision`은 `pass`/`fail`이다. **목표 대기 때문에 기존 계산 JSON의 점수·null·차트를 바꾸지 않는다.**
 
 목표 미달은 `GOAL_NOT_MET`, 목표 정책 대기는 `GOAL_POLICY_UNRESOLVED`, 점수 Pass 미충족은 `SCORE_NOT_PASS`를 배열에 기록한다. 최소 수행량 미달은 `MINIMUM_QUANTITY_NOT_MET`다. 보존 v5의 저장 평가 검증에는 D139의 ARC CPR 고정 최소량을, v6의 새 평가에는 프로그램 정의의 최소량을 적용한다. 순서는 목표 사유 → `MINIMUM_QUANTITY_NOT_MET` → 선택한 합격 규칙의 실패 사유로 고정한다. `composite`는 점수가 기존 tester 기준에 못 미칠 때 `SCORE_NOT_PASS`, v6 `gates`는 적용 gate 실패 때 `GATE_NOT_PASSED`를 기록한다. 최소량 미달이면 표시된 총점과 무관하게 `score.decision="fail"`이고, `pass`에는 `MINIMUM_QUANTITY_NOT_MET`·`SCORE_NOT_PASS`가 모두 없다. 목표를 판단해 충족했고 `decision=pass`인 경우에만 완료한다. 앱의 Passing Score나 일반 `cycle_count`를 완료 근거로 대체하지 않는다. 과거 v1 adapter의 확정 평가에는 `goal.status`가 없을 수 있으며 저장된 계약을 v2로 덮지 않는다. 버전별 처리 경계는 [구조](ARCHITECTURE.md)를 따른다.
 
-v6은 위 공통 평가 필드에 `gates`를 더한다. `passRule="gates"`에서만 적용 gate 실패를 합격 조건으로 사용하고 `GATE_NOT_PASSED`를 기록한다. 기본값 `composite`와 gate별 적용 범위는 [APP_API 6절](APP_API.md#6-결과완료차트)을 따른다.
+v6·v7은 위 공통 평가 필드에 `gates`를 더한다. `passRule="gates"`에서만 적용 gate 실패를 합격 조건으로 사용하고 `GATE_NOT_PASSED`를 기록한다. 기본값 `composite`와 gate별 적용 범위는 [APP_API 6절](APP_API.md#6-결과완료차트)을 따른다.
 
 진도 반영은 `{applied: bool, applied_epoch: string|null, reason: string}`다. 계산의 조건 만족과 현재 공유 진도 반영은 별개다. 사유는 `PROGRESS_RESET` → `GOAL_POLICY_UNRESOLVED` → `ALREADY_COMPLETED` → `APPLIED`/`REQUIREMENTS_NOT_MET` 순서로 먼저 해당하는 하나이며, 이미 저장된 기존 시도의 계산 마무리에도 같은 순서를 쓴다(D117).
 
@@ -227,7 +227,7 @@ AED 스트림 이벤트 코드·`ARRIVED(0)`·VP `20/21` 규약은 [앱 API 명�
 - 호흡은 패킷의 호흡량 최대값(10mL 미만은 0)이 직전 비교값보다 작고, 현재 패킷의 호흡량 최소값도 10mL 미만일 때 확정한다. 압박 또는 호흡 확정 시 비교값과 관측 버퍼를 초기화한다.
 - 하강 없이 끊긴 파일 끝 호흡은 마지막 비교값이 10mL 이상이고, 패킷 처리 중 직전 압박·호흡 확정 Record부터 남은 버퍼가 15패킷 이상일 때만 1회 추가한다. 확정 Record를 포함하며 이전 확정이 없으면 파일 시작부터 센다. 15패킷은 50ms 주기 기준 750ms이며, timestamp 차이로 검사하는 조건은 아니다.
 - 호흡과 같은 Record에서 확정된 압박은 시간 0 창이다. AED 창 뒤 첫 압박의 하강 구간은 복원한다(R6).
-- 손 위치는 하강·이완 표본 전체로 판정한다. 복부 `2`를 우선하고 좌우 `4/8` 중 다수, 동수면 right다. 영아는 하위 4비트를 사용한다.
+- 손 위치는 v7부터 HP_V2(D142~D144)로 판정하며 업로드 part `hand_position_board`(D143)를 사용한다. 규칙·점수·표본 없음 처리는 [APP_API 5절](APP_API.md#5-측정-시도와-업로드)과 6.1절이 정본이다. 보존 v6 이하 결과는 이전 규칙(복부 `2` 우선, 좌우 `4/8` 다수, 동수면 right, 영아는 하위 4비트)의 값 그대로다.
 
 **앱 기록 권고:** 종료 신호 뒤에도 호흡량이 0으로 돌아올 때까지 또는 최소 2패킷을 더 기록한다. 앱 로컬 Count Limit(`Ccnt`)과 서버 `action_count`·`minimumQuantity`는 기준이 다르다. 서버가 정본이며 로컬 카운트는 종료용이다. 앱팀은 [DEPTH_V1r3 공통 벡터 54건](../tests/fixtures/depth_boundary_v1/)으로 같은 파일의 압박·호흡·차트를 대조한다.
 
@@ -356,7 +356,7 @@ metrics에는 지표 분포 객체, 평균·합계·횟수·CCF 값 등이 들�
 
 ## 5. CPR 최소량: 현재 합격 조건과 저장 결과 보존
 
-현재 v6은 프로그램 정의의 `minimumQuantity`를 사용한다. 1인 영아 CPR도 30:2×3의 90/6이며, 2인 최소량은 VP를 제외한 학습자 동작 수로 검사한다. 프로그램별 표는 [APP_API](APP_API.md)의 Round 2 설정을 따른다. 최소량 미달도 HSTM `92f56dc` legacy가 계산한 점수는 표시하며 `MINIMUM_QUANTITY_NOT_MET`로 합격·완료를 거절한다. 계산 core에는 ARC 최소량에 따른 점수 null 옵션이 없다. 직접 호출 도구의 `run_calculator`는 계산 JSON만 반환하며 과정의 목표·최소량·합격을 평가하지 않는다.
+현재 v7(보존 v6도 같음)은 프로그램 정의의 `minimumQuantity`를 사용한다. 1인 영아 CPR도 30:2×3의 90/6이며, 2인 최소량은 VP를 제외한 학습자 동작 수로 검사한다. 프로그램별 표는 [APP_API](APP_API.md)의 Round 2 설정을 따른다. 최소량 미달도 HSTM `92f56dc` legacy가 계산한 점수는 표시하며 `MINIMUM_QUANTITY_NOT_MET`로 합격·완료를 거절한다. 계산 core에는 ARC 최소량에 따른 점수 null 옵션이 없다. 직접 호출 도구의 `run_calculator`는 계산 JSON만 반환하며 과정의 목표·최소량·합격을 평가하지 않는다.
 
 **D139의 보존 v5 평가는 저장 후보 검증에만 적용한다.** `mock_journey.contracts.minimum_quantity_policy`가 ARC2020/ARC2025 CPR 계열의 세션 전체 `action_count`를 아래 고정 기준과 대조한다. 하나라도 미달이면 표시 총점이 80 이상이어도 `score.decision="fail"`, `program_completed=false`이고 `reason_codes`에 `MINIMUM_QUANTITY_NOT_MET`가 있어야 한다. 다른 guideline과 압박 전용·호흡 전용에는 이 고정 기준을 적용하지 않는다. v6의 프로그램별 최소량을 이 표로 대체하지 않는다.
 

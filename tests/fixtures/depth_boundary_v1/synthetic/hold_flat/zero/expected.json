@@ -17,7 +17,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     }
   ],
   "count": 1

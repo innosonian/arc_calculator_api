@@ -23,6 +23,7 @@ _EVENTS = frozenset({
     "request_start", "parse_multipart_start", "parse_form_start", "parse_complete",
     "request_failed", "request_complete", "sentry_init_failed",
     "execution_block_ignored",
+    "hand_position_board_unrecognized", "hand_position_code_unsupported",
     "raw_input_save_failed", "chart_upload_failed", "calc_failed",
     "calc_start", "calc_complete", "serialize_complete",
     "calc_response_complete", "chart_complete",

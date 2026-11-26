@@ -10,6 +10,7 @@ import json
 import uuid
 
 from config.borders import AdultBorder, ChildBorder, InfantBorder
+from config.constants import HANDSOFF_DEADTIME_MS
 from mock_journey.auth import PRINCIPAL
 from mock_journey.catalog import Catalog, PROGRAMS
 from mock_journey.course_contracts import (
@@ -43,10 +44,14 @@ def _inch(millimetres):
     return round(millimetres / 25.4, 2)
 
 
-def _guideline(target):
+def _guideline(target, training_type=None):
+    """ARC2025 display ranges; with a training type also the D145 scoring limits the app reads.
+
+    Without a training type (the pre-Round 2 test catalog) the five newer keys are omitted.
+    """
     border = _BORDERS[target].BORDER[_GUIDELINE]
     depth, rate, volume, vent_rate = (border[key] for key in ("comp_depth", "comp_rate", "vent_vol", "vent_only_rate"))
-    return {
+    guideline = {
         "title": "ARC 2025", "manikinType": target, "name": _GUIDELINE,
         "compressionDepthMax": depth[2], "compressionDepthMin": depth[1],
         "compressionRateMax": rate[2], "compressionRateMin": rate[1],
@@ -54,6 +59,20 @@ def _guideline(target):
         "ventilationRateMax": vent_rate[2], "ventilationRateMin": vent_rate[1],
         "compressionDepthMaxInch": _inch(depth[2]), "compressionDepthMinInch": _inch(depth[1]),
     }
+    if training_type is None:
+        return guideline
+    compresses = training_type != "ventilation_only"
+    inflation = target == "infant" and training_type != "compression_only"
+    guideline.update({
+        "recoilDepthMax": border["recoil"][0] if compresses else None,
+        # The calculator scores CCF with ccf_comp for compression only and ccf_1p for every CPR.
+        "compressionFractionMin": (border["ccf_comp" if training_type == "compression_only" else "ccf_1p"][1]
+                                   if compresses else None),
+        "handsOffGraceMs": HANDSOFF_DEADTIME_MS if compresses else None,
+        "ventilationInflationTimeMin": border["vent_speed"][1] if inflation else None,
+        "ventilationInflationTimeMax": border["vent_speed"][2] if inflation else None,
+    })
+    return guideline
 
 
 def _aed_settings(program, public_id):
@@ -121,7 +140,7 @@ def training_settings(program, target, definition, public_id):
         "ventilationLimit": required if kind == "ventilations" else None,
         "cycleLimit": required if kind == "cycles" else None,
         "compressionVentilationRatio": ratio, "aed": _aed_settings(program, public_id),
-        "cprGuideline": _guideline(target),
+        "cprGuideline": _guideline(target, condition["training_type"]),
         "twoRescuers": {"cycleChangeCount": _TWO_RESCUER_CYCLE_CHANGE} if program.two_rescuers else None,
         "minimumQuantity": definition["minimumQuantity"],
         "prompts": _prompts(program, target),

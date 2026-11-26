@@ -1,0 +1,15 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "decision": "D142 S4 (user-approved 2026-11-26)",
+  "generation_commit": "81252de2605a0b4df5f8fc69bd9934c3e5deadba",
+  "generator": "tests/test_action_vectors.py replay()",
+  "source": {
+    "raw": "tests/dataset/adult_vo_1.bin",
+    "aed": null
+  },
+  "sha256": {
+    "raw.bin": "15951cfa7fc61a0cae85bc0fe6cc053ebb60fa03b101c86d0f9d0cd6392fe63c",
+    "input.json": "bb94641f1f5510ebc43d7c8c0931f6e5c39c7070896e9614e25e6dd8b2be0f8a",
+    "expected.json": "bde0032ac115436f0c9da713271d0ebc9045eb93d7260538b1d29c208e071a13"
+  }
+}

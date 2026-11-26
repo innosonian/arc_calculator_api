@@ -67,6 +67,7 @@ def test_local_worker_registers_current_then_retained_internal_calculators(insta
             (InternalCalculator, PENDING_GOAL_ADAPTER_VERSION, PROJECTION, "local", True, None),
             (InternalCalculator, "arc-internal-detection-v4", PROJECTION, "local", False, closed_cycle_count),
             (InternalCalculator, "arc-internal-detection-v5", PROJECTION, "local", False, closed_cycle_count),
+            (InternalCalculator, "arc-internal-detection-v6", PROJECTION, "local", False, closed_cycle_count),
         ]
         required = tuple(captured["required_bindings"])
         # The catalog's current binding is always checked at startup; every
@@ -76,7 +77,8 @@ def test_local_worker_registers_current_then_retained_internal_calculators(insta
                                  (RETAINED_PENDING_GOAL_ADAPTER_VERSION, PROJECTION),
                                  (PENDING_GOAL_ADAPTER_VERSION, PROJECTION),
                                  ("arc-internal-detection-v4", PROJECTION),
-                                 ("arc-internal-detection-v5", PROJECTION)}
+                                 ("arc-internal-detection-v5", PROJECTION),
+                                 ("arc-internal-detection-v6", PROJECTION)}
         assert captured["operations"] is None
         assert getattr(runner._relay, "processing_reserve_ms", None) is None
         assert getattr(runner._relay, "relay_budget", None) is None
@@ -90,7 +92,8 @@ def test_local_retained_adapters_are_exactly_the_code_registry(installation, mon
     assert contracts.RETAINED_ADAPTER_VERSIONS == ("arc-local-calculator-pending-v2",
                                                    "arc-internal-detection-pending-v3",
                                                    "arc-internal-detection-v4",
-                                                   "arc-internal-detection-v5")
+                                                   "arc-internal-detection-v5",
+                                                   "arc-internal-detection-v6")
     catalog_bindings = execution_catalog().required_bindings
     captured, _, owned = captured_local_worker(installation, monkeypatch)
     try:
@@ -98,7 +101,8 @@ def test_local_retained_adapters_are_exactly_the_code_registry(installation, mon
                                                               *contracts.RETAINED_ADAPTER_VERSIONS]
         assert tuple(captured["required_bindings"]) == catalog_bindings + (
             ("arc-local-calculator-pending-v2", PROJECTION), ("arc-internal-detection-pending-v3", PROJECTION),
-            ("arc-internal-detection-v4", PROJECTION), ("arc-internal-detection-v5", PROJECTION))
+            ("arc-internal-detection-v4", PROJECTION), ("arc-internal-detection-v5", PROJECTION),
+            ("arc-internal-detection-v6", PROJECTION))
     finally:
         owned.close()
     # Negative case: an emptied registry removes the retained adapter and its

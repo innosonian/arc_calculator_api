@@ -131,8 +131,10 @@ COURSE_DETAIL_FIELDS = (
 )
 COURSE_ITEM_FIELDS = (
     "id", "courseItemLinkId", "step", "title", "iconType", "itemType", "contentType",
-    "description", "isCompleted", "isPassed", "completionKind",
+    "description", "isCompleted", "isPassed", "completionKind", "skill",
 )
+# D146: the skill of a training/assessment item, from its ready execution definition.
+COURSE_ITEM_SKILL_FIELDS = ("trainingType", "isTwoRescuers", "requiresAed", "manikinType")
 ENROLLMENT_FIELDS = (
     "id", "status", "courseTitle", "courseId", "loginAt", "finishedAt",
     "elapsedSeconds", "centerName", "enrollStatusCode",

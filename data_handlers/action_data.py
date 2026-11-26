@@ -210,6 +210,8 @@ class ActionDataPrepare:
             }
             for rtdata in action_rtdata["rtdata_list"]:
                 merged_data = self._merge_data(merged_data, rtdata)
+            # HP_V2 (D142) needs the Record of each hand-position sample: the nordic rule reads release Records only.
+            merged_data["hand_position_records"] = [rtdata.get("record_index") for rtdata in action_rtdata["rtdata_list"]]
 
             merged_data["action_type"] = action_rtdata["action_type"]
             merged_data["ventilation_speed"] = action_rtdata["ventilation_speed"]
@@ -280,6 +282,7 @@ class ActionDataPrepare:
         prev_peak_sample = None
         for i, pre_action in enumerate(pre_action_list):
             next_hand_position = []
+            next_records = []
             try:
                 next_action = pre_action_list[i + 1]
             except IndexError:
@@ -287,13 +290,17 @@ class ActionDataPrepare:
 
             if next_action is not None:
                 next_hand_position = next_action["hand_position"]
+                next_records = next_action.get("hand_position_records", [])
 
             # 압박 위치 표본을 이번 압박의 하강 구간과 이완 구간으로 재구성한다. 다음 액션의
             # 원본 버퍼를 읽으므로 앞에서부터 순서대로 처리해야 한다.
             if pre_action["action_type"] == ACTION_TYPE_COMP:
                 pre_action["prev_peak_sample"] = prev_peak_sample
                 prev_peak_sample = pre_action["peak_record"] * 10 + pre_action["peak_offset"]
-                pre_action["hand_position"] = self._own_hand_position(pre_action["hand_position"], next_hand_position)
+                start, end, release = self._own_hand_span(pre_action["hand_position"], next_hand_position)
+                records = pre_action.get("hand_position_records", [])
+                pre_action["hand_position_records"] = records[start:end] + next_records[:release]
+                pre_action["hand_position"] = pre_action["hand_position"][start:end] + next_hand_position[:release]
             else:
                 prev_peak_sample = None
 
@@ -320,17 +327,21 @@ class ActionDataPrepare:
           0이 없으면 이완 구간과 다음 하강 구간을 구분할 수 없으므로 사용하지 않는다.
         - 다음 액션이 환기 액션이거나 세션 마지막 버퍼여도 같은 규칙을 적용한다.
         """
+        start, end, release = ActionDataPrepare._own_hand_span(own, following)
+        return own[start:end] + following[:release]
+
+    @staticmethod
+    def _own_hand_span(own: list[int], following: list[int]) -> tuple[int, int, int]:
+        """_own_hand_position의 구간: 자기 버퍼 own[start:end]와 다음 버퍼 following[:release]."""
         end = len(own)
         while end and own[end - 1] == 0:
             end -= 1
-        pressed = own[:end]
-        if 0 in pressed:
-            pressed = pressed[len(pressed) - pressed[::-1].index(0):]
+        start = max((index + 1 for index in range(end) if own[index] == 0), default=0)
 
         crosses_boundary = bool(own) and own[-1] != 0 and bool(following) and following[0] != 0
-        release = following[: following.index(0)] if crosses_boundary and 0 in following else []
+        release = following.index(0) if crosses_boundary and 0 in following else 0
 
-        return pressed + release
+        return start, end, release
 
     def _remove_last_action_from(self, pre_action_list: list[dict]) -> list[dict]:
         if not pre_action_list:

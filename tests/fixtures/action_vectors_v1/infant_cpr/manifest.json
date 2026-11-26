@@ -1,0 +1,15 @@
+{
+  "spec": "ACTION_VECTORS_V1",
+  "decision": "D142 S4 (user-approved 2026-11-26)",
+  "generation_commit": "81252de2605a0b4df5f8fc69bd9934c3e5deadba",
+  "generator": "tests/test_action_vectors.py replay()",
+  "source": {
+    "raw": "tests/dataset/infant_cpr_idle_flag_pause.bin",
+    "aed": null
+  },
+  "sha256": {
+    "raw.bin": "d4f3191b854444228e1f25f0add27b0b46b094b597905dababb5a015a2ba5cb2",
+    "input.json": "2ee55022cd4462b187f8ed6e3504c6460ddb5d48c96346d06348fe5199613150",
+    "expected.json": "11ae33a3e4a2e56a8be6e723a499b3451a65b9b248df970bd239fb6940d5a59c"
+  }
+}

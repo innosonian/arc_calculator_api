@@ -11,6 +11,12 @@ Round 2 C5/C6 explicitly split reset from logout and add new-session metadata.
 The expectation delta in v2_baseline_support checks the new responses/rows
 against these rules; the historical fixture files remain unchanged.
 
+Recaptured 2026-11-26 for D142/D146 (user-reviewed, D125): scripts/capture_baselines.py --check
+on feature/hp-v2-app-parity (base 81252de). dummy_dev_definitions, flow_responses, flow_rows and
+legacy_compat changed only by arc-internal-detection-v6->v7 and tester-goal-cycles-v3->v4 strings,
+the one-to-one relabelled digests derived from them, and courseItems[].skill; flow_events and
+user_slots are byte-identical.
+
 Fixtures (tests/fixtures/v2_baseline/):
   dummy_dev_definitions.json  DummyDevCourseProvider 15 bundles: definitionHash,
                               Catalog.definition() bytes, placement execution bytes.

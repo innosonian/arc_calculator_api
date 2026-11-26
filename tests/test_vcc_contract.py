@@ -317,7 +317,8 @@ class TestV05WireSchema:
         assert tuple(row["summary"][0]) == ("id", "itemType", "title", "displayOrder")
         detail = next(case for case in WIRE["routes"] if case["id"] == "course_detail")["success"][0]["data"]
         assert tuple(detail) == COURSE_DETAIL_FIELDS
-        assert tuple(detail["courseItems"][0]) + ("completionKind",) == COURSE_ITEM_FIELDS
+        # completionKind (Round 2) and skill (D146) were added after the frozen wire fixture.
+        assert tuple(detail["courseItems"][0]) + ("completionKind", "skill") == COURSE_ITEM_FIELDS
         assert tuple(detail["enrollment"]) == ENROLLMENT_FIELDS
         item = next(case for case in WIRE["routes"] if case["id"] == "item_detail")["success"][0]["data"]
         assert tuple(item) == ITEM_DETAIL_OUTER_FIELDS

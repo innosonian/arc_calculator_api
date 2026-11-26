@@ -17,7 +17,12 @@
         68,
         68
       ],
-      "hp": "left"
+      "hp": "unknown",
+      "hp_by_board": {
+        "unknown": "unknown",
+        "nordic": "unknown",
+        "esp32c6": "unknown"
+      }
     }
   ],
   "count": 1

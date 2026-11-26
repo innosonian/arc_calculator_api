@@ -21,7 +21,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 2,
@@ -41,7 +46,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 3,
@@ -60,7 +70,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 4,
@@ -78,7 +93,12 @@
         8,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "right"
+      }
     },
     {
       "id": 5,
@@ -98,7 +118,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 6,
@@ -119,7 +144,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 7,
@@ -139,7 +169,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 8,
@@ -157,7 +192,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "right"
+      }
     },
     {
       "id": 9,
@@ -176,7 +216,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 10,
@@ -199,6 +244,11 @@
         1
       ],
       "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      },
       "aed_part_first": true
     },
     {
@@ -219,7 +269,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 12,
@@ -239,7 +294,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 13,
@@ -260,7 +320,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 14,
@@ -280,7 +345,12 @@
         1,
         1
       ],
-      "hp": "center"
+      "hp": "center",
+      "hp_by_board": {
+        "unknown": "center",
+        "nordic": "center",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 15,
@@ -300,7 +370,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 16,
@@ -321,7 +396,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 17,
@@ -342,7 +422,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 18,
@@ -363,7 +448,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 19,
@@ -384,7 +474,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 20,
@@ -402,7 +497,12 @@
         8,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "right"
+      }
     },
     {
       "id": 21,
@@ -421,7 +521,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 22,
@@ -442,7 +547,12 @@
         1,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "center"
+      }
     },
     {
       "id": 23,
@@ -459,7 +569,12 @@
         8,
         8
       ],
-      "hp": "right"
+      "hp": "right",
+      "hp_by_board": {
+        "unknown": "right",
+        "nordic": "right",
+        "esp32c6": "right"
+      }
     }
   ],
   "count": 23

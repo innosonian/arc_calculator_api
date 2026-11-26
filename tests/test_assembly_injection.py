@@ -19,7 +19,7 @@ from mock_journey.assembly import ExecutionCatalog, build_course_application, bu
 from mock_journey.aws_runtime import AwsRoleRuntime, build_runtime
 from mock_journey.contracts import (
     CURRENT_ADAPTER_VERSION, CYCLE_GOAL_ADAPTER_VERSION, EOF_VENT_ADAPTER_VERSION, PENDING_GOAL_ADAPTER_VERSION,
-    RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION,
+    RETAINED_ADAPTER_VERSIONS, RETAINED_PENDING_GOAL_ADAPTER_VERSION, ROUND2_ADAPTER_VERSION,
 )
 from mock_journey.cycle_goal import closed_cycle_count
 from mock_journey.course_provider import UnavailableCourseProvider
@@ -255,6 +255,7 @@ def test_aws_worker_adapters_and_required_bindings_include_retained(monkeypatch)
         # D138: the former current adapter is retained and still bound to the cycle rule.
         (InternalCalculator, CYCLE_GOAL_ADAPTER_VERSION, PROJECTION_VERSION, "dev", False, closed_cycle_count),
         (InternalCalculator, EOF_VENT_ADAPTER_VERSION, PROJECTION_VERSION, "dev", False, closed_cycle_count),
+        (InternalCalculator, ROUND2_ADAPTER_VERSION, PROJECTION_VERSION, "dev", False, closed_cycle_count),
     ]
     assert tuple(captured["required_bindings"]) == (
         (CURRENT_ADAPTER_VERSION, PROJECTION_VERSION),
@@ -262,15 +263,17 @@ def test_aws_worker_adapters_and_required_bindings_include_retained(monkeypatch)
         (PENDING_GOAL_ADAPTER_VERSION, PROJECTION_VERSION),
         (CYCLE_GOAL_ADAPTER_VERSION, PROJECTION_VERSION),
         (EOF_VENT_ADAPTER_VERSION, PROJECTION_VERSION),
+        (ROUND2_ADAPTER_VERSION, PROJECTION_VERSION),
     )
     # Only the current calculator starts new work and collects ARC gates.
     assert [(a.version, a.can_calculate, a.calculation_options.collect_gates)
             for a in captured["adapters"]] == [
-        ("arc-internal-detection-v6", True, True),
+        ("arc-internal-detection-v7", True, True),
         ("arc-local-calculator-pending-v2", False, False),
         ("arc-internal-detection-pending-v3", False, False),
         ("arc-internal-detection-v4", False, False),
         ("arc-internal-detection-v5", False, False),
+        ("arc-internal-detection-v6", False, False),
     ]
     assert set(runtime.target.adapters._registered) == set(captured["required_bindings"])
 
@@ -290,8 +293,8 @@ def test_aws_worker_registers_the_code_registry_whatever_the_document_says(monke
     assert set(runtime.target.adapters._registered) == set(captured["required_bindings"])
     assert runtime.settings.execution_block_ignored is True
     assert [adapter.version for adapter in captured["adapters"]] == [
-        "arc-internal-detection-v6", "arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
-        "arc-internal-detection-v4", "arc-internal-detection-v5"]
+        "arc-internal-detection-v7", "arc-local-calculator-pending-v2", "arc-internal-detection-pending-v3",
+        "arc-internal-detection-v4", "arc-internal-detection-v5", "arc-internal-detection-v6"]
 
 
 def test_required_binding_for_an_unregistered_adapter_fails_worker_composition():
